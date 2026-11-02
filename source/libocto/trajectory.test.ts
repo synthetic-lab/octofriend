@@ -2457,7 +2457,7 @@ describe("trajectory", () => {
     ]);
   });
 
-  it("discards an interrupted idle compaction and does not retry it on the next message", async () => {
+  it("records an interrupted idle compaction and does not retry it on the next message", async () => {
     const { build, rec } = makeTrajectory({
       messages: [
         { role: "user", content: text("existing history") },
@@ -2474,13 +2474,86 @@ describe("trajectory", () => {
     inputControl(traj).requestCompaction();
     await traj.step();
     const waiting = await startWaitingStep(traj, "ready-for-request");
-    expect(rec.roles).toEqual([]);
+    expect(rec.roles).toEqual([
+      "request-snapshot-begin",
+      "interrupted-by-user",
+      "request-snapshot-end",
+    ]);
 
     await inputControl(traj).enqueueSteering(text("continue"));
     expect(await waiting.finished).toBe(true);
-    expect(rec.roles).toEqual(["user", ...assistantSnapshot]);
+    expect(rec.roles).toEqual([
+      "request-snapshot-begin",
+      "interrupted-by-user",
+      "request-snapshot-end",
+      "user",
+      ...assistantSnapshot,
+    ]);
     expect(rec.arc.compaction).toBe(1);
   });
+
+  for (const childScope of [false, true]) {
+    it.each(["success", "error"] as const)(
+      `commits interrupted ${childScope ? "child" : "root"} compaction as a snapshot and stays stopped on reload (%s)`,
+      async finish => {
+        const user: UserMessage = { role: "user", content: text("x".repeat(12000)) };
+        const child: Extract<AgentIR<TestAgent>, { role: "subagent-trajectory" }> = {
+          role: "subagent-trajectory",
+          subagent: "research",
+          toolCall: searchCall("delegate", "delegation"),
+          task: text("inspect"),
+          ir: [user],
+        };
+        const messages: Array<AgentIR<TestAgent>> = childScope
+          ? [
+              assistantMessage({ toolCalls: [child.toolCall, searchCall("pending", "pending")] }),
+              {
+                role: "tool-invoke-subagent",
+                subagent: "research",
+                toolCall: child.toolCall,
+                message: child.task,
+              },
+              child,
+            ]
+          : [user];
+        const { build, rec } = makeTrajectory({ messages, contextWindow: 3000 });
+        const { traj, compilerCalls } = await build([
+          async emit => {
+            await emit("partial summary", "content");
+            await interruptNow(traj);
+            if (finish === "error") return err(requestError("cancelled"));
+            return okResult(assistantMessage({ content: "discarded summary" }));
+          },
+        ]);
+        const ran: string[] = [];
+        runImpl = async query => {
+          ran.push(query);
+          return ok({ type: "output", content: text(query) });
+        };
+
+        expect(await traj.step()).toBe(true);
+        expect(
+          rec.messages.map(event => ({ root: event.root, roles: event.irs.map(ir => ir.role) })),
+        ).toEqual([
+          {
+            root: !childScope,
+            roles: ["request-snapshot-begin", "interrupted-by-user", "request-snapshot-end"],
+          },
+          ...(childScope ? [{ root: true, roles: ["tool-skip-output" as const] }] : []),
+        ]);
+        expect(compilerCalls).toHaveLength(1);
+        if (childScope) expect(traj.inspectSubagentTrajectory(child)).toEqual({ type: "aborted" });
+
+        const saved = JSON.stringify(traj.messages);
+        const recovered = makeTrajectory({ messages: JSON.parse(saved), contextWindow: 3000 });
+        const { traj: resumed, compilerCalls: resumedCalls } = await recovered.build([]);
+        await startWaitingStep(resumed, "ready-for-request");
+        expect(JSON.stringify(resumed.messages)).toBe(saved);
+        expect(resumedCalls).toEqual([]);
+        expect(ran).toEqual([]);
+      },
+    );
+  }
 
   it("uses existing retries for manual compaction without repeating a completed summary", async () => {
     const { build, rec } = makeTrajectory({

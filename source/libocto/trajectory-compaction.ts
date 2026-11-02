@@ -5,8 +5,14 @@ import {
   type CompactionError,
 } from "./compilers/autocompact.ts";
 import type { AutofixJsonFn, Compiler, CompilerIR } from "./compilers/compiler-interface.ts";
-import type { Agent, Checkpoint, CompactionErrorIR, ModelErrorIR } from "./llm-ir.ts";
-import { err, ok, type Result } from "./result.ts";
+import type {
+  Agent,
+  Checkpoint,
+  CompactionErrorIR,
+  InterruptedByUserIR,
+  ModelErrorIR,
+} from "./llm-ir.ts";
+import { userInterruptReason } from "./compilers/ir-prompts.ts";
 
 export type AutocompactionStream = {
   type: "autocompaction-stream";
@@ -19,7 +25,11 @@ export type TrajectoryCompactionEvents = {
   compactionProgress: AutocompactionStream;
 };
 
-export type TrajectoryCompactionIR = Checkpoint | CompactionErrorIR | ModelErrorIR;
+export type TrajectoryCompactionIR =
+  | Checkpoint
+  | CompactionErrorIR
+  | InterruptedByUserIR
+  | ModelErrorIR;
 
 export type TrajectoryCompactionParams<A extends Agent<any, any, any>, Model> = {
   model: Model;
@@ -47,10 +57,14 @@ async function runTrajectoryCompaction<A extends Agent<any, any, any>, Model>({
   abortSignal,
   autofixJson,
   handler,
-}: TrajectoryCompactionParams<A, Model>): Promise<Result<TrajectoryCompactionIR, "aborted">> {
-  if (abortSignal.aborted) return err("aborted");
+}: TrajectoryCompactionParams<A, Model>): Promise<TrajectoryCompactionIR> {
+  const interrupted: InterruptedByUserIR = {
+    role: "interrupted-by-user",
+    reason: userInterruptReason(),
+  };
+  if (abortSignal.aborted) return interrupted;
   await handler?.startCompaction?.(null);
-  if (abortSignal.aborted) return err("aborted");
+  if (abortSignal.aborted) return interrupted;
 
   const buffer: AutocompactionStream["buffer"] = {};
   const result = await generateCompactionCheckpointContent<A>({
@@ -75,11 +89,10 @@ async function runTrajectoryCompaction<A extends Agent<any, any, any>, Model>({
     },
   });
 
-  // A compiler may return partial content or a transport error after cancellation.
-  // Neither is a completed compaction result that the supervisor should persist.
-  if (abortSignal.aborted) return err("aborted");
-  if (!result.success) return ok(compactionErrorIR(result.error));
-  return ok({ role: "checkpoint", content: result.data });
+  // Persist the interruption, not a partial summary or cancellation-induced error.
+  if (abortSignal.aborted) return interrupted;
+  if (!result.success) return compactionErrorIR(result.error);
+  return { role: "checkpoint", content: result.data };
 }
 
 function compactionErrorIR(error: CompactionError): CompactionErrorIR | ModelErrorIR {

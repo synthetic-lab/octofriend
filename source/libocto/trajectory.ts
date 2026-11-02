@@ -1104,7 +1104,7 @@ export class Trajectory<A extends Agent<any, any, any>, Model> {
     const owner = this.ownership.lease();
     const retryBudget = this.retryBudget;
     const scope = this.scope(location);
-    const result = await trajectoryCompaction.run<A, Model>({
+    const ir = await trajectoryCompaction.run<A, Model>({
       model: runtime.model,
       messages: this.lowerForLocation(
         location,
@@ -1125,13 +1125,9 @@ export class Trajectory<A extends Agent<any, any, any>, Model> {
       },
     });
     if (this.params.abortSignal.aborted) return;
-    if (!result.success) {
-      await this.closeInterruptedWork(location, owner, null);
-      return;
-    }
     await owner.ifOwner(() => {
-      if (location.root && result.data.role === "checkpoint") this.manualCompactionPending = false;
-      return this.appendIrs(location, requestSnapshot([result.data], retryBudget));
+      if (location.root && ir.role === "checkpoint") this.manualCompactionPending = false;
+      return this.appendIrs(location, requestSnapshot([ir], retryBudget));
     });
     if (this.turnController.signal.aborted) {
       await this.closeInterruptedWork(location, owner, null);
