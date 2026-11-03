@@ -2103,7 +2103,7 @@ function SubagentProgressRenderer({
     }),
   );
   const color = useColor();
-  const shimmerlock = useShimmerlock("explore-subagent");
+  const shimmerlock = useShimmerlock("explore-subagent-loading");
   return (
     <TerminalFlex style={{ flexDirection: "column", marginLeft: 2 }}>
       {items.map((item, index) => {
