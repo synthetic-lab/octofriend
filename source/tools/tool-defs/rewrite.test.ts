@@ -1,7 +1,7 @@
 import { describe, expect, it } from "bun:test";
 import rewriteToolFactory from "./rewrite.ts";
 import { fileTracker } from "../file-tracker.ts";
-import { err } from "../../libocto/result.ts";
+import { err, ok, unwrap } from "../../libocto/result.ts";
 import { MockTransport } from "../../transports/mock.ts";
 import { AbortError } from "../../transports/transport-common.ts";
 
@@ -41,7 +41,7 @@ describe("rewrite tool", () => {
     const filePath = `rewrite-${stage}-${code}.txt`;
     const transport = new MockTransport({ files: { [filePath]: "old contents" } });
     const tool = await createRewriteTool(transport);
-    await fileTracker.read(transport, signal, filePath);
+    unwrap(await fileTracker.read(transport, signal, filePath));
     const modTime = transport.modTime.bind(transport);
     transport[stage] = async () => {
       throw Object.assign(new Error(`${code}: filesystem operation failed`), { code });
@@ -53,13 +53,13 @@ describe("rewrite tool", () => {
       toolCall: rewriteToolCall(filePath),
       data: config,
     });
-    expect(result).toEqual(err(`Failed to rewrite file ${filePath}`));
+    expect(result).toEqual(err(`Failed to write file ${filePath}`));
     expect(await transport.readFile(signal, filePath)).toBe(
       stage === "modTime" ? "new contents" : "old contents",
     );
     if (stage === "modTime") {
       transport.modTime = modTime;
-      expect(await fileTracker.isOutdated(transport, signal, filePath)).toBe(true);
+      expect(await fileTracker.isOutdated(transport, signal, filePath)).toEqual(ok(true));
     }
   });
 
@@ -85,7 +85,7 @@ describe("rewrite tool", () => {
     });
     await writing;
     controller.abort();
-    await expect(result).resolves.toEqual(err("Failed to rewrite file cancel-rewrite.txt"));
+    await expect(result).resolves.toEqual(err("Failed to write file cancel-rewrite.txt"));
     expect(await transport.readFile(new AbortController().signal, "cancel-rewrite.txt")).toBe(
       "old contents",
     );
@@ -95,7 +95,7 @@ describe("rewrite tool", () => {
     const signal = new AbortController().signal;
     const transport = new MockTransport({ files: { "rewrite-success.txt": "old contents" } });
     const tool = await createRewriteTool(transport);
-    await fileTracker.read(transport, signal, "rewrite-success.txt");
+    unwrap(await fileTracker.read(transport, signal, "rewrite-success.txt"));
     const result = await tool.run({
       signal,
       transport,
@@ -107,6 +107,8 @@ describe("rewrite tool", () => {
       data: { type: "custom-ir", data: { role: "file-mutate", path: "rewrite-success.txt" } },
     });
     expect(await transport.readFile(signal, "rewrite-success.txt")).toBe("new contents");
-    expect(await fileTracker.isOutdated(transport, signal, "rewrite-success.txt")).toBe(false);
+    expect(await fileTracker.isOutdated(transport, signal, "rewrite-success.txt")).toEqual(
+      ok(false),
+    );
   });
 });

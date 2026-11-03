@@ -34,14 +34,14 @@ export default read.withCustomIR({ fileReadIR }).define(async () => ({
       return attempt(`Could not read image ${filePath}`, async () => {
         const resolvedPath = await transport.resolvePath(signal, filePath);
         const image = await loadImageFromPath(resolvedPath);
-        await fileTracker.recordFileReadTimestamp(transport, signal, filePath);
+        const recorded = await fileTracker.recordFileReadTimestamp(transport, signal, filePath);
+        if (!recorded.success) return recorded;
         return customIR.fileReadIR({ content: `Image file: ${resolvedPath}`, image });
       });
     }
 
-    return attempt(`No such file ${filePath}`, async () => {
-      const content = await fileTracker.read(transport, signal, filePath);
-      return customIR.fileReadIR({ content: withLineNumbers(content) });
-    });
+    const content = await fileTracker.read(transport, signal, filePath);
+    if (!content.success) return content;
+    return customIR.fileReadIR({ content: withLineNumbers(content.data) });
   },
 }));

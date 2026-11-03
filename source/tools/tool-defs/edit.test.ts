@@ -2,7 +2,7 @@ import { describe, expect, it } from "bun:test";
 import editToolFactory from "./edit.ts";
 import { FILE_OUTDATED_ERROR_MESSAGE } from "../common.ts";
 import { fileTracker } from "../file-tracker.ts";
-import { err, unwrap } from "../../libocto/result.ts";
+import { err, ok, unwrap } from "../../libocto/result.ts";
 import { MockTransport } from "../../transports/mock.ts";
 import { AbortError, type Transport } from "../../transports/transport-common.ts";
 
@@ -48,7 +48,7 @@ describe("edit tool", () => {
     const filePath = `edit-${stage}-${code}.txt`;
     const transport = new MockTransport({ files: { [filePath]: "old contents" } });
     const tool = await createEditTool(transport);
-    await fileTracker.read(transport, signal, filePath);
+    unwrap(await fileTracker.read(transport, signal, filePath));
     const modTime = transport.modTime.bind(transport);
     transport[stage] = async () => {
       throw Object.assign(new Error(`${code}: filesystem operation failed`), { code });
@@ -60,13 +60,13 @@ describe("edit tool", () => {
       toolCall: editToolCall({ filePath, search: "old", replace: "new" }),
       data: { yourName: "Test", models: [] },
     });
-    expect(result).toEqual(err(`Failed to edit file ${filePath}`));
+    expect(result).toEqual(err(`Failed to write file ${filePath}`));
     expect(await transport.readFile(signal, filePath)).toBe(
       stage === "modTime" ? "new contents" : "old contents",
     );
     if (stage === "modTime") {
       transport.modTime = modTime;
-      expect(await fileTracker.isOutdated(transport, signal, filePath)).toBe(true);
+      expect(await fileTracker.isOutdated(transport, signal, filePath)).toEqual(ok(true));
     }
   });
 
@@ -115,7 +115,7 @@ describe("edit tool", () => {
     });
     await writing;
     controller.abort();
-    await expect(result).resolves.toEqual(err("Failed to edit file cancel-edit.txt"));
+    await expect(result).resolves.toEqual(err("Failed to write file cancel-edit.txt"));
     expect(await transport.readFile(new AbortController().signal, "cancel-edit.txt")).toBe("old");
   });
 
@@ -126,9 +126,11 @@ describe("edit tool", () => {
     });
     const tool = await createEditTool(transport);
 
-    await fileTracker.read(transport, signal, "optimistic.txt");
+    unwrap(await fileTracker.read(transport, signal, "optimistic.txt"));
     await transport.writeFile(signal, "optimistic.txt", "zero\none\ntwo\nthree");
-    await expect(fileTracker.isOutdated(transport, signal, "optimistic.txt")).resolves.toBe(true);
+    await expect(fileTracker.isOutdated(transport, signal, "optimistic.txt")).resolves.toEqual(
+      ok(true),
+    );
 
     const result = unwrap(
       await tool.run({
@@ -182,7 +184,7 @@ describe("edit tool", () => {
     expect(freshResult.error).toContain("Could not find search string");
     expect(freshResult.error).not.toBe(FILE_OUTDATED_ERROR_MESSAGE);
 
-    await fileTracker.read(staleTransport, signal, "stale-missing.txt");
+    unwrap(await fileTracker.read(staleTransport, signal, "stale-missing.txt"));
     await staleTransport.writeFile(signal, "stale-missing.txt", "after edit");
 
     const staleResult = await staleTool.run({

@@ -1,9 +1,12 @@
 import { describe, expect, it } from "bun:test";
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import path from "node:path";
 import { toJSONSchema } from "structural";
 import readToolFactory from "./read.ts";
 import partialReadToolFactory from "./partial-read.ts";
 import { fileTracker } from "../file-tracker.ts";
-import { unwrap } from "../../libocto/result.ts";
+import { err, ok, unwrap } from "../../libocto/result.ts";
 import { MockTransport } from "../../transports/mock.ts";
 import type { Transport } from "../../transports/transport-common.ts";
 
@@ -53,6 +56,54 @@ type ObjectJsonSchema = {
 };
 
 describe("read tool", () => {
+  it.each(["resolvePath", "readFile", "modTime"] as const)(
+    "propagates a FileTracker error when %s fails",
+    async stage => {
+      const transport = new MockTransport({ files: { "read-error.txt": "contents" } });
+      transport[stage] = async () => {
+        throw new Error("Filesystem failure");
+      };
+      const tool = await createReadTool(transport);
+      expect(
+        await tool.run({
+          signal: new AbortController().signal,
+          transport,
+          toolCall: readToolCall({ filePath: "read-error.txt" }),
+          data: {} as never,
+        }),
+      ).toEqual(err("Could not read file read-error.txt"));
+    },
+  );
+
+  it("propagates an image timestamp failure instead of reporting a successful read", async () => {
+    const directory = await mkdtemp(path.join(tmpdir(), "octo-read-image-"));
+    const filePath = path.join(directory, "image.png");
+    try {
+      await writeFile(
+        filePath,
+        Buffer.from(
+          "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jRZkAAAAASUVORK5CYII=",
+          "base64",
+        ),
+      );
+      const transport = new MockTransport({});
+      transport.modTime = async () => {
+        throw new Error("EIO");
+      };
+      const tool = await createReadTool(transport);
+      expect(
+        await tool.run({
+          signal: new AbortController().signal,
+          transport,
+          toolCall: readToolCall({ filePath }),
+          data: {} as never,
+        }),
+      ).toEqual(err(`Could not record read timestamp for ${filePath}`));
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
+  });
+
   it("only exposes filePath in its arguments", async () => {
     const transport = createTransport({ "/repo/full.txt": "contents" });
     const tool = await createReadTool(transport);
@@ -88,6 +139,25 @@ describe("read tool", () => {
 });
 
 describe("partial-read tool", () => {
+  it.each(["resolvePath", "readFile"] as const)(
+    "propagates a FileTracker error when %s fails",
+    async stage => {
+      const transport = new MockTransport({ files: { "partial-error.txt": "contents" } });
+      transport[stage] = async () => {
+        throw new Error("Filesystem failure");
+      };
+      const tool = await createPartialReadTool(transport);
+      expect(
+        await tool.run({
+          signal: new AbortController().signal,
+          transport,
+          toolCall: partialReadToolCall({ filePath: "partial-error.txt", offset: 1, limit: 1 }),
+          data: {} as never,
+        }),
+      ).toEqual(err("Could not read file partial-error.txt"));
+    },
+  );
+
   it("requires filePath, offset, and limit", async () => {
     const transport = createTransport({ "/repo/notes.txt": "contents" });
     const tool = await createPartialReadTool(transport);
@@ -151,8 +221,8 @@ describe("partial-read tool", () => {
       }),
     );
 
-    await expect(fileTracker.isOutdated(transport, signal, "partial-only.txt")).resolves.toBe(
-      false,
+    await expect(fileTracker.isOutdated(transport, signal, "partial-only.txt")).resolves.toEqual(
+      ok(false),
     );
   });
 
@@ -191,8 +261,8 @@ describe("partial-read tool", () => {
         },
       ],
     });
-    await expect(fileTracker.isOutdated(transport, signal, "already-full.txt")).resolves.toBe(
-      false,
+    await expect(fileTracker.isOutdated(transport, signal, "already-full.txt")).resolves.toEqual(
+      ok(false),
     );
   });
 });
