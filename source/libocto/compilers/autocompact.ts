@@ -54,7 +54,7 @@ export async function generateCompactionCheckpointContent<A extends Agent<any, a
 }: {
   messages: Array<CompilerIR<A>>;
   run: (messages: Array<CompilerIR<A>>) => Promise<CompilerResultWithoutToolCalls<A>>;
-}): Promise<Result<Content["content"] | null, CompactionError>> {
+}): Promise<Result<Content["content"], CompactionError>> {
   const summaryMessages: Array<CompilerIR<A>> = [
     ...messages,
     {

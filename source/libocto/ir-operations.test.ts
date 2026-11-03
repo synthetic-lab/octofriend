@@ -7,6 +7,7 @@ import {
   downconvert,
   isTrajectoryRunning,
   lower,
+  meaningfulTailIR,
   pendingToolCalls,
 } from "./ir-operations.ts";
 import { ok } from "./result.ts";
@@ -50,6 +51,7 @@ type TestIR = AgentIR<TestAgent>;
 type ResearchIR = AgentIR<ResearchAgent>;
 type GrandchildIR = AgentIR<GrandchildAgent>;
 type TestLoweredIR = CompilerReadyIR<TestAgent>;
+const retryBudget = { validation: 0, requestError: 0 };
 
 const convert = downconvert<TestAgent>(messages =>
   messages.map(original => ({ original, converted: original })),
@@ -264,6 +266,84 @@ function contentToText(content: Content["content"]): string {
 function roles(messages: TestLoweredIR[]): string[] {
   return messages.map(({ converted }) => converted.role);
 }
+
+describe("meaningfulTailIR", () => {
+  it("yields original IRs newest-first, retaining errors, checkpoints, and tool records", () => {
+    const records: TestIR[] = [
+      userMessage("go"),
+      assistantMessage("search", [searchCall("c1")]),
+      { role: "tool-runtime-error", toolCall: searchCall("c1"), error: "failed" },
+      checkpointMessage("summary"),
+      { role: "request-error", requestError: "failed", curl: "curl" },
+      { role: "error-retry" },
+      { role: "interrupted-by-user", reason: "stopped" },
+    ];
+    const history: readonly TestIR[] = [
+      records[0],
+      { role: "request-snapshot-begin", retryBudget },
+      records[1],
+      { role: "request-snapshot-end" },
+      records[2],
+      { role: "request-snapshot-begin", retryBudget },
+      records[3],
+      { role: "request-snapshot-end" },
+      { role: "request-snapshot-begin", retryBudget },
+      records[4],
+      { role: "request-snapshot-end" },
+      records[5],
+      { role: "request-snapshot-begin", retryBudget },
+      records[6],
+      { role: "request-snapshot-end" },
+    ];
+    const original = [...history];
+    const result = [...meaningfulTailIR(history)];
+    expect(result).toHaveLength(records.length);
+    for (let index = 0; index < result.length; index++) {
+      expect(result[index] === records[records.length - index - 1]).toBe(true);
+    }
+    expect(history).toEqual(original);
+    expect([...meaningfulTailIR(records)]).toEqual(result);
+    expect([...meaningfulTailIR([])]).toEqual([]);
+  });
+
+  it("reads only as far back as the consumer requests", () => {
+    const history: TestIR[] = [
+      userMessage("old turn"),
+      userMessage("current turn"),
+      { role: "request-snapshot-begin", retryBudget },
+      { role: "interrupted-by-user", reason: "stopped" },
+      { role: "request-snapshot-end" },
+    ];
+    Object.defineProperty(history, 0, {
+      get() {
+        throw new Error("Read beyond the requested tail");
+      },
+    });
+
+    const [tail, prev] = meaningfulTailIR(history);
+    expect(tail === history[3]).toBe(true);
+    expect(prev === history[1]).toBe(true);
+  });
+
+  it("inspects child histories separately without replacing their trajectory records", () => {
+    const response = researchAssistantResponse("child answer");
+    const child = subagentTrajectory(
+      [
+        researchUserMessage("go"),
+        { role: "request-snapshot-begin", retryBudget },
+        response,
+        { role: "request-snapshot-end" },
+      ],
+      searchCall("delegate"),
+    );
+    const [rootTail] = meaningfulTailIR([child]);
+    expect(rootTail).toBe(child);
+    const [childTail, prev] = meaningfulTailIR(child.ir);
+    expect(childTail === response).toBe(true);
+    expect(prev === child.ir[0]).toBe(true);
+    expect(child.ir).toHaveLength(4);
+  });
+});
 
 describe("activeHistory", () => {
   it("selects the root for empty history or an ordinary tail", () => {

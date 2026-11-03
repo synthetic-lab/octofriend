@@ -18,12 +18,17 @@ import type {
   PreLoweredIR,
 } from "./llm-ir.ts";
 import { definePermissionedAgent, definePermissionlessAgent } from "./llm-ir.ts";
-import { downconvert, lower } from "./ir-operations.ts";
+import { downconvert, lower, meaningfulTailIR } from "./ir-operations.ts";
 import type { ActiveHistory } from "./ir-operations.ts";
 import type { LoadedTools, ToolCall } from "./tool-def.ts";
 import { ToolBuilder } from "./tool-def.ts";
 import { ok } from "./result.ts";
-import type { TrajectoryEvents, TrajectoryMode, TrajectoryParams } from "./trajectory.ts";
+import type {
+  Trajectory,
+  TrajectoryEvents,
+  TrajectoryMode,
+  TrajectoryParams,
+} from "./trajectory.ts";
 
 /*
  * Compile-only test: the agent-tree surface — tree-wide subagent names, the merged tool map,
@@ -329,6 +334,21 @@ type _descendantTools = Expect<
 void inspectConversionTypes;
 void inspectGenericChildLowering;
 
+function inspectMeaningfulTailIR(
+  trajectory: Trajectory<Root, null>,
+  child: Extract<AgentIR<Root>, { role: "subagent-trajectory" }>,
+) {
+  const rootIRs = [...trajectory.meaningfulTailIR()];
+  const childIRs = [...meaningfulTailIR(child.ir)];
+  type Boundary = { role: "request-snapshot-begin" | "request-snapshot-end" };
+  type _rootIR = Expect<Equal<(typeof rootIRs)[number], Exclude<AgentIR<Root>, Boundary>>>;
+  type _childIR = Expect<
+    Equal<(typeof childIRs)[number], Exclude<AgentIR<typeof _research>, Boundary>>
+  >;
+}
+
+void inspectMeaningfulTailIR;
+
 // The active location preserves the same agent/IR/scope correlation as message events.
 function inspectActiveHistory(location: ActiveHistory<Root>) {
   if (location.root) {
@@ -361,9 +381,9 @@ void inspectActiveHistory;
 
 // Message events preserve each active arc's IR universe. Every non-root event points at
 // both the immediate parent trajectory and the root-history trajectory that contains it.
-function inspectMessageEvent(event: TrajectoryEvents<Root>["onMessage"]) {
+function inspectMessageEvent(event: TrajectoryEvents<Root>["onMessages"]) {
   if (event.root) {
-    expectType<AgentIR<Root>>(event.ir);
+    expectType<Array<AgentIR<Root>>>(event.irs);
     // We expect an error here because root appends need no subagent metadata
     // @ts-expect-error
     event.scope;
@@ -374,11 +394,11 @@ function inspectMessageEvent(event: TrajectoryEvents<Root>["onMessage"]) {
     event.scope.toplevelSubagentIR,
   );
   if (event.subagent === "research") {
-    expectType<AgentIR<typeof _research>>(event.ir);
+    expectType<Array<AgentIR<typeof _research>>>(event.irs);
     expectType<Extract<AgentIR<Root>, { subagent: "research" }>>(event.scope.parentSubagentIR);
     return;
   }
-  expectType<AgentIR<typeof _grandchild>>(event.ir);
+  expectType<Array<AgentIR<typeof _grandchild>>>(event.irs);
   expectType<Extract<AgentIR<typeof _research>, { subagent: "grandchild" }>>(
     event.scope.parentSubagentIR,
   );
