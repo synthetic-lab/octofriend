@@ -5,6 +5,7 @@ import type {
   Agent,
   AgentExtra,
   AgentIR,
+  SubagentIR,
   TreeIR,
   LowerInputIR,
   CompilerReadyIR,
@@ -17,7 +18,7 @@ import type {
   IRConversion,
   PreLoweredIR,
 } from "./llm-ir.ts";
-import { definePermissionedAgent, definePermissionlessAgent } from "./llm-ir.ts";
+import { definePermissionedAgent, definePermissionlessAgent, messageText } from "./llm-ir.ts";
 import { downconvert, lower, meaningfulTailIR } from "./ir-operations.ts";
 import type { ActiveHistory } from "./ir-operations.ts";
 import type { LoadedTools, ToolCall } from "./tool-def.ts";
@@ -214,6 +215,13 @@ function inspectTreeConversions(
 type _leafCompilerPair = Expect<
   Equal<CompilerReadyIR<Single>, IRConversion<AgentIR<Single>, LoweredIR<Single["tools"]>>>
 >;
+type _subagentIR = Expect<Equal<SubagentIR<Root>, AgentIR<typeof _research>>>;
+type _leafSubagentIR = Expect<Equal<SubagentIR<Single>, never>>;
+
+function inspectMessageText(ir: CompilerReadyIR<typeof fileRoot>["converted"]) {
+  expectType<string>(messageText(ir));
+}
+void inspectMessageText;
 
 function inspectConversionTypes(
   raw: Array<AgentIR<Root>>,

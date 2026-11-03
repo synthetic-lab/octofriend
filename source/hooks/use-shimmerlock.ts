@@ -5,14 +5,14 @@ import { useShallow } from "zustand/react/shallow";
 export type ShimmerPriority =
   | "root-loading"
   | "root-tool"
-  | "explore-subagent-tool"
-  | "explore-subagent-loading"
-  | "explore-subagent-header";
+  | "subagent-tool"
+  | "subagent-loading"
+  | "subagent-header";
 
 export const SHIMMER_PRIORITY_ORDER: { [K in ShimmerPriority]: number } = {
-  "explore-subagent-tool": 0,
-  "explore-subagent-loading": 1,
-  "explore-subagent-header": 2,
+  "subagent-tool": 0,
+  "subagent-loading": 1,
+  "subagent-header": 2,
   "root-tool": 3,
   "root-loading": 4,
 };

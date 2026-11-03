@@ -12,7 +12,7 @@ type ContenderProps = {
 };
 
 function Contender(props: ContenderProps) {
-  const lock = useShimmerlock("explore-subagent-loading");
+  const lock = useShimmerlock("subagent-loading");
   return <OwnershipCheck {...props} lock={lock} />;
 }
 
@@ -91,7 +91,7 @@ describe("useShimmerlock", () => {
 
   it("lets multiple children share ownership without registering individually", () => {
     function SharedContender({ showDetail }: { showDetail: boolean }) {
-      const lock = useShimmerlock("explore-subagent-loading");
+      const lock = useShimmerlock("subagent-loading");
       return (
         <>
           <OwnershipCheck name="name" lock={lock} />

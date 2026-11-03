@@ -491,6 +491,12 @@ export type AgentIR<A extends Agent<any, any, any>> =
   | LlmIR<A>
   | (A extends PermissionedBrand ? ToolRejectMessage<A["tools"]> : never);
 
+// Messages from any direct subagent, for consumers such as child-history renderers.
+// Each child's tools and extensions stay exact; deeper histories remain nested in trajectories.
+export type SubagentIR<A extends Agent<any, any, any>> = {
+  [K in keyof A["agents"]]: AgentIR<A["agents"][K]>;
+}[keyof A["agents"]];
+
 /*
  * The widest shape lower(...) accepts: pre-lowering IRs plus permissioned-only rejects, which
  * lower(...) converts to tool-skip-outputs. Neither raw checkpoints (converted to
@@ -750,7 +756,7 @@ export function answeredToolCallId<
   }
 }
 
-export function messageText<T extends ToolMap<any, any>>(msg: LoweredIR<T>): string {
+export function messageText(msg: LoweredIR<InspectionTools>): string {
   switch (msg.role) {
     case "assistant":
       return (msg.content ?? "") + (msg.reasoningContent ?? "");

@@ -9,6 +9,7 @@ import fetch from "./fetch.ts";
 import rewrite from "./rewrite.ts";
 import skill from "./skill.ts";
 import webSearch from "./web-search.ts";
+import webResearch from "./web-research.ts";
 import backgroundProcess from "./background-process.ts";
 import manageBackgroundProcess from "./manage-background-process.ts";
 import glob from "./glob.ts";
@@ -35,6 +36,7 @@ export default {
   rewrite,
   skill,
   "web-search": webSearch,
+  "web-research": webResearch,
   "background-process": backgroundProcess,
   "manage-background-process": manageBackgroundProcess,
   glob,

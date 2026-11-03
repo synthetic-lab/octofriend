@@ -7,11 +7,18 @@ import glob from "../tools/tool-defs/glob.ts";
 import { definePermissionedAgent } from "../libocto/llm-ir.ts";
 import type { AgentIR } from "../libocto/llm-ir.ts";
 
+// Raw web results stay in the researcher's context, not the primary agent's.
+const { fetch, "web-search": webSearch, ...primaryTools } = toolMap;
+
 export const octoAgent = definePermissionedAgent({
-  tools: toolMap,
+  tools: primaryTools,
   agents: {
     explore: definePermissionedAgent({
       tools: { read, "partial-read": partialRead, list, grep, glob },
+      agents: {},
+    }),
+    researcher: definePermissionedAgent({
+      tools: { fetch, "web-search": webSearch },
       agents: {},
     }),
   },
