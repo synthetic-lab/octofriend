@@ -169,13 +169,17 @@ async function runTrajectoryAssistantRequest<A extends Agent<any, any, any>, Mod
       buffer[type] = (buffer[type] ?? "") + tokens;
       await handler.responseProgress({ buffer, delta: { type, value: tokens } });
     },
+  }).catch((error: unknown) => {
+    if (!abortSignal.aborted) throw error;
+    return null;
   });
 
-  const headers = result.success
-    ? result.data.headers
-    : "headers" in result.error
-      ? result.error.headers
-      : undefined;
+  const headers = (() => {
+    if (result == null) return undefined;
+    if (result.success) return result.data.headers;
+    if ("headers" in result.error) return result.error.headers;
+    return undefined;
+  })();
   if (headers) await handler.onResponseHeaders(headers);
 
   const partial: Array<TrajectoryAssistantRequestIR<A>> = [];
@@ -187,7 +191,7 @@ async function runTrajectoryAssistantRequest<A extends Agent<any, any, any>, Mod
       usage: compilerUsage(0, 0),
     });
   }
-  if (abortSignal.aborted) {
+  if (result == null || abortSignal.aborted) {
     if (partial.length === 0) await handler.discardResponseProgress(null);
     return [...partial, interrupted];
   }
