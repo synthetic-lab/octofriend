@@ -123,6 +123,41 @@ function malformedShellRequest(): MalformedToolRequest {
   };
 }
 
+describe("toLlmMessages reasoning", () => {
+  it.each([false, true])(
+    "sends assistant reasoning as reasoning (tool calls: %s)",
+    async hasTools => {
+      const messages = await toLlmMessages<typeof octoAgent>([
+        {
+          role: "assistant",
+          content: "I will check the files.",
+          reasoningContent: "First, inspect the directory.",
+          usage: compilerUsage(1, 1),
+          ...(hasTools ? { toolCalls: [shellCall("call_reasoning")] } : {}),
+        },
+      ]);
+
+      expect(messages[0]).toMatchObject({
+        role: "assistant",
+        content: "I will check the files.",
+        reasoning: "First, inspect the directory.",
+      });
+      expect(messages[0]).not.toHaveProperty("reasoning_content");
+      if (hasTools) {
+        expect(messages[0]).toHaveProperty("tool_calls.0.id", "call_reasoning");
+      }
+    },
+  );
+
+  it.each([undefined, ""])("omits absent or empty reasoning (%s)", async reasoningContent => {
+    const messages = await toLlmMessages<typeof octoAgent>([
+      { role: "assistant", content: "Done.", reasoningContent, usage: compilerUsage(1, 1) },
+    ]);
+
+    expect(messages).toEqual([{ role: "assistant", content: "Done." }]);
+  });
+});
+
 describe("toLlmMessages malformed tool requests", () => {
   /*
    * Regression tests for Kimi K3 400s:

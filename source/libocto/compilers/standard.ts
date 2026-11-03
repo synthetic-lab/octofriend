@@ -165,8 +165,8 @@ function llmFromIr<A extends Agent<any, any, any>>(
 ): LlmMessage {
   if (ir.role === "assistant") {
     const { toolCalls } = ir;
-    const reasoning: { reasoning_content?: string } = {};
-    if (ir.reasoningContent) reasoning.reasoning_content = ir.reasoningContent;
+    const reasoning: { reasoning?: string } = {};
+    if (ir.reasoningContent) reasoning.reasoning = ir.reasoningContent;
 
     /*
      * Malformed tool requests are dropped from tool_calls entirely: their arguments may be
