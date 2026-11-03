@@ -91,7 +91,7 @@ export function validationFailure<A extends Agent<any, any, any>>(
   });
 }
 
-function failedSnapshot<A extends Agent<any, any, any>>(
+function snapshotHasFailure<A extends Agent<any, any, any>>(
   snapshot: readonly RecursiveLowered<A>[],
 ): boolean {
   return snapshot.some(({ converted: ir }) => {
@@ -130,7 +130,9 @@ function failedSnapshot<A extends Agent<any, any, any>>(
 
 // Iterate completed failed attempts in this branch, stopping at a successful snapshot
 // or explicit reset. Do not include legacy errors or descend into children.
-function* failedSnapshots<A extends Agent<any, any, any>>(history: readonly RecursiveLowered<A>[]) {
+function* recentlyFailedSnapshots<A extends Agent<any, any, any>>(
+  history: readonly RecursiveLowered<A>[],
+) {
   for (let index = history.length - 1; index >= 0; index--) {
     const ir = history[index].converted;
     switch (ir.role) {
@@ -139,7 +141,7 @@ function* failedSnapshots<A extends Agent<any, any, any>>(history: readonly Recu
         if (!startResult.success) return;
         const start = startResult.data;
         const snapshot = history.slice(start + 1, index);
-        if (snapshot.length === 0 || !failedSnapshot(snapshot)) return;
+        if (snapshot.length === 0 || !snapshotHasFailure(snapshot)) return;
         if (snapshot.some(pair => pair.converted.role === "interrupted-by-user")) return;
         yield snapshot;
         index = start;
@@ -180,7 +182,7 @@ export function countValidationErrors<A extends Agent<any, any, any>>(
   history: readonly RecursiveLowered<A>[],
 ): number {
   let count = 0;
-  for (const snapshot of failedSnapshots(history)) {
+  for (const snapshot of recentlyFailedSnapshots(history)) {
     if (validationFailure(snapshot)) count++;
   }
   return count;
@@ -190,7 +192,7 @@ export function countTransientErrors<A extends Agent<any, any, any>>(
   history: readonly RecursiveLowered<A>[],
 ): number {
   let count = 0;
-  for (const snapshot of failedSnapshots(history)) {
+  for (const snapshot of recentlyFailedSnapshots(history)) {
     if (snapshot.some(pair => transientError(pair))) count++;
   }
   return count;
