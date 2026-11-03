@@ -53,6 +53,7 @@ import {
 import { parseQuotaJson, QuotaData } from "./utils/quota.ts";
 import { throttledBuffer } from "./throttled-buffer.ts";
 import { loadTools, SKIP_CONFIRMATION_TOOLS } from "./tools/index.ts";
+import { attemptUntrackedRead } from "./tools/common.ts";
 import { estimateTokens } from "./ir/count-ir-tokens.ts";
 import { octoAgent, type OctoIR } from "./ir/octo-ir.ts";
 import * as logger from "./logger.ts";
@@ -354,8 +355,14 @@ export const useAppStore = create<UiState>((set, get) => {
         json: makeAutofixJson(config),
         tools: {
           edit: async ({ toolCall, abortSignal: fixSignal, transport: fixTransport }) => {
-            const file = await fixTransport.readFile(fixSignal, toolCall.parsed.filePath);
-            const fix = await autofixEdit(config, file, toolCall.parsed, fixSignal);
+            if (fixSignal.aborted) return null;
+            const file = await attemptUntrackedRead(
+              fixTransport,
+              fixSignal,
+              toolCall.parsed.filePath,
+            );
+            if (!file.success || fixSignal.aborted) return null;
+            const fix = await autofixEdit(config, file.data, toolCall.parsed, fixSignal);
             if (fix == null) return null;
             return { ...toolCall.parsed, ...fix };
           },

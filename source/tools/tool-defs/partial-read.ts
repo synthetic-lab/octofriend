@@ -2,7 +2,7 @@ import { t } from "structural";
 import { fileTracker } from "../file-tracker.ts";
 import { attemptUntrackedStat, TOOL } from "../common.ts";
 import { isImagePath } from "../../utils/image-utils.ts";
-import { attempt, err } from "../../libocto/result.ts";
+import { err, ok } from "../../libocto/result.ts";
 import { LINE_NUMBER_PROMPT, withLineNumbers } from "./line-numbers.ts";
 
 const ArgumentsSchema = t.subtype({
@@ -56,19 +56,18 @@ export default partialRead.define(async () => ({
   },
   async run({ signal, transport, toolCall }) {
     const args = toolCall.parsed.arguments;
-    return attempt(`No such file ${args.filePath}`, async () => {
-      const content = await fileTracker.readUntracked(transport, signal, args.filePath);
-      const range = lineRange(content, args);
-      return {
-        type: "output" as const,
-        content: [
-          {
-            type: "text" as const,
-            content: `Showing lines ${range.startLine}-${range.endLine} of ${range.totalLines} from ${args.filePath}\n${range.content}`,
-          },
-        ],
-        lines: range.totalLines,
-      };
+    const content = await fileTracker.readUntracked(transport, signal, args.filePath);
+    if (!content.success) return content;
+    const range = lineRange(content.data, args);
+    return ok({
+      type: "output" as const,
+      content: [
+        {
+          type: "text" as const,
+          content: `Showing lines ${range.startLine}-${range.endLine} of ${range.totalLines} from ${args.filePath}\n${range.content}`,
+        },
+      ],
+      lines: range.totalLines,
     });
   },
 }));

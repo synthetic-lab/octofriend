@@ -1,23 +1,11 @@
 import { t } from "structural";
-import { fileTracker, FileExistsError } from "../file-tracker.ts";
+import { fileTracker } from "../file-tracker.ts";
 import { TOOL, fileMutateIR } from "../common.ts";
-import { Transport } from "../../transports/transport-common.ts";
-import { ok, err, attempt, toErrString } from "../../libocto/result.ts";
 
 export const ArgumentsSchema = t.subtype({
   filePath: t.str.comment("Path where the file should be created"),
   content: t.str.comment("Content to write to the file"),
 });
-
-async function validate(signal: AbortSignal, transport: Transport, filePath: string) {
-  try {
-    await fileTracker.assertCanCreate(transport, signal, filePath);
-  } catch (e) {
-    if (e instanceof FileExistsError) return err(e.message);
-    return toErrString(e);
-  }
-  return ok(null);
-}
 
 const create = TOOL.declare({
   name: "create",
@@ -27,15 +15,14 @@ const create = TOOL.declare({
 
 export default create.withCustomIR({ fileMutateIR }).define(async () => ({
   async validate(signal, transport, toolCall) {
-    return validate(signal, transport, toolCall.parsed.arguments.filePath);
+    return fileTracker.assertCanCreate(transport, signal, toolCall.parsed.arguments.filePath);
   },
   async run({ signal, transport, toolCall, customIR }) {
     const { filePath, content } = toolCall.parsed.arguments;
-    const validation = await validate(signal, transport, filePath);
+    const validation = await fileTracker.assertCanCreate(transport, signal, filePath);
     if (!validation.success) return validation;
-    return attempt(`Failed to create file ${filePath}`, async () => {
-      await fileTracker.write(transport, signal, filePath, content);
-      return customIR.fileMutateIR({ content: "" });
-    });
+    const written = await fileTracker.write(transport, signal, filePath, content);
+    if (!written.success) return written;
+    return customIR.fileMutateIR({ content: "" });
   },
 }));

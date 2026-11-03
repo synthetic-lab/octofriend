@@ -64,8 +64,9 @@ export async function withLspFile<R>(
   fn: (client: LspClient) => Promise<R>,
 ): Promise<Result<R, string>> {
   const content = await fileTracker.read(transport, abortSignal, filePath);
+  if (!content.success) return content;
   try {
-    await client.openFile(filePath, content);
+    await client.openFile(filePath, content.data);
     return ok(await fn(client));
   } catch {
     return err(`LSP client failed to process ${filePath}`);

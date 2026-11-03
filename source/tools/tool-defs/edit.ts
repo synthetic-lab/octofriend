@@ -63,7 +63,8 @@ export default edit.withCustomIR({ fileMutateIR }).define(async () => ({
       file: file.data,
     });
     if (!replaced.success) return replaced;
-    await fileTracker.write(transport, signal, filePath, replaced.data);
+    const written = await fileTracker.write(transport, signal, filePath, replaced.data);
+    if (!written.success) return written;
     return customIR.fileMutateIR({ content: "" });
   },
 }));
@@ -117,7 +118,8 @@ async function validateDiff({
 }) {
   if (!file.includes(diff.search)) {
     const isOutdated = await fileTracker.isOutdated(transport, signal, path);
-    if (isOutdated) return err(FILE_OUTDATED_ERROR_MESSAGE);
+    if (!isOutdated.success) return isOutdated;
+    if (isOutdated.data) return err(FILE_OUTDATED_ERROR_MESSAGE);
     return err(
       `
 Could not find search string in file ${path}: ${diff.search}

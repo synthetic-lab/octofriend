@@ -41,7 +41,8 @@ export default rewrite.withCustomIR({ fileMutateIR }).define(async () => ({
     const validation = await validate(signal, transport, edit);
     if (!validation.success) return validation;
     const replaced = runEdit({ edit });
-    await fileTracker.write(transport, signal, filePath, replaced);
+    const written = await fileTracker.write(transport, signal, filePath, replaced);
+    if (!written.success) return written;
     return customIR.fileMutateIR({ content: "" });
   },
 }));
