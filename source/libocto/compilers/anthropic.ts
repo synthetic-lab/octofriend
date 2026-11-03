@@ -286,19 +286,22 @@ export const runAnthropicAgent: Compiler<AnthropicCompilerModel> = defineCompile
     try {
       const system = sysPrompt == null ? {} : { system: sysPrompt };
       const { data: stream, response } = await model.client.messages
-        .create({
-          ...system,
-          model: model.model,
-          messages,
-          ...toolParams,
-          tool_choice: {
-            type: "auto",
-            disable_parallel_tool_use: false,
+        .create(
+          {
+            ...system,
+            model: model.model,
+            messages,
+            ...toolParams,
+            tool_choice: {
+              type: "auto",
+              disable_parallel_tool_use: false,
+            },
+            max_tokens: model.maxTokens,
+            ...modelOptions,
+            stream: true,
           },
-          max_tokens: model.maxTokens,
-          ...modelOptions,
-          stream: true,
-        })
+          { signal: abortSignal },
+        )
         .withResponse();
 
       let content = "";
