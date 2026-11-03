@@ -753,7 +753,8 @@ export const useAppStore = create<UiState>((set, get) => {
       })();
 
       const timer = setTimeout(async () => {
-        await runNotifyCommand(config);
+        const result = await runNotifyCommand(config);
+        if (!result.success) logger.error("info", `Notification failed: ${result.error}`);
       }, notifyTimeout);
 
       set({ _notifyTimer: timer });
