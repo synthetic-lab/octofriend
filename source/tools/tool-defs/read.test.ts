@@ -60,9 +60,14 @@ describe("read tool", () => {
     "propagates a FileTracker error when %s fails",
     async stage => {
       const transport = new MockTransport({ files: { "read-error.txt": "contents" } });
-      transport[stage] = async () => {
-        throw new Error("Filesystem failure");
-      };
+      if (stage === "resolvePath") {
+        transport.resolvePath = async () =>
+          err("Could not resolve path read-error.txt: Filesystem failure");
+      } else {
+        transport[stage] = async () => {
+          throw new Error("Filesystem failure");
+        };
+      }
       const tool = await createReadTool(transport);
       expect(
         await tool.run({
@@ -71,7 +76,11 @@ describe("read tool", () => {
           toolCall: readToolCall({ filePath: "read-error.txt" }),
           data: {} as never,
         }),
-      ).toEqual(err("Could not read file read-error.txt"));
+      ).toEqual(
+        stage === "resolvePath"
+          ? err("Could not resolve path read-error.txt: Filesystem failure")
+          : err("Could not read file read-error.txt"),
+      );
     },
   );
 
@@ -143,9 +152,14 @@ describe("partial-read tool", () => {
     "propagates a FileTracker error when %s fails",
     async stage => {
       const transport = new MockTransport({ files: { "partial-error.txt": "contents" } });
-      transport[stage] = async () => {
-        throw new Error("Filesystem failure");
-      };
+      if (stage === "resolvePath") {
+        transport.resolvePath = async () =>
+          err("Could not resolve path partial-error.txt: Filesystem failure");
+      } else {
+        transport[stage] = async () => {
+          throw new Error("Filesystem failure");
+        };
+      }
       const tool = await createPartialReadTool(transport);
       expect(
         await tool.run({
@@ -154,7 +168,11 @@ describe("partial-read tool", () => {
           toolCall: partialReadToolCall({ filePath: "partial-error.txt", offset: 1, limit: 1 }),
           data: {} as never,
         }),
-      ).toEqual(err("Could not read file partial-error.txt"));
+      ).toEqual(
+        stage === "resolvePath"
+          ? err("Could not resolve path partial-error.txt: Filesystem failure")
+          : err("Could not read file partial-error.txt"),
+      );
     },
   );
 

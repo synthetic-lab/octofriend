@@ -1,6 +1,7 @@
 import path from "path";
 import { quote } from "shell-quote";
 import type { Transport } from "../transports/transport-common.ts";
+import { ok, type Result } from "../libocto/result.ts";
 import { RecommendedLspServers } from "./lsp-server-registry.ts";
 import { InstalledLspConfig, LspClient, getOrStartLspClient } from "./client.ts";
 import { Config } from "../config.ts";
@@ -125,13 +126,13 @@ export async function detectLspServerForFile(
   filePath: string,
   config: Config,
   transport: Transport,
-): Promise<LspServerResult> {
+): Promise<Result<LspServerResult, string>> {
   if (isLspGloballyDisabled(config)) {
-    return { status: "all-disabled" };
+    return ok({ status: "all-disabled" });
   }
   const extension = path.extname(filePath).toLowerCase();
   if (!extension) {
-    return { status: "no-server" };
+    return ok({ status: "no-server" });
   }
 
   const installedLsp = await getUsableLspForExtension(signal, cwd, config, extension, transport);
@@ -144,10 +145,11 @@ export async function detectLspServerForFile(
       cwd,
       transport,
     );
-    if (!rootPath) return { status: "no-server" };
-    return { status: "found", lspConfig: installedLsp, rootPath };
+    if (!rootPath.success) return rootPath;
+    if (!rootPath.data) return ok({ status: "no-server" });
+    return ok({ status: "found", lspConfig: installedLsp, rootPath: rootPath.data });
   }
-  return { status: "no-server" };
+  return ok({ status: "no-server" });
 }
 
 async function findNearestRoot(
@@ -156,21 +158,22 @@ async function findNearestRoot(
   filePath: string,
   cwd: string,
   transport: Transport,
-): Promise<string | null> {
-  if (rootCandidates.length === 0) return cwd;
+): Promise<Result<string | null, string>> {
+  if (rootCandidates.length === 0) return ok(cwd);
   let currDirectory = path.dirname(filePath);
   const boundary = await transport.resolvePath(signal, cwd);
-  while (currDirectory.startsWith(boundary)) {
+  if (!boundary.success) return boundary;
+  while (currDirectory.startsWith(boundary.data)) {
     for (const candidate of rootCandidates) {
       if (await transport.pathExists(signal, path.join(currDirectory, candidate))) {
-        return currDirectory;
+        return ok(currDirectory);
       }
     }
     const parent = path.dirname(currDirectory);
     if (parent === currDirectory) break;
     currDirectory = parent;
   }
-  return null;
+  return ok(null);
 }
 
 async function isLspUsableInProject(
@@ -194,11 +197,12 @@ export async function getLspClientForFile(
   config: Config,
   filePath: string,
   transport: Transport,
-): Promise<LspClient | null> {
+): Promise<Result<LspClient | null, string>> {
   const lspServerResult = await detectLspServerForFile(signal, cwd, filePath, config, transport);
-  if (lspServerResult.status === "found") {
-    const { lspConfig, rootPath } = lspServerResult;
+  if (!lspServerResult.success) return lspServerResult;
+  if (lspServerResult.data.status === "found") {
+    const { lspConfig, rootPath } = lspServerResult.data;
     return getOrStartLspClient(lspConfig, rootPath, transport);
   }
-  return null;
+  return ok(null);
 }

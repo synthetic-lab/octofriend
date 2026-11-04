@@ -43,9 +43,14 @@ describe("rewrite tool", () => {
     const tool = await createRewriteTool(transport);
     unwrap(await fileTracker.read(transport, signal, filePath));
     const modTime = transport.modTime.bind(transport);
-    transport[stage] = async () => {
-      throw Object.assign(new Error(`${code}: filesystem operation failed`), { code });
-    };
+    if (stage === "resolvePath") {
+      transport.resolvePath = async () =>
+        err(`Could not resolve path ${filePath}: ${code}: filesystem operation failed`);
+    } else {
+      transport[stage] = async () => {
+        throw Object.assign(new Error(`${code}: filesystem operation failed`), { code });
+      };
+    }
 
     const result = await tool.run({
       signal,
@@ -53,7 +58,11 @@ describe("rewrite tool", () => {
       toolCall: rewriteToolCall(filePath),
       data: config,
     });
-    expect(result).toEqual(err(`Failed to write file ${filePath}`));
+    expect(result).toEqual(
+      stage === "resolvePath"
+        ? err(`Could not resolve path ${filePath}: ${code}: filesystem operation failed`)
+        : err(`Failed to write file ${filePath}`),
+    );
     expect(await transport.readFile(signal, filePath)).toBe(
       stage === "modTime" ? "new contents" : "old contents",
     );

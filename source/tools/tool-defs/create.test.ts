@@ -61,13 +61,12 @@ describe("create tool", () => {
 
   it("returns an error if path resolution fails during validation", async () => {
     const transport = new MockTransport({});
-    transport.resolvePath = async () => {
-      throw new Error("Path resolution failed");
-    };
+    transport.resolvePath = async () =>
+      err("Could not resolve path new.txt: Path resolution failed");
     const tool = await createTool(transport);
     expect(
       await tool.validate(new AbortController().signal, transport, toolCall("new.txt"), config),
-    ).toEqual(err("Could not check whether file new.txt can be created"));
+    ).toEqual(err("Could not resolve path new.txt: Path resolution failed"));
   });
 
   it("creates the file and records the successful mutation", async () => {
