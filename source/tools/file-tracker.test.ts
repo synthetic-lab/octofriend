@@ -27,17 +27,15 @@ describe("FileTracker", () => {
   });
 
   it.each(["read", "readUntracked"] as const)(
-    "returns a read error from %s when the transport rejects",
+    "returns a read error from %s when the transport fails",
     async operation => {
       const tracker = new FileTracker();
       const transport = new MockTransport({});
       const signal = new AbortController().signal;
-      transport.readFile = async () => {
-        throw new Error("EACCES");
-      };
+      transport.readFile = async () => err("Could not read file file.txt: EACCES");
 
       expect(await tracker[operation](transport, signal, "file.txt")).toEqual(
-        err("Could not read file file.txt"),
+        err("Could not read file file.txt: EACCES"),
       );
     },
   );
@@ -51,9 +49,7 @@ describe("FileTracker", () => {
       unwrap(await tracker.read(transport, signal, "file.txt"));
       await transport.writeFile(signal, "file.txt", "external edit");
       const modTime = transport.modTime.bind(transport);
-      transport.modTime = async () => {
-        throw new Error("EIO");
-      };
+      transport.modTime = async () => err("Could not get modified time for file.txt: EIO");
 
       const result =
         operation === "write"
@@ -86,7 +82,7 @@ describe("FileTracker", () => {
     expect(await tracker.write(transport, signal, "file.txt", "written")).toEqual(
       ok("/repo/file.txt"),
     );
-    expect(await transport.readFile(signal, "file.txt")).toBe("written");
+    expect(await transport.readFile(signal, "file.txt")).toEqual(ok("written"));
     expect(await tracker.isOutdated(transport, signal, "file.txt")).toEqual(ok(false));
   });
 
@@ -108,9 +104,7 @@ describe("FileTracker", () => {
     const transport = new MockTransport({ files: { "file.txt": "original" } });
     const signal = new AbortController().signal;
     unwrap(await tracker.read(transport, signal, "file.txt"));
-    transport.modTime = async () => {
-      throw new Error("File no longer accessible");
-    };
+    transport.modTime = async () => err("File no longer accessible");
 
     expect(await tracker.isOutdated(transport, signal, "file.txt")).toEqual(ok(false));
   });

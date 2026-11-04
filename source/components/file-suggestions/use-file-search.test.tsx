@@ -6,6 +6,7 @@ import { keyboardDeps } from "../../hooks/use-keyboard.ts";
 import { TransportContext } from "../../transport-context.ts";
 import { MockTransport } from "../../transports/mock.ts";
 import { AbortError, CommandFailedError } from "../../transports/transport-common.ts";
+import { ok } from "../../libocto/result.ts";
 import { useFileSearch } from "./use-file-search.ts";
 
 (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT =
@@ -48,7 +49,7 @@ async function startSearch() {
   });
   transport.shell = async signal => {
     started.resolve(signal);
-    return request.promise;
+    return request.promise.then(ok);
   };
 
   act(() => {

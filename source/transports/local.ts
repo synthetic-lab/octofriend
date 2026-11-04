@@ -3,13 +3,12 @@ import path from "path";
 import { spawn, execFile, type ChildProcess } from "child_process";
 import {
   Transport,
-  TransportError,
   runShell,
   runBackgroundShell,
   type BackgroundShellOptions,
 } from "./transport-common.ts";
 import { processes } from "../process-manager.ts";
-import { ok, type Result } from "../libocto/result.ts";
+import { err, errorToString, ok, type Result } from "../libocto/result.ts";
 import {
   TransportProcess,
   type TransportProcessOptions,
@@ -81,20 +80,29 @@ export class LocalTransport implements Transport {
     return localProcess;
   }
 
-  async writeFile(_: AbortSignal, file: string, contents: string) {
-    return await fs.writeFile(file, contents, "utf8");
+  async writeFile(_: AbortSignal, file: string, contents: string): Promise<Result<null, string>> {
+    try {
+      await fs.writeFile(file, contents, "utf8");
+      return ok(null);
+    } catch (e) {
+      return err(`Could not write file ${file}: ${errorToString(e)}`);
+    }
   }
 
-  async readFile(_: AbortSignal, file: string) {
-    return await fs.readFile(file, "utf8");
+  async readFile(_: AbortSignal, file: string): Promise<Result<string, string>> {
+    try {
+      return ok(await fs.readFile(file, "utf8"));
+    } catch (e) {
+      return err(`Could not read file ${file}: ${errorToString(e)}`);
+    }
   }
 
-  async modTime(_: AbortSignal, file: string) {
+  async modTime(_: AbortSignal, file: string): Promise<Result<number, string>> {
     try {
       const stat = await fs.stat(file);
-      return stat.mtimeMs;
+      return ok(stat.mtimeMs);
     } catch (e) {
-      throw new TransportError(`Could not get modified time for ${file}: ${e}`);
+      return err(`Could not get modified time for ${file}: ${errorToString(e)}`);
     }
   }
 
@@ -106,45 +114,61 @@ export class LocalTransport implements Transport {
     }
   }
 
-  async mkdir(_: AbortSignal, dirpath: string) {
-    await fs.mkdir(dirpath, { recursive: true });
-  }
-
-  async readdir(_: AbortSignal, dirpath: string) {
-    const entries = await fs.readdir(dirpath, { withFileTypes: true });
-    return Promise.all(
-      entries.map(async entry => {
-        // For symlinks, resolve to determine if target is a directory
-        if (entry.isSymbolicLink()) {
-          const fullPath = path.join(dirpath, entry.name);
-          try {
-            const stat = await fs.stat(fullPath); // follows symlinks
-            return { entry: entry.name, isDirectory: stat.isDirectory() };
-          } catch {
-            // Broken symlink or permission error - treat as file
-            return { entry: entry.name, isDirectory: false };
-          }
-        }
-        return { entry: entry.name, isDirectory: entry.isDirectory() };
-      }),
-    );
-  }
-
-  async pathExists(signal: AbortSignal, file: string) {
+  async mkdir(_: AbortSignal, dirpath: string): Promise<Result<null, string>> {
     try {
-      await this.modTime(signal, file);
-      return true;
-    } catch {
-      return false;
+      await fs.mkdir(dirpath, { recursive: true });
+      return ok(null);
+    } catch (e) {
+      return err(`Could not create directory ${dirpath}: ${errorToString(e)}`);
     }
   }
 
-  async isDirectory(_: AbortSignal, file: string) {
+  async readdir(
+    _: AbortSignal,
+    dirpath: string,
+  ): Promise<Result<Array<{ entry: string; isDirectory: boolean }>, string>> {
+    try {
+      const entries = await fs.readdir(dirpath, { withFileTypes: true });
+      return ok(
+        await Promise.all(
+          entries.map(async entry => {
+            // For symlinks, resolve to determine if target is a directory
+            if (entry.isSymbolicLink()) {
+              const fullPath = path.join(dirpath, entry.name);
+              try {
+                const stat = await fs.stat(fullPath); // follows symlinks
+                return { entry: entry.name, isDirectory: stat.isDirectory() };
+              } catch {
+                // Broken symlink or permission error - treat as file
+                return { entry: entry.name, isDirectory: false };
+              }
+            }
+            return { entry: entry.name, isDirectory: entry.isDirectory() };
+          }),
+        ),
+      );
+    } catch (e) {
+      return err(`Could not read directory ${dirpath}: ${errorToString(e)}`);
+    }
+  }
+
+  async pathExists(_: AbortSignal, file: string): Promise<Result<boolean, string>> {
+    try {
+      await fs.stat(file);
+      return ok(true);
+    } catch (e) {
+      if (isMissingFileError(e)) return ok(false);
+      return err(`Could not stat ${file}: ${errorToString(e)}`);
+    }
+  }
+
+  async isDirectory(_: AbortSignal, file: string): Promise<Result<boolean, string>> {
     try {
       const stat = await fs.stat(file);
-      return stat.isDirectory();
-    } catch {
-      return false;
+      return ok(stat.isDirectory());
+    } catch (e) {
+      if (isMissingFileError(e)) return ok(false);
+      return err(`Could not stat ${file}: ${errorToString(e)}`);
     }
   }
 
@@ -161,4 +185,13 @@ function commandEnvironment(): NodeJS.ProcessEnv {
   const env = { ...process.env };
   for (const name of STRIPPED_ENV_VARS) delete env[name];
   return env;
+}
+
+function isMissingFileError(e: unknown): boolean {
+  return (
+    typeof e === "object" &&
+    e !== null &&
+    "code" in e &&
+    (e.code === "ENOENT" || e.code === "ENOTDIR")
+  );
 }

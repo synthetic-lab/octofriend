@@ -15,12 +15,8 @@ export async function isCommandExecutable(
   command: string,
   transport: Transport,
 ): Promise<boolean> {
-  try {
-    await transport.shell(signal, `test -x "$(command -v ${quote([command])})"`, 5000);
-    return true;
-  } catch {
-    return false;
-  }
+  const result = await transport.shell(signal, `test -x "$(command -v ${quote([command])})"`, 5000);
+  return result.success;
 }
 
 export function isLspGloballyDisabled(config: Config): boolean {
@@ -165,9 +161,9 @@ async function findNearestRoot(
   if (!boundary.success) return boundary;
   while (currDirectory.startsWith(boundary.data)) {
     for (const candidate of rootCandidates) {
-      if (await transport.pathExists(signal, path.join(currDirectory, candidate))) {
-        return ok(currDirectory);
-      }
+      const exists = await transport.pathExists(signal, path.join(currDirectory, candidate));
+      if (!exists.success) return exists;
+      if (exists.data) return ok(currDirectory);
     }
     const parent = path.dirname(currDirectory);
     if (parent === currDirectory) break;

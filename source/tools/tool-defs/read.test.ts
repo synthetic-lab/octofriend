@@ -64,9 +64,7 @@ describe("read tool", () => {
         transport.resolvePath = async () =>
           err("Could not resolve path read-error.txt: Filesystem failure");
       } else {
-        transport[stage] = async () => {
-          throw new Error("Filesystem failure");
-        };
+        transport[stage] = async () => err("Filesystem failure");
       }
       const tool = await createReadTool(transport);
       expect(
@@ -79,7 +77,7 @@ describe("read tool", () => {
       ).toEqual(
         stage === "resolvePath"
           ? err("Could not resolve path read-error.txt: Filesystem failure")
-          : err("Could not read file read-error.txt"),
+          : err("Filesystem failure"),
       );
     },
   );
@@ -96,9 +94,7 @@ describe("read tool", () => {
         ),
       );
       const transport = new MockTransport({});
-      transport.modTime = async () => {
-        throw new Error("EIO");
-      };
+      transport.modTime = async () => err("Could not get modified time: EIO");
       const tool = await createReadTool(transport);
       expect(
         await tool.run({
@@ -107,7 +103,7 @@ describe("read tool", () => {
           toolCall: readToolCall({ filePath }),
           data: {} as never,
         }),
-      ).toEqual(err(`Could not record read timestamp for ${filePath}`));
+      ).toEqual(err("Could not get modified time: EIO"));
     } finally {
       await rm(directory, { recursive: true, force: true });
     }
@@ -156,9 +152,7 @@ describe("partial-read tool", () => {
         transport.resolvePath = async () =>
           err("Could not resolve path partial-error.txt: Filesystem failure");
       } else {
-        transport[stage] = async () => {
-          throw new Error("Filesystem failure");
-        };
+        transport[stage] = async () => err("Filesystem failure");
       }
       const tool = await createPartialReadTool(transport);
       expect(
@@ -171,7 +165,7 @@ describe("partial-read tool", () => {
       ).toEqual(
         stage === "resolvePath"
           ? err("Could not resolve path partial-error.txt: Filesystem failure")
-          : err("Could not read file partial-error.txt"),
+          : err("Filesystem failure"),
       );
     },
   );

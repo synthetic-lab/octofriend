@@ -1,4 +1,4 @@
-import { unwrap } from "../libocto/result.ts";
+import { ok, unwrap } from "../libocto/result.ts";
 import { afterEach, describe, expect, it, jest } from "bun:test";
 import { withMock } from "antipattern";
 import * as childProcess from "child_process";
@@ -154,7 +154,7 @@ describe("DockerTransport", () => {
     );
     children[0].stdout.write("hello");
     children[0].finish(0);
-    expect(await output).toBe("hello");
+    expect(await output).toEqual(ok("hello"));
   });
 
   it("loads background tools and runs background commands in the container", async () => {

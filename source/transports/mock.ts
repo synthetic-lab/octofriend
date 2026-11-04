@@ -3,10 +3,11 @@ import { PassThrough } from "stream";
 import type { ChildProcess, ExecFileException } from "child_process";
 import {
   type Transport,
+  type TransportError,
   runBackgroundShell,
   type BackgroundShellOptions,
 } from "./transport-common.ts";
-import { ok, type Result } from "../libocto/result.ts";
+import { err, ok, type Result } from "../libocto/result.ts";
 import {
   type ProcessExecFileCallback,
   type ProcessExecFileOptions,
@@ -124,36 +125,39 @@ export class MockTransport implements Transport {
     return process;
   }
 
-  async writeFile(_: AbortSignal, file: string, contents: string): Promise<void> {
+  async writeFile(_: AbortSignal, file: string, contents: string): Promise<Result<null, string>> {
     const resolved = this.resolve(file);
     this.files[resolved] = contents;
     this.modTimes.set(resolved, (this.modTimes.get(resolved) ?? 0) + 1);
+    return ok(null);
   }
 
-  async readFile(_: AbortSignal, file: string): Promise<string> {
+  async readFile(_: AbortSignal, file: string): Promise<Result<string, string>> {
     const contents = this.files[this.resolve(file)];
-    if (contents == null) throw new Error(`No such file: ${file}`);
-    return contents;
+    if (contents == null) return err(`No such file: ${file}`);
+    return ok(contents);
   }
 
-  async pathExists(_: AbortSignal, file: string): Promise<boolean> {
-    return this.files[this.resolve(file)] != null;
+  async pathExists(_: AbortSignal, file: string): Promise<Result<boolean, string>> {
+    return ok(this.files[this.resolve(file)] != null);
   }
 
-  async isDirectory(): Promise<boolean> {
-    return false;
+  async isDirectory(): Promise<Result<boolean, string>> {
+    return ok(false);
   }
 
-  async mkdir(): Promise<void> {}
-
-  async readdir(): Promise<Array<{ entry: string; isDirectory: boolean }>> {
-    return [];
+  async mkdir(): Promise<Result<null, string>> {
+    return ok(null);
   }
 
-  async modTime(_: AbortSignal, file: string): Promise<number> {
+  async readdir(): Promise<Result<Array<{ entry: string; isDirectory: boolean }>, string>> {
+    return ok([]);
+  }
+
+  async modTime(_: AbortSignal, file: string): Promise<Result<number, string>> {
     const modTime = this.modTimes.get(this.resolve(file));
-    if (modTime == null) throw new Error(`No such file: ${file}`);
-    return modTime;
+    if (modTime == null) return err(`No such file: ${file}`);
+    return ok(modTime);
   }
 
   async resolvePath(_: AbortSignal, file: string): Promise<Result<string, string>> {
@@ -164,10 +168,10 @@ export class MockTransport implements Transport {
     return runBackgroundShell(this, options);
   }
 
-  async shell(_: AbortSignal, command: string): Promise<string> {
-    return typeof this.shellResult === "function"
-      ? await this.shellResult(command)
-      : this.shellResult;
+  async shell(_: AbortSignal, command: string): Promise<Result<string, TransportError>> {
+    return ok(
+      typeof this.shellResult === "function" ? await this.shellResult(command) : this.shellResult,
+    );
   }
 
   async close(): Promise<void> {}

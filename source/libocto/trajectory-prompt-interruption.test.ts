@@ -3,13 +3,13 @@ import Anthropic from "@anthropic-ai/sdk";
 import OpenAI from "openai";
 import { systemPrompt } from "../prompts/system-prompt.ts";
 import { MockTransport } from "../transports/mock.ts";
-import { AbortError } from "../transports/transport-common.ts";
+import { AbortError, TransportError } from "../transports/transport-common.ts";
 import { runAnthropicAgent } from "./compilers/anthropic.ts";
 import type { Compiler } from "./compilers/compiler-interface.ts";
 import { runResponsesAgent } from "./compilers/responses.ts";
 import { runAgent } from "./compilers/standard.ts";
 import { definePermissionlessAgent, type AgentIR } from "./llm-ir.ts";
-import { ok } from "./result.ts";
+import { err, ok, type Result } from "./result.ts";
 import { Trajectory } from "./trajectory.ts";
 
 const providers = ["standard", "responses", "anthropic"] as const;
@@ -92,8 +92,10 @@ for (const provider of providers) {
           entered = resolve;
         });
         transport.shell = async signal => {
-          return new Promise<string>((_resolve, reject) => {
-            signal.addEventListener("abort", () => reject(error), { once: true });
+          return new Promise<Result<string, TransportError>>(resolve => {
+            signal.addEventListener("abort", () => resolve(err(error as TransportError)), {
+              once: true,
+            });
             entered();
           });
         };

@@ -4,7 +4,7 @@ import { getModelFromConfig } from "../../config.ts";
 import { AbortError } from "../../transports/transport-common.ts";
 import { findFiles } from "../../transports/transport-common.ts";
 import { estimateTokens } from "../../ir/count-ir-tokens.ts";
-import { ok, err, toErrString } from "../../libocto/result.ts";
+import { ok, err } from "../../libocto/result.ts";
 
 export default TOOL.declare({
   name: "glob",
@@ -48,23 +48,22 @@ terms scoped and specific.
 }).define(async () => ({
   async run({ signal, transport, toolCall, data }) {
     const search = toolCall.parsed.arguments;
-    try {
-      const files = await findFiles(signal, transport, { ...search });
-      const text = files.join("\n");
-      const { context } = getModelFromConfig(data, null);
-      const tok = estimateTokens(text);
-      if (tok > context) {
-        return err(`Find content was too large: approx ${tok} tokens returned`);
-      }
-      return ok({
-        type: "output",
-        content: [{ type: "text", content: text }],
-      });
-    } catch (e) {
-      if (e instanceof AbortError || signal.aborted) {
+    const files = await findFiles(signal, transport, { ...search });
+    if (!files.success) {
+      if (files.error instanceof AbortError || signal.aborted) {
         return err(USER_ABORTED_ERROR_MESSAGE);
       }
-      return toErrString(e);
+      return err(files.error.message);
     }
+    const text = files.data.join("\n");
+    const { context } = getModelFromConfig(data, null);
+    const tok = estimateTokens(text);
+    if (tok > context) {
+      return err(`Find content was too large: approx ${tok} tokens returned`);
+    }
+    return ok({
+      type: "output",
+      content: [{ type: "text", content: text }],
+    });
   },
 }));

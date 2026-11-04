@@ -17,14 +17,7 @@ describe("withLspFile", () => {
     "propagates a FileTracker error when %s fails without invoking the LSP client",
     async stage => {
       const transport = new MockTransport({ files: { "file.txt": "contents" } });
-      if (stage === "resolvePath") {
-        transport.resolvePath = async () =>
-          err("Could not resolve path file.txt: Filesystem failure");
-      } else {
-        transport[stage] = async () => {
-          throw new Error("Filesystem failure");
-        };
-      }
+      transport[stage] = async () => err("Filesystem failure");
       const client = createClient(transport);
       const openFile = mock(async () => {});
       client.openFile = openFile;
@@ -38,11 +31,7 @@ describe("withLspFile", () => {
         query,
       );
 
-      expect(result).toEqual(
-        stage === "resolvePath"
-          ? err("Could not resolve path file.txt: Filesystem failure")
-          : err("Could not read file file.txt"),
-      );
+      expect(result).toEqual(err("Filesystem failure"));
       expect(openFile).not.toHaveBeenCalled();
       expect(query).not.toHaveBeenCalled();
     },

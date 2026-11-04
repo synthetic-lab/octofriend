@@ -1,7 +1,7 @@
 import { t } from "structural";
 import { TOOL } from "../common.ts";
 import { Transport } from "../../transports/transport-common.ts";
-import { ok, err, attempt } from "../../libocto/result.ts";
+import { ok, err } from "../../libocto/result.ts";
 
 const ArgumentsSchema = t.subtype({
   dirPath: t.optional(t.str.comment("Path to the directory")),
@@ -14,7 +14,8 @@ async function validate(
 ) {
   const dirpath = args.dirPath || ".";
   const isDir = await transport.isDirectory(signal, dirpath);
-  if (!isDir) return err(`${dirpath} is not a directory`);
+  if (!isDir.success) return isDir;
+  if (!isDir.data) return err(`${dirpath} is not a directory`);
   return ok(null);
 }
 
@@ -31,13 +32,12 @@ export default TOOL.declare({
     const dirpath = toolCall.parsed.arguments.dirPath || transport.cwd;
     const validation = await validate(signal, transport, toolCall.parsed.arguments);
     if (!validation.success) return validation;
-    return attempt(`No such directory: ${dirpath}`, async () => {
-      const entries = await transport.readdir(signal, dirpath);
-      const content = entries.map(entry => JSON.stringify(entry)).join("\n");
-      return ok({
-        type: "output",
-        content: [{ type: "text", content }],
-      });
+    const entries = await transport.readdir(signal, dirpath);
+    if (!entries.success) return entries;
+    const content = entries.data.map(entry => JSON.stringify(entry)).join("\n");
+    return ok({
+      type: "output",
+      content: [{ type: "text", content }],
     });
   },
 }));
