@@ -2196,10 +2196,10 @@ const SUBAGENT_HEADINGS = {
     aborted: "Octo's exploration was aborted",
   },
   researcher: {
-    inProgress: "Octo is researching on the web",
-    complete: "Octo finished researching the web!",
-    error: "researching the web",
-    aborted: "Octo's web research was aborted",
+    inProgress: "Searching the web",
+    complete: "Octo finished searching the web!",
+    error: "searching the web",
+    aborted: "Octo's web search was aborted",
   },
 } as const;
 
