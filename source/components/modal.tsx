@@ -1,6 +1,6 @@
 import React, { useLayoutEffect, useRef, useState } from "react";
 import type { DivElement } from "paintcannon";
-import { useAnimation } from "paintcannon-react";
+import { Span, useAnimation } from "paintcannon-react";
 import { TerminalFlex } from "./terminal-flex.tsx";
 import { DIMMED_BACKGROUND_COLOR, MODAL_BACKGROUND_COLOR, MODAL_Z_INDEX } from "../theme.ts";
 
@@ -125,10 +125,20 @@ export function Modal({
             minHeight: 0,
             maxHeight: "100%",
             padding: 1,
+            paddingTop: 2,
             paddingLeft: 2,
             paddingRight: 2,
           }}
         >
+          <TerminalFlex
+            style={{
+              position: "absolute",
+              top: 1,
+              right: 2,
+            }}
+          >
+            <Span style={{ color: "gray" }}>esc</Span>
+          </TerminalFlex>
           {children}
         </TerminalFlex>
       </TerminalFlex>
