@@ -273,7 +273,6 @@ async function runMain(opts: {
         configPath={configPath}
         cwd={cwd}
         metadata={APP_METADATA}
-        unchained={!!opts.parsedCliArgs.unchained}
         transport={opts.transport}
         updates={await readUpdates()}
         inputHistory={await loadInputHistory()}
