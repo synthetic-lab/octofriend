@@ -35,10 +35,17 @@ const LEFT_CORNER = String.fromCodePoint(0x1fb41); // legacy computing smooth to
 const BRANCH_ICON = String.fromCodePoint(0xe0a0); // powerline git branch glyph
 const ROBOT_ICON = String.fromCodePoint(0xee0d); // nerd font robot glyph
 
+const HUD_SECTION_COLORS = [
+  { color: HUD_LIGHT_TEXT_COLOR, backgroundColor: HUD_CWD_BACKGROUND_COLOR },
+  { color: HUD_LIGHT_TEXT_COLOR, backgroundColor: HUD_BRANCH_BACKGROUND_COLOR },
+  { color: HUD_LIGHT_TEXT_COLOR, backgroundColor: HUD_MODEL_BACKGROUND_COLOR },
+  { color: HUD_DARK_TEXT_COLOR, backgroundColor: HUD_CONTEXT_BACKGROUND_COLOR },
+] as const;
+
 type Section = {
   text: string;
-  color: string;
-  backgroundColor: string;
+  overrideBackgroundColor?: string;
+  overrideForegroundColor?: string;
 };
 
 type HudLayout = {
@@ -47,7 +54,7 @@ type HudLayout = {
   powerlineExtended: boolean;
 };
 
-export function useHudLayout(syntheticModels: SyntheticModel[]): HudLayout | null {
+export function useHudLayout(syntheticModels: SyntheticModel[]): HudLayout {
   const model = useModel();
   const cwd = useCwd();
   const branch = useGitBranch();
@@ -69,38 +76,53 @@ export function useHudLayout(syntheticModels: SyntheticModel[]): HudLayout | nul
   const allSections: Section[] = [];
   allSections.push({
     text: truncateCwd(displayCwd(cwd, home), MAX_CWD_CHARS),
-    color: HUD_LIGHT_TEXT_COLOR,
-    backgroundColor: HUD_CWD_BACKGROUND_COLOR,
   });
   if (branch != null) {
     const icon = powerline ? `${BRANCH_ICON} ` : "";
     allSections.push({
       text: truncateEnd(`${icon}${branch}`, MAX_BRANCH_CHARS),
-      color: HUD_LIGHT_TEXT_COLOR,
-      backgroundColor: HUD_BRANCH_BACKGROUND_COLOR,
     });
   }
   const modelIcon = materialDesign ? `${ROBOT_ICON}  ` : "";
-  allSections.push({
+  const modelSection = {
     text: truncateEnd(`${modelIcon}${modelDisplayName(model, syntheticModels)}`, MAX_MODEL_CHARS),
-    color: HUD_LIGHT_TEXT_COLOR,
-    backgroundColor: HUD_MODEL_BACKGROUND_COLOR,
-  });
+  };
+  allSections.push(modelSection);
   if (percentUsed != null && Math.round(percentUsed * 100) > 0) {
+    const overrideBackgroundColor = contextBackgroundColor(percentUsed);
     allSections.push({
       text: `${Math.round(percentUsed * 100)}% ctx`,
-      color: HUD_DARK_TEXT_COLOR,
-      backgroundColor: contextBackgroundColor(percentUsed),
+      overrideBackgroundColor: overrideBackgroundColor ?? undefined,
+      overrideForegroundColor: overrideBackgroundColor == null ? undefined : HUD_DARK_TEXT_COLOR,
     });
   }
 
+  const sections = responsiveHudSections(
+    allSections,
+    branch != null,
+    cols,
+    legacyCorner,
+    powerlineExtended,
+  );
+  return { sections, legacyCorner, powerlineExtended };
+}
+
+export function responsiveHudSections(
+  allSections: Section[],
+  hasBranch: boolean,
+  cols: number,
+  legacyCorner: boolean,
+  powerlineExtended: boolean,
+): Section[] {
   const fits = (sections: Section[]) =>
     stripWidth(sections, legacyCorner, powerlineExtended) <= cols - HINT_COLS;
-  let sections = allSections;
-  // Narrow terminal? Drop the branch first, then hide the HUD entirely if it still wraps.
-  if (branch != null && !fits(sections)) sections = allSections.filter((_, i) => i !== 1);
-  if (!fits(sections)) return null;
-  return { sections, legacyCorner, powerlineExtended };
+  if (fits(allSections)) return allSections;
+
+  // Drop the branch first, then everything except the model on small screens.
+  const modelIndex = hasBranch ? 2 : 1;
+  const withoutBranch = hasBranch ? allSections.filter((_, i) => i !== 1) : allSections;
+  if (fits(withoutBranch)) return withoutBranch;
+  return [allSections[modelIndex]];
 }
 
 export function Hud({ layout, collapsed }: { layout: HudLayout; collapsed: boolean }) {
@@ -108,18 +130,21 @@ export function Hud({ layout, collapsed }: { layout: HudLayout; collapsed: boole
   return (
     <TerminalFlex>
       {legacyCorner && !collapsed && (
-        <Span style={{ color: sections[0].backgroundColor }}>{LEFT_CORNER}</Span>
+        <Span style={{ color: hudSectionColors(sections[0], 0).backgroundColor }}>
+          {LEFT_CORNER}
+        </Span>
       )}
       {sections.map((section, index) => {
+        const colors = hudSectionColors(section, index);
         const next = index + 1 < sections.length ? sections[index + 1] : null;
         return (
           <React.Fragment key={index}>
             <Span
               style={{
-                color: section.color,
-                backgroundColor: section.backgroundColor,
+                color: colors.color,
+                backgroundColor: colors.backgroundColor,
                 borderLeft: collapsed && index === 0 ? "pill" : "none",
-                borderColor: section.backgroundColor,
+                borderColor: colors.backgroundColor,
               }}
             >
               {` ${section.text} `}
@@ -127,8 +152,10 @@ export function Hud({ layout, collapsed }: { layout: HudLayout; collapsed: boole
             {powerlineExtended && (
               <Span
                 style={{
-                  color: section.backgroundColor,
-                  backgroundColor: next ? next.backgroundColor : MODAL_BACKGROUND_COLOR,
+                  color: colors.backgroundColor,
+                  backgroundColor: next
+                    ? hudSectionColors(next, index + 1).backgroundColor
+                    : MODAL_BACKGROUND_COLOR,
                 }}
               >
                 {DIVIDER}
@@ -141,6 +168,14 @@ export function Hud({ layout, collapsed }: { layout: HudLayout; collapsed: boole
   );
 }
 
+export function hudSectionColors(section: Section, index: number) {
+  const colors = HUD_SECTION_COLORS[index] ?? HUD_SECTION_COLORS[HUD_SECTION_COLORS.length - 1];
+  return {
+    color: section.overrideForegroundColor ?? colors.color,
+    backgroundColor: section.overrideBackgroundColor ?? colors.backgroundColor,
+  };
+}
+
 function stripWidth(sections: Section[], leftCap: boolean, rightCaps: boolean): number {
   let width = leftCap ? 1 : 0;
   for (const section of sections) width += section.text.length + 2;
@@ -148,10 +183,10 @@ function stripWidth(sections: Section[], leftCap: boolean, rightCaps: boolean): 
   return width;
 }
 
-function contextBackgroundColor(percentUsed: number): string {
+function contextBackgroundColor(percentUsed: number): string | null {
   if (percentUsed > 0.75) return HUD_CONTEXT_DANGER_BACKGROUND_COLOR;
   if (percentUsed > 0.65) return HUD_CONTEXT_WARNING_BACKGROUND_COLOR;
-  return HUD_CONTEXT_BACKGROUND_COLOR;
+  return null;
 }
 
 function useTerminalCols(): number {

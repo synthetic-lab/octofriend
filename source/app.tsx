@@ -607,13 +607,13 @@ function BottomBar({
   return (
     <TerminalFlex style={{ flexDirection: "column", width: "100%" }}>
       <QueuedSteeringPreview queued={queuedSteering} />
-      <WorkingBanner liveMode={liveMode} hudVisible={hudLayout != null} />
+      <WorkingBanner liveMode={liveMode} />
       <TerminalFlex
         style={{
           width: "100%",
         }}
       >
-        {hudLayout && <Hud layout={hudLayout} collapsed={hudCollapsed} />}
+        <Hud layout={hudLayout} collapsed={hudCollapsed} />
         <TerminalFlex
           style={{
             flexGrow: 1,
@@ -780,7 +780,7 @@ function isWorkingMode(
   );
 }
 
-function WorkingBanner({ liveMode, hudVisible }: { liveMode: LiveMirror; hudVisible: boolean }) {
+function WorkingBanner({ liveMode }: { liveMode: LiveMirror }) {
   const { trajectoryMode, permissionUi } = liveMode;
   const byteCount = useAppStore(state => state.byteCount);
   const color = useColor();
@@ -800,7 +800,7 @@ function WorkingBanner({ liveMode, hudVisible }: { liveMode: LiveMirror; hudVisi
     <TerminalFlex
       style={{
         justifyContent: "space-between",
-        paddingLeft: hudVisible ? 2 : 0,
+        paddingLeft: 2,
       }}
     >
       {trajectoryMode.mode === "request-error-retrying" ? (
