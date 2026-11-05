@@ -148,7 +148,6 @@ type Props = {
   cwd: string;
   metadata: Metadata;
   updates: string | null;
-  unchained: boolean;
   transport: Transport;
   inputHistory: InputHistory;
   bootSkills: string[];
@@ -197,7 +196,6 @@ export default function App({
   configPath,
   cwd,
   metadata,
-  unchained,
   transport,
   updates,
   inputHistory,
@@ -273,9 +271,6 @@ export default function App({
     }
   }, [isKeyboardScrollActive, keyboardScrollTime]);
   const [currConfig, setCurrConfig] = useState(config);
-  const [tempNotification, setTempNotification] = useState<string | null>(
-    unchained ? UNCHAINED_NOTIF : CHAINED_NOTIF,
-  );
   const {
     history,
     sessionMode,
@@ -287,7 +282,7 @@ export default function App({
     cancelNotifyReadyForInput,
     closeMenu,
     query,
-    setUnchained,
+    unchained,
   } = useAppStore(
     useShallow(state => ({
       history: state.history,
@@ -300,16 +295,16 @@ export default function App({
       cancelNotifyReadyForInput: state.cancelNotifyReadyForInput,
       closeMenu: state.closeMenu,
       query: state.query,
-      setUnchained: state.setUnchained,
+      unchained: state.unchained,
     })),
+  );
+  const [tempNotification, setTempNotification] = useState<string | null>(
+    unchained ? UNCHAINED_NOTIF : CHAINED_NOTIF,
   );
   const updateConfig = sessionMode.mode === "live" ? sessionMode.control.updateConfig : null;
   useEffect(() => {
     updateConfig?.(currConfig);
   }, [updateConfig, currConfig]);
-  useLayoutEffect(() => {
-    setUnchained(unchained);
-  }, [setUnchained, unchained]);
   useKeyboard(() => {
     cancelNotifyReadyForInput();
   });

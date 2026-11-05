@@ -244,6 +244,7 @@ async function runMain(opts: {
     if (store.sessionMode.mode !== "booting") {
       throw new Error("impossible: cli booted with a session already in flight");
     }
+    store.setUnchained(!!opts.parsedCliArgs.unchained);
     if (opts.loadedSession != null) {
       await store.sessionMode.control.hydrate({
         session: {
@@ -272,7 +273,6 @@ async function runMain(opts: {
         configPath={configPath}
         cwd={cwd}
         metadata={APP_METADATA}
-        unchained={!!opts.parsedCliArgs.unchained}
         transport={opts.transport}
         updates={await readUpdates()}
         inputHistory={await loadInputHistory()}

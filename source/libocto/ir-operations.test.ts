@@ -999,13 +999,20 @@ describe("lower", () => {
     expect(assistantText(lowered[1])).toBe("Starting the nested search");
   });
 
-  it("answers a historical running trajectory with a never-completed error", () => {
-    const lowered = lowerHistory(unfinishedHistory());
+  it("answers a historical running trajectory with a never-completed error outside canary builds", () => {
+    const prevCanary = process.env["CANARY_OCTO"];
+    delete process.env["CANARY_OCTO"];
+    try {
+      const lowered = lowerHistory(unfinishedHistory());
 
-    expect(roles(lowered)).toEqual(["user", "assistant", "tool-runtime-error", "user"]);
-    const error = lowered[2].converted;
-    if (error.role !== "tool-runtime-error") throw new Error("impossible");
-    expect(error.error).toBe("The subagent never completed.");
+      expect(roles(lowered)).toEqual(["user", "assistant", "tool-runtime-error", "user"]);
+      const error = lowered[2].converted;
+      if (error.role !== "tool-runtime-error") throw new Error("impossible");
+      expect(error.error).toBe("The subagent never completed.");
+    } finally {
+      if (prevCanary == null) delete process.env["CANARY_OCTO"];
+      else process.env["CANARY_OCTO"] = prevCanary;
+    }
   });
 
   it("throws on a historical running trajectory in canary builds", () => {

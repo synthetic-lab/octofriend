@@ -13,6 +13,8 @@ import type {
   ModelErrorIR,
 } from "./llm-ir.ts";
 import { userInterruptReason } from "./compilers/ir-prompts.ts";
+import { err, ok, type Result } from "./result.ts";
+import { combineSignals } from "./signals.ts";
 
 export type AutocompactionStream = {
   type: "autocompaction-stream";
@@ -37,6 +39,7 @@ export type TrajectoryCompactionParams<A extends Agent<any, any, any>, Model> = 
   runCompiler: Compiler<Model>;
   transport: Transport;
   abortSignal: AbortSignal;
+  quitSignal: AbortSignal;
   autofixJson?: AutofixJsonFn;
   handler?: Partial<{
     [K in keyof TrajectoryCompactionEvents]: (
@@ -49,7 +52,24 @@ export type TrajectoryCompactionParams<A extends Agent<any, any, any>, Model> = 
 // progress is ephemeral, and no checkpoint or failure IR is published in flight.
 export const trajectoryCompaction = registry({ run: runTrajectoryCompaction });
 
-async function runTrajectoryCompaction<A extends Agent<any, any, any>, Model>({
+async function runTrajectoryCompaction<A extends Agent<any, any, any>, Model>(
+  params: TrajectoryCompactionParams<A, Model>,
+): Promise<Result<TrajectoryCompactionIR, "quit">> {
+  if (params.quitSignal.aborted) return err("quit");
+  try {
+    const ir = await compactionAttempt({
+      ...params,
+      abortSignal: combineSignals([params.abortSignal, params.quitSignal]),
+    });
+    if (params.quitSignal.aborted) return err("quit");
+    return ok(ir);
+  } catch (error) {
+    if (params.quitSignal.aborted) return err("quit");
+    throw error;
+  }
+}
+
+async function compactionAttempt<A extends Agent<any, any, any>, Model>({
   model,
   messages,
   runCompiler,

@@ -703,6 +703,11 @@ describe("trajectory", () => {
       }
 
       const answers = traj.messages.filter(ir => "toolCall" in ir);
+      if (stop === "exit") {
+        expect(answers.map(ir => ir.role)).toEqual(["shell-result"]);
+        expect(answers.map(ir => ir.toolCall.toolCallId)).toEqual(["c1"]);
+        return;
+      }
       expect(answers.map(ir => ir.role)).toEqual([
         "shell-result",
         stop === "reject" ? "tool-reject" : "tool-skip-output",
@@ -1159,12 +1164,19 @@ describe("trajectory", () => {
       expect(traj.mode.mode).toBe("aborted");
       const children = traj.messages.filter(ir => ir.role === "subagent-trajectory");
       expect(children).toHaveLength(role === "subagent-trajectory" ? 1 : 0);
-      if (children.length > 0) expect(children[0].ir.at(-1)?.role).toBe("interrupted-by-user");
-      expect(
-        traj.messages
-          .filter(ir => ir.role === "tool-skip-output")
-          .map(ir => ir.toolCall.toolCallId),
-      ).toEqual(role === "subagent-trajectory" ? ["c2"] : ["c1", "c2"]);
+      if (children.length > 0) expect(children[0].ir.map(ir => ir.role)).toEqual(["user"]);
+      expect(traj.messages.filter(ir => ir.role === "tool-skip-output")).toEqual([]);
+      const recovered = makeTrajectory({ messages: JSON.parse(JSON.stringify(traj.messages)) });
+      const { traj: resumed } = await recovered.build([plainOk, plainOk]);
+      const ran: string[] = [];
+      runImpl = async query => {
+        ran.push(query);
+        return ok({ type: "output", content: text(query) });
+      };
+      expect(await resumed.step()).toBe(true);
+      expect(await resumed.step()).toBe(true);
+      expect(ran).toEqual(["after"]);
+      expect(resumed.messages.filter(ir => ir.role === "subagent-trajectory")).toHaveLength(1);
     },
   );
 
@@ -1437,84 +1449,79 @@ describe("trajectory", () => {
     expect(traj.mode.mode).toBe("aborted");
   });
 
-  it("exit mid-batch keeps settled output, skips the running and pending calls, and ends", async () => {
-    const { build, rec, exit } = makeTrajectory();
-    const { traj, compilerCalls } = await build([
-      () =>
-        okResult(
-          assistantMessage({
-            toolCalls: [searchCall("a", "c1"), searchCall("b", "c2"), searchCall("c", "c3")],
-          }),
-        ),
-    ]);
-    runImpl = async query => {
-      if (query === "b") {
-        exit.abort();
-        // The tool is still in flight past the exit; its eventual output must be dropped.
-        await new Promise<void>(resolve => setTimeout(resolve, 0));
-      }
-      return ok({ type: "output", content: text(query) });
-    };
+  it.each([false, true])(
+    "quit mid-batch preserves pending calls and drops late results (rejects=%s)",
+    async rejects => {
+      const { build, rec, exit } = makeTrajectory();
+      const { traj, compilerCalls } = await build([
+        () =>
+          okResult(
+            assistantMessage({
+              toolCalls: [searchCall("a", "c1"), searchCall("b", "c2"), searchCall("c", "c3")],
+            }),
+          ),
+      ]);
+      runImpl = async query => {
+        if (query === "b") {
+          exit.abort();
+          await new Promise<void>(resolve => setTimeout(resolve, 0));
+          if (rejects) throw new DOMException("Quit", "AbortError");
+        }
+        return ok({ type: "output", content: text(query) });
+      };
+      await inputControl(traj).enqueueSteering(text("run em"));
+      await traj.run();
+      expect(rec.roles).toEqual(["user", ...assistantSnapshot, "tool-output"]);
+      expect(traj.mode.mode).toBe("aborted");
+      expect(compilerCalls).toHaveLength(1);
 
-    inputControl(traj).enqueueSteering(text("run em"));
-    await traj.run();
+      const recovered = makeTrajectory({ messages: JSON.parse(JSON.stringify(traj.messages)) });
+      const { traj: resumed } = await recovered.build([plainOk]);
+      const ran: string[] = [];
+      runImpl = async query => {
+        ran.push(query);
+        return ok({ type: "output", content: text(query) });
+      };
+      expect(await resumed.step()).toBe(true);
+      expect(ran).toEqual(["b", "c"]);
+    },
+  );
 
-    expect(rec.roles).toEqual([
-      "user",
-      ...assistantSnapshot,
-      "tool-output",
-      "tool-skip-output",
-      "tool-skip-output",
-    ]);
-    const runningSkip = traj.messages[5];
-    if (runningSkip.role !== "tool-skip-output") throw new Error("impossible");
-    expect(runningSkip.toolCall.toolCallId).toBe("c2");
-    expect(runningSkip.reason).toBe(
-      "The user exited while this tool was running, so its output was not recorded",
-    );
-    const pendingSkip = traj.messages[6];
-    if (pendingSkip.role !== "tool-skip-output") throw new Error("impossible");
-    expect(pendingSkip.toolCall.toolCallId).toBe("c3");
-    expect(pendingSkip.reason).toBe("The user aborted the response, so this tool was skipped");
-    expect(traj.mode.mode).toBe("aborted");
-    expect(compilerCalls.length).toBe(1);
-  });
-
-  it("exit parked at the permission gate skip-marks the whole batch", async () => {
-    const { build, rec, exit } = makeTrajectory({
-      permission: () => new Promise(() => {}),
-    });
+  it("quit at a permission gate preserves the entire batch and checks permission again on reload", async () => {
+    const decision = Promise.withResolvers<PermissionDecision>();
+    const { build, rec, exit } = makeTrajectory({ permission: () => decision.promise });
     const { traj, compilerCalls } = await build([
       () =>
         okResult(assistantMessage({ toolCalls: [searchCall("a", "c1"), searchCall("b", "c2")] })),
     ]);
-
-    inputControl(traj).enqueueSteering(text("run em"));
+    await inputControl(traj).enqueueSteering(text("run em"));
     const running = traj.run();
-    while (!rec.modes.includes("tool-call-permission")) {
+    while (!rec.modes.includes("tool-call-permission"))
       await new Promise(resolve => setTimeout(resolve, 0));
-    }
     exit.abort();
     await running;
-
-    expect(rec.roles).toEqual([
-      "user",
-      ...assistantSnapshot,
-      "tool-skip-output",
-      "tool-skip-output",
-    ]);
-    const [first, second] = [traj.messages[4], traj.messages[5]];
-    if (first.role !== "tool-skip-output" || second.role !== "tool-skip-output") {
-      throw new Error("impossible");
-    }
-    expect(first.toolCall.toolCallId).toBe("c1");
-    expect(first.reason).toBe("The user aborted the response, so this tool was skipped");
-    expect(second.toolCall.toolCallId).toBe("c2");
+    const saved = JSON.stringify(traj.messages);
+    decision.resolve({ decision: "allow" });
+    await new Promise(resolve => setTimeout(resolve, 0));
+    expect(JSON.stringify(traj.messages)).toBe(saved);
+    expect(rec.roles).toEqual(["user", ...assistantSnapshot]);
     expect(traj.mode.mode).toBe("aborted");
-    expect(compilerCalls.length).toBe(1);
+    expect(compilerCalls).toHaveLength(1);
+
+    const permissions: string[] = [];
+    const recovered = makeTrajectory({
+      messages: JSON.parse(saved),
+      permission: async call => {
+        permissions.push(call.toolCallId);
+        return { decision: "allow" };
+      },
+    });
+    const { traj: resumed } = await recovered.build([plainOk]);
+    expect(await resumed.step()).toBe(true);
+    expect(permissions).toEqual(["c1", "c2"]);
   });
 
-  it("exit mid-batch keeps earlier answers and skips only the unanswered", async () => {
+  it("quit mid-batch keeps earlier answers and leaves only the unanswered calls pending", async () => {
     let parked = false;
     const { build, rec, exit } = makeTrajectory({
       permission: async toolCall => {
@@ -1529,20 +1536,164 @@ describe("trajectory", () => {
       () =>
         okResult(assistantMessage({ toolCalls: [searchCall("a", "c1"), searchCall("b", "c2")] })),
     ]);
-
-    inputControl(traj).enqueueSteering(text("run em"));
+    await inputControl(traj).enqueueSteering(text("run em"));
     const running = traj.run();
     while (!parked) await new Promise(resolve => setTimeout(resolve, 0));
     exit.abort();
     await running;
-
-    expect(rec.roles).toEqual(["user", ...assistantSnapshot, "tool-output", "tool-skip-output"]);
-    const skip = traj.messages[5];
-    if (skip.role !== "tool-skip-output") throw new Error("impossible");
-    expect(skip.toolCall.toolCallId).toBe("c2");
-    expect(skip.reason).toBe("The user aborted the response, so this tool was skipped");
+    expect(rec.roles).toEqual(["user", ...assistantSnapshot, "tool-output"]);
     expect(traj.mode.mode).toBe("aborted");
-    expect(compilerCalls.length).toBe(1);
+    expect(compilerCalls).toHaveLength(1);
+  });
+
+  for (const operation of ["response", "compaction"] as const) {
+    for (const childScope of [false, true]) {
+      it.each([false, true])(
+        `quit during ${childScope ? "child" : "root"} ${operation} preserves the last commit (rejects=%s)`,
+        async rejects => {
+          const content = operation === "compaction" ? "x".repeat(12000) : "continue";
+          const child: Extract<AgentIR<TestAgent>, { role: "subagent-trajectory" }> = {
+            role: "subagent-trajectory",
+            subagent: "research",
+            toolCall: searchCall("delegate", "delegation"),
+            task: text("inspect"),
+            ir: [{ role: "user", content: text(content) }],
+          };
+          const messages: Array<AgentIR<TestAgent>> = childScope
+            ? [
+                assistantMessage({ toolCalls: [child.toolCall, searchCall("parent", "pending")] }),
+                {
+                  role: "tool-invoke-subagent",
+                  subagent: "research",
+                  toolCall: child.toolCall,
+                  message: child.task,
+                },
+                child,
+              ]
+            : [{ role: "user", content: text(content) }];
+          const saved = JSON.stringify(messages);
+          const { build, rec, exit } = makeTrajectory({ messages, contextWindow: 3000 });
+          const { traj, compilerCalls } = await build([
+            async emit => {
+              await emit("partial", "content");
+              exit.abort();
+              await emit("late", "content");
+              if (rejects) throw new DOMException("Quit", "AbortError");
+              return okResult(assistantMessage({ content: "late result" }));
+            },
+          ]);
+          await traj.run();
+          expect(JSON.stringify(traj.messages)).toBe(saved);
+          expect(rec.roles).toEqual([]);
+          expect(traj.mode.mode).toBe("aborted");
+          expect(compilerCalls).toHaveLength(1);
+          if (operation === "response") expect(rec.arc.responseProgress).toBe(1);
+
+          const recovered = makeTrajectory({ messages: JSON.parse(saved), contextWindow: 3000 });
+          const { traj: resumed, compilerCalls: resumedCalls } = await recovered.build([
+            plainOk,
+            plainOk,
+            plainOk,
+          ]);
+          expect(resumed.mode.root).toBe(!childScope);
+          if (operation === "compaction") expect(await resumed.step()).toBe(true);
+          expect(await resumed.step()).toBe(true);
+          if (childScope) expect(await resumed.step()).toBe(true);
+          expect(resumedCalls).toHaveLength(
+            1 + Number(childScope) + Number(operation === "compaction"),
+          );
+          await startWaitingStep(resumed, "ready-for-request");
+        },
+      );
+    }
+  }
+
+  it.each(["json", "tool"] as const)(
+    "quit during %s correction discards the unfinished attempt even if correction rejects",
+    async correction => {
+      const { build, rec, exit } = makeTrajectory({
+        messages: [{ role: "user", content: text("run") }],
+        errorCorrection: {
+          json: async () => {
+            exit.abort();
+            throw new DOMException("Quit", "AbortError");
+          },
+          tools: {
+            search: async () => {
+              exit.abort();
+              throw new DOMException("Quit", "AbortError");
+            },
+          },
+        },
+      });
+      const { traj } = await build([
+        async (_emit, params) => {
+          if (correction === "json") {
+            if (params.autofixJson == null) throw new Error("Expected JSON correction");
+            await params.autofixJson("{", params.abortSignal);
+          }
+          return okResult(
+            assistantMessage({
+              toolCalls: [searchCall("invalid", "bad"), searchCall("sibling", "sibling")],
+            }),
+          );
+        },
+      ]);
+      await traj.run();
+      expect(rec.roles).toEqual([]);
+      expect(traj.messages).toEqual([{ role: "user", content: text("run") }]);
+      expect(traj.mode.mode).toBe("aborted");
+    },
+  );
+
+  it("quit during retry waiting preserves the failed snapshot for reload", async () => {
+    const { build, rec, exit } = makeTrajectory({
+      requestErrorRetries: { maxRetryCount: 1, backoffMs: 60_000 },
+    });
+    const { traj, compilerCalls } = await build([() => err(requestError("retry me"))]);
+    await inputControl(traj).enqueueSteering(text("run"));
+    await traj.step();
+    const saved = JSON.stringify(traj.messages);
+    const waiting = await startWaitingStep(traj, "request-error-retrying");
+    exit.abort();
+    expect(await waiting.finished).toBe(false);
+    await traj.run();
+    expect(JSON.stringify(traj.messages)).toBe(saved);
+    expect(rec.interruptions).toEqual([]);
+    expect(compilerCalls).toHaveLength(1);
+    const recovered = makeTrajectory({ messages: JSON.parse(saved) });
+    const { traj: resumed } = await recovered.build([plainOk]);
+    expect(resumed.mode.mode).toBe("responding");
+    expect(await resumed.step()).toBe(true);
+  });
+
+  it("quit drains a commit already being persisted without closing its pending tool calls", async () => {
+    const entered = Promise.withResolvers<void>();
+    const release = Promise.withResolvers<void>();
+    const { build, rec, exit } = makeTrajectory({
+      onMessages: async event => {
+        if (!event.irs.some(ir => ir.role === "assistant")) return;
+        exit.abort();
+        entered.resolve();
+        await release.promise;
+      },
+    });
+    const { traj } = await build([
+      () => okResult(assistantMessage({ toolCalls: [searchCall("pending", "c1")] })),
+    ]);
+    await inputControl(traj).enqueueSteering(text("run"));
+    let finished = false;
+    const running = (async () => {
+      await traj.run();
+      finished = true;
+    })();
+    await entered.promise;
+    await new Promise(resolve => setTimeout(resolve, 0));
+    expect(finished).toBe(false);
+    release.resolve();
+    await running;
+    expect(rec.roles).toEqual(["user", ...assistantSnapshot]);
+    expect(traj.mode.mode).toBe("aborted");
   });
 
   it("returns false when the exit signal fires while parked in an error mode", async () => {
@@ -1933,7 +2084,7 @@ describe("trajectory", () => {
     },
   );
 
-  it("exit after a batch runtime-loading error skips pending calls without running them", async () => {
+  it("quit after a batch runtime-loading error preserves pending calls without running them", async () => {
     let failing = false;
     const { build, rec, exit } = makeTrajectory({
       modelAuthError: () => (failing ? "no key" : undefined),
@@ -1960,16 +2111,8 @@ describe("trajectory", () => {
     exit.abort();
     await traj.run();
     expect(traj.mode.mode).toBe("aborted");
-    expect(rec.roles).toEqual([
-      "user",
-      ...assistantSnapshot,
-      "auth-error",
-      "tool-skip-output",
-      "tool-skip-output",
-    ]);
-    expect(
-      traj.messages.filter(ir => ir.role === "tool-skip-output").map(ir => ir.toolCall.toolCallId),
-    ).toEqual(["c1", "c2"]);
+    expect(rec.roles).toEqual(["user", ...assistantSnapshot, "auth-error"]);
+    expect(traj.messages.filter(ir => ir.role === "tool-skip-output")).toEqual([]);
     expect(compilerCalls.length).toBe(1);
   });
 

@@ -1,7 +1,8 @@
 import { registry } from "antipattern";
 import type { t } from "structural";
 import type { Transport } from "../transports/transport-common.ts";
-import { err, type Result } from "./result.ts";
+import { err, ok, type Result } from "./result.ts";
+import { combineSignals } from "./signals.ts";
 import type {
   Agent,
   AgentIR,
@@ -115,6 +116,7 @@ export type TrajectoryAssistantRequestParams<A extends Agent<any, any, any>, Mod
   systemPrompt?: (signal: AbortSignal) => Promise<string>;
   transport: Transport;
   abortSignal: AbortSignal;
+  quitSignal: AbortSignal;
   errorCorrection?: ErrorCorrection<A>;
   handler: {
     [K in keyof TrajectoryAssistantRequestEvents]: (
@@ -127,7 +129,24 @@ export type TrajectoryAssistantRequestParams<A extends Agent<any, any, any>, Mod
 // emitted in flight; the supervisor commits the finalized group and owns all retries.
 export const trajectoryAssistantRequest = registry({ run: runTrajectoryAssistantRequest });
 
-async function runTrajectoryAssistantRequest<A extends Agent<any, any, any>, Model>({
+async function runTrajectoryAssistantRequest<A extends Agent<any, any, any>, Model>(
+  params: TrajectoryAssistantRequestParams<A, Model>,
+): Promise<Result<Array<TrajectoryAssistantRequestIR<A>>, "quit">> {
+  if (params.quitSignal.aborted) return err("quit");
+  try {
+    const irs = await assistantRequestAttempt({
+      ...params,
+      abortSignal: combineSignals([params.abortSignal, params.quitSignal]),
+    });
+    if (params.quitSignal.aborted) return err("quit");
+    return ok(irs);
+  } catch (error) {
+    if (params.quitSignal.aborted) return err("quit");
+    throw error;
+  }
+}
+
+async function assistantRequestAttempt<A extends Agent<any, any, any>, Model>({
   model,
   messages,
   tools,
