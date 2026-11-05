@@ -10,8 +10,10 @@ export class FileTracker {
     signal: AbortSignal,
     filePath: string,
   ): Promise<Result<string, string>> {
+    const resolved = await transport.resolvePath(signal, filePath);
+    if (!resolved.success) return resolved;
+    const absolutePath = resolved.data;
     return attempt(`Could not read file ${filePath}`, async () => {
-      const absolutePath = await transport.resolvePath(signal, filePath);
       return transport.readFile(signal, absolutePath);
     });
   }
@@ -21,8 +23,10 @@ export class FileTracker {
     signal: AbortSignal,
     filePath: string,
   ): Promise<Result<string, string>> {
+    const resolved = await transport.resolvePath(signal, filePath);
+    if (!resolved.success) return resolved;
+    const absolutePath = resolved.data;
     return attempt(`Could not read file ${filePath}`, async () => {
-      const absolutePath = await transport.resolvePath(signal, filePath);
       const content = await transport.readFile(signal, absolutePath);
       const modified = await transport.modTime(signal, absolutePath);
       this.readTimestamps.set(absolutePath, modified);
@@ -35,8 +39,10 @@ export class FileTracker {
     signal: AbortSignal,
     filePath: string,
   ): Promise<Result<void, string>> {
+    const resolved = await transport.resolvePath(signal, filePath);
+    if (!resolved.success) return resolved;
+    const absolutePath = resolved.data;
     return attempt(`Could not record read timestamp for ${filePath}`, async () => {
-      const absolutePath = await transport.resolvePath(signal, filePath);
       const modified = await transport.modTime(signal, absolutePath);
       this.readTimestamps.set(absolutePath, modified);
     });
@@ -48,8 +54,10 @@ export class FileTracker {
     filePath: string,
     content: string,
   ): Promise<Result<string, string>> {
+    const resolved = await transport.resolvePath(signal, filePath);
+    if (!resolved.success) return resolved;
+    const absolutePath = resolved.data;
     return attempt(`Failed to write file ${filePath}`, async () => {
-      const absolutePath = await transport.resolvePath(signal, filePath);
       const dir = path.dirname(absolutePath);
       await transport.mkdir(signal, dir);
       await transport.writeFile(signal, absolutePath, content);
@@ -65,8 +73,10 @@ export class FileTracker {
     signal: AbortSignal,
     filePath: string,
   ): Promise<Result<boolean, string>> {
+    const resolved = await transport.resolvePath(signal, filePath);
+    if (!resolved.success) return resolved;
+    const absolutePath = resolved.data;
     return attempt(`Could not check file ${filePath} for changes`, async () => {
-      const absolutePath = await transport.resolvePath(signal, filePath);
       if (!this.readTimestamps.has(absolutePath)) return false;
 
       const lastReadTime = this.readTimestamps.get(absolutePath)!;
@@ -85,8 +95,10 @@ export class FileTracker {
     signal: AbortSignal,
     filePath: string,
   ): Promise<Result<boolean, string>> {
+    const resolved = await transport.resolvePath(signal, filePath);
+    if (!resolved.success) return resolved;
+    const absolutePath = resolved.data;
     return attempt(`Could not check whether file ${filePath} can be created`, async () => {
-      const absolutePath = await transport.resolvePath(signal, filePath);
       try {
         await transport.modTime(signal, absolutePath);
         return false;

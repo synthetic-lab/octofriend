@@ -31,12 +31,13 @@ export default read.withCustomIR({ fileReadIR }).define(async () => ({
     const { filePath } = toolCall.parsed.arguments;
 
     if (isImagePath(filePath)) {
+      const resolvedPath = await transport.resolvePath(signal, filePath);
+      if (!resolvedPath.success) return resolvedPath;
       return attempt(`Could not read image ${filePath}`, async () => {
-        const resolvedPath = await transport.resolvePath(signal, filePath);
-        const image = await loadImageFromPath(resolvedPath);
+        const image = await loadImageFromPath(resolvedPath.data);
         const recorded = await fileTracker.recordFileReadTimestamp(transport, signal, filePath);
         if (!recorded.success) return recorded;
-        return customIR.fileReadIR({ content: `Image file: ${resolvedPath}`, image });
+        return customIR.fileReadIR({ content: `Image file: ${resolvedPath.data}`, image });
       });
     }
 

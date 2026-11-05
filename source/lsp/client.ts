@@ -1,5 +1,8 @@
 import { type Writable } from "node:stream";
 import path from "path";
+import { t } from "structural";
+import { err, errorToString, ok, type Result } from "../libocto/result.ts";
+import * as logger from "../logger.ts";
 import type {
   CallHierarchyIncomingCall,
   CallHierarchyOutgoingCall,
@@ -33,8 +36,30 @@ export type InstalledLspConfig = {
 
 type PendingRequest = {
   resolve: (value: any) => void;
-  reject: (reason: Error) => void;
+  reject: (reason: string) => void;
 };
+
+// Only validates what downstream code dereferences: formatDiagnostics reads range.start.line
+// and the diagnostic message; everything else (severity, code, source) is optional there.
+const LspPositionSchema = t.subtype({
+  line: t.num,
+  character: t.num,
+});
+
+const LspRangeSchema = t.subtype({
+  start: LspPositionSchema,
+  end: LspPositionSchema,
+});
+
+const LspDiagnosticSchema = t.subtype({
+  range: LspRangeSchema,
+  message: t.str,
+});
+
+const PublishDiagnosticsParamsSchema = t.subtype({
+  uri: t.str,
+  diagnostics: t.array(LspDiagnosticSchema),
+});
 
 /** --- Type Guards --- */
 // LSP Requests often return `any` types
@@ -134,9 +159,9 @@ export class LspClient {
     private readonly transport: Transport,
   ) {}
 
-  async start(): Promise<void> {
+  async start(): Promise<Result<null, string>> {
     const [cmd, ...args] = this.serverConfig.command;
-    if (!cmd) throw new Error(`LSP server "${this.serverConfig.serverName}" has empty command`);
+    if (!cmd) return err(`LSP server "${this.serverConfig.serverName}" has empty command`);
 
     this.process = this.transport.spawn(cmd, args, {
       stdio: ["pipe", "pipe", "ignore"],
@@ -144,27 +169,25 @@ export class LspClient {
     const lspProcess = this.process;
 
     const stdout = lspProcess.stdout;
-    if (!stdout) throw new Error(`LSP server "${this.serverConfig.serverName}" has no stdout`);
+    if (!stdout) return err(`LSP server "${this.serverConfig.serverName}" has no stdout`);
     stdout.on("data", (chunk: Buffer) => this.onData(chunk));
 
-    lspProcess.on("error", err => {
+    lspProcess.on("error", error => {
       for (const [, req] of this.pendingRequests) {
-        req.reject(
-          new Error(`LSP server "${this.serverConfig.serverName}" crashed: ${err.message}`),
-        );
+        req.reject(`LSP server "${this.serverConfig.serverName}" crashed: ${errorToString(error)}`);
       }
       this.pendingRequests.clear();
     });
 
     lspProcess.on("exit", () => {
       for (const [, req] of this.pendingRequests) {
-        req.reject(new Error(`LSP server "${this.serverConfig.serverName}" exited unexpectedly`));
+        req.reject(`LSP server "${this.serverConfig.serverName}" exited unexpectedly`);
       }
       this.pendingRequests.clear();
       this.initialized = false;
     });
 
-    await this.request(
+    const initialized = await this.request(
       "initialize",
       {
         processId: process.pid,
@@ -174,9 +197,11 @@ export class LspClient {
       },
       INITIALIZE_TIMEOUT_MS,
     );
+    if (!initialized.success) return initialized;
 
     this.notify("initialized", {});
     this.initialized = true;
+    return ok(null);
   }
 
   async openFile(filePath: string, content: string): Promise<void> {
@@ -200,55 +225,76 @@ export class LspClient {
 
   // returns the location where a symbol was originally defined
   // when given a location of that symbol being used elsewhere
-  async getDefinition(filePath: string, line: number, character: number): Promise<Location[]> {
+  async getDefinition(
+    filePath: string,
+    line: number,
+    character: number,
+  ): Promise<Result<Location[], string>> {
     const result = await this.request("textDocument/definition", {
       textDocument: { uri: fileUri(filePath) },
       position: { line, character },
     });
-    if (!Array.isArray(result)) return [];
-    return result.filter(isLocation);
+    if (!result.success) return result;
+    if (!Array.isArray(result.data)) return ok([]);
+    return ok(result.data.filter(isLocation));
   }
 
   // similar to getDefinition, but jumps past interfaces and abstract classes to the code that implements them
-  async getImplementation(filePath: string, line: number, character: number): Promise<Location[]> {
+  async getImplementation(
+    filePath: string,
+    line: number,
+    character: number,
+  ): Promise<Result<Location[], string>> {
     const result = await this.request("textDocument/implementation", {
       textDocument: { uri: fileUri(filePath) },
       position: { line, character },
     });
-    if (!Array.isArray(result)) return [];
-    return result.filter(isLocation);
+    if (!result.success) return result;
+    if (!Array.isArray(result.data)) return ok([]);
+    return ok(result.data.filter(isLocation));
   }
 
   // returns all locations where a symbol is referenced, including its definition
-  // when given a location of that symbol being used elsewhere
-  async getReferences(filePath: string, line: number, character: number): Promise<Location[]> {
+  async getReferences(
+    filePath: string,
+    line: number,
+    character: number,
+  ): Promise<Result<Location[], string>> {
     const result = await this.request("textDocument/references", {
       textDocument: { uri: fileUri(filePath) },
       position: { line, character },
       context: { includeDeclaration: true },
     });
-    if (!Array.isArray(result)) return [];
-    return result.filter(isLocation);
+    if (!result.success) return result;
+    if (!Array.isArray(result.data)) return ok([]);
+    return ok(result.data.filter(isLocation));
   }
 
   // returns hover information (e.g. type info) for a symbol at a given location
-  async getHover(filePath: string, line: number, character: number): Promise<string | null> {
-    const result: Hover | null = await this.request("textDocument/hover", {
+  async getHover(
+    filePath: string,
+    line: number,
+    character: number,
+  ): Promise<Result<string | null, string>> {
+    const result = await this.request("textDocument/hover", {
       textDocument: { uri: fileUri(filePath) },
       position: { line, character },
     });
-    if (!result) return null;
-    return formatHoverContents(result.contents);
+    if (!result.success) return result;
+    const hover: Hover | null = result.data;
+    if (!hover) return ok(null);
+    return ok(formatHoverContents(hover.contents));
   }
 
   // list all DocumentSymbols (e.g. functions, classes, variables) in a file
   // including their names, kinds, and locations
-  async getDocumentSymbols(filePath: string): Promise<DocumentSymbol[]> {
+  async getDocumentSymbols(filePath: string): Promise<Result<DocumentSymbol[], string>> {
     const result = await this.request("textDocument/documentSymbol", {
       textDocument: { uri: fileUri(filePath) },
     });
-    if (!Array.isArray(result)) return [];
-    return result.filter(isDocumentSymbol);
+    if (!result.success) return result;
+    if (!Array.isArray(result.data)) return ok([]);
+    return ok(result.data.filter(isDocumentSymbol));
   }
 
   // NOTE: `textDocument/prepareCallHierarchy` is NOT an LSP method that is useful to expose directly
@@ -258,13 +304,14 @@ export class LspClient {
     filePath: string,
     line: number,
     character: number,
-  ): Promise<CallHierarchyItem[]> {
+  ): Promise<Result<CallHierarchyItem[], string>> {
     const items = await this.request("textDocument/prepareCallHierarchy", {
       textDocument: { uri: fileUri(filePath) },
       position: { line, character },
     });
-    if (!Array.isArray(items)) return [];
-    return items.filter(isCallHierarchyItem);
+    if (!items.success) return items;
+    if (!Array.isArray(items.data)) return ok([]);
+    return ok(items.data.filter(isCallHierarchyItem));
   }
 
   // returns all the places a symbol is called from
@@ -273,12 +320,14 @@ export class LspClient {
     filePath: string,
     line: number,
     character: number,
-  ): Promise<CallHierarchyIncomingCall[]> {
+  ): Promise<Result<CallHierarchyIncomingCall[], string>> {
     const items = await this.prepareCallHierarchy(filePath, line, character);
-    if (items.length === 0) return [];
-    const result = await this.request("callHierarchy/incomingCalls", { item: items[0] });
-    if (!Array.isArray(result)) return [];
-    return result.filter(isIncomingCall);
+    if (!items.success) return items;
+    if (items.data.length === 0) return ok([]);
+    const result = await this.request("callHierarchy/incomingCalls", { item: items.data[0] });
+    if (!result.success) return result;
+    if (!Array.isArray(result.data)) return ok([]);
+    return ok(result.data.filter(isIncomingCall));
   }
 
   // returns all the places a symbol calls to
@@ -287,12 +336,14 @@ export class LspClient {
     filePath: string,
     line: number,
     character: number,
-  ): Promise<CallHierarchyOutgoingCall[]> {
+  ): Promise<Result<CallHierarchyOutgoingCall[], string>> {
     const items = await this.prepareCallHierarchy(filePath, line, character);
-    if (items.length === 0) return [];
-    const result = await this.request("callHierarchy/outgoingCalls", { item: items[0] });
-    if (!Array.isArray(result)) return [];
-    return result.filter(isOutgoingCall);
+    if (!items.success) return items;
+    if (items.data.length === 0) return ok([]);
+    const result = await this.request("callHierarchy/outgoingCalls", { item: items.data[0] });
+    if (!result.success) return result;
+    if (!Array.isArray(result.data)) return ok([]);
+    return ok(result.data.filter(isOutgoingCall));
   }
 
   getDiagnosticsVersion(): number {
@@ -305,28 +356,28 @@ export class LspClient {
   // 2) we call LSP methods inside withLspFile ensuring the file opens before getDiagnostics can be called
   // 3) cache the latest diagnostics for each file as it's changed/opened
   // 4) poll every 100ms until we have diagnostics that are newer than before
-  async getDiagnostics(filePath: string, minVersion?: number): Promise<Diagnostic[]> {
-    if (!this.initialized) return [];
+  async getDiagnostics(
+    filePath: string,
+    minVersion?: number,
+  ): Promise<Result<Diagnostic[], string>> {
+    if (!this.initialized) return ok([]);
     const uri = fileUri(filePath);
     const start = Date.now();
     while (Date.now() - start < DIAGNOSTICS_WAIT_TIMEOUT_MS) {
       const diagnostics = this.latestDiagnostics.get(uri);
       const versionOk = minVersion === undefined || this.diagnosticsVersion > minVersion;
-      if (diagnostics !== undefined && versionOk) return diagnostics;
+      if (diagnostics !== undefined && versionOk) return ok(diagnostics);
       await new Promise<void>(resolve => setTimeout(resolve, DIAGNOSTIC_POLL_INTERVAL_MS));
     }
-    return this.latestDiagnostics.get(uri) ?? [];
+    return ok(this.latestDiagnostics.get(uri) ?? []);
   }
 
   async shutdown(): Promise<void> {
     if (!this.process) return;
     if (this.initialized) {
-      try {
-        await this.request("shutdown", null);
-        this.notify("exit", undefined);
-      } catch {
-        // if it errors, we'll just kill the process anyways
-      }
+      const shutdownResult = await this.request("shutdown", null);
+      // if it errors, we'll just kill the process anyways
+      if (shutdownResult.success) this.notify("exit", undefined);
     }
     await this.process.terminate();
     this.process = null;
@@ -337,29 +388,36 @@ export class LspClient {
     method: string,
     params: any,
     timeoutMs: number = REQUEST_TIMEOUT_MS,
-  ): Promise<any> {
-    return new Promise((resolve, reject) => {
+  ): Promise<Result<any, string>> {
+    return new Promise(resolve => {
       const stdin = this.process?.stdin;
       if (!stdin?.writable) {
-        reject(new Error(`LSP server "${this.serverConfig.serverName}" is not running`));
+        resolve(err(`LSP server "${this.serverConfig.serverName}" is not running`));
         return;
       }
 
       const requestId = this.requestIdCounter++;
       this.pendingRequests.set(requestId, {
         resolve: (value: any) => {
-          resolve(value);
+          resolve(ok(value));
         },
-        reject: (reason: Error) => {
-          reject(reason);
+        reject: (reason: string) => {
+          resolve(err(reason));
         },
       });
-      this.send(stdin, { jsonrpc: "2.0", id: requestId, method, params });
+
+      try {
+        this.send(stdin, { jsonrpc: "2.0", id: requestId, method, params });
+      } catch {
+        this.pendingRequests.delete(requestId);
+        resolve(err(`Failed to send "${method}" to LSP server "${this.serverConfig.serverName}"`));
+        return;
+      }
 
       setTimeout(() => {
         if (this.pendingRequests.has(requestId)) {
           this.pendingRequests.delete(requestId);
-          reject(new Error(`LSP request "${method}" timed out after ${timeoutMs / 1000}s`));
+          resolve(err(`LSP request "${method}" timed out after ${timeoutMs / 1000}s`));
         }
       }, timeoutMs);
     });
@@ -369,7 +427,11 @@ export class LspClient {
   private notify(method: string, params: any): void {
     const stdin = this.process?.stdin;
     if (!stdin?.writable) return;
-    this.send(stdin, { jsonrpc: "2.0", method, params });
+    try {
+      this.send(stdin, { jsonrpc: "2.0", method, params });
+    } catch {
+      // The connection is dead; pending and future requests will fail via error/exit events.
+    }
   }
 
   private send(stdin: Writable, msg: object): void {
@@ -395,8 +457,12 @@ export class LspClient {
 
       try {
         this.handleMessage(JSON.parse(body));
-      } catch {
-        throw new Error(`Failed to parse LSP data: ${body}`);
+      } catch (e) {
+        // A malformed frame shouldn't kill the process: drop it and keep processing.
+        logger.error(
+          "verbose",
+          `Dropping malformed LSP data from "${this.serverConfig.serverName}": ${errorToString(e)}`,
+        );
       }
     }
   }
@@ -405,16 +471,15 @@ export class LspClient {
     if (msg.id != null && this.pendingRequests.has(msg.id)) {
       const req = this.pendingRequests.get(msg.id)!;
       this.pendingRequests.delete(msg.id);
-      if (msg.error) req.reject(new Error(`LSP error: ${msg.error.message}`));
+      if (msg.error) req.reject(`LSP error: ${errorToString(msg.error)}`);
       else req.resolve(msg.result);
       return;
     }
 
     // pendingRequests are only for request/response messages, not notifications like publishDiagnostics
-    if (msg.method === "textDocument/publishDiagnostics" && msg.params) {
-      const uri: string = msg.params.uri;
-      const diagnostics: Diagnostic[] = msg.params.diagnostics ?? [];
-      this.latestDiagnostics.set(uri, diagnostics);
+    if (msg.method === "textDocument/publishDiagnostics") {
+      if (!PublishDiagnosticsParamsSchema.guard(msg.params)) return;
+      this.latestDiagnostics.set(msg.params.uri, msg.params.diagnostics);
       this.diagnosticsVersion += 1;
     }
   }
@@ -450,6 +515,7 @@ export const EXTENSION_TO_LANGUAGE: Record<string, string | undefined> = {
  * `MarkupContent` object with a `value` property, or a string (in that priority order).
  */
 function formatHoverContents(contents: Hover["contents"]): string {
+  if (contents == null) return "";
   if (typeof contents === "string") return contents;
   if (Array.isArray(contents)) {
     return contents.map(c => (typeof c === "string" ? c : c.value)).join("\n\n");
@@ -591,15 +657,17 @@ export async function getOrStartLspClient(
   serverConfig: InstalledLspConfig,
   rootPath: string,
   transport: Transport,
-): Promise<LspClient> {
-  let client = getRunningLspClient(serverConfig, rootPath);
-  if (client) return client;
+): Promise<Result<LspClient, string>> {
+  const running = getRunningLspClient(serverConfig, rootPath);
+  if (running) return ok(running);
 
-  client = new LspClient(serverConfig, rootPath, transport);
-  await client.start();
+  const client = new LspClient(serverConfig, rootPath, transport);
+  const started = await client.start();
+  if (!started.success) return started;
+
   const cacheKey = lspClientClientCacheKey(serverConfig, rootPath);
   cachedLspClients.set(cacheKey, client);
-  return client;
+  return ok(client);
 }
 
 export async function shutdownLspClients(): Promise<void> {

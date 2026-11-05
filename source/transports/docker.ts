@@ -8,6 +8,7 @@ import {
 import { ProcessManager, processes } from "../process-manager.ts";
 import { spawn, execFile, type ChildProcess } from "child_process";
 import * as logger from "../logger.ts";
+import { err, errorToString, ok, type Result } from "../libocto/result.ts";
 import { quote } from "shell-quote";
 import {
   TransportProcess,
@@ -267,9 +268,13 @@ export class DockerTransport implements Transport {
     }
   }
 
-  async resolvePath(signal: AbortSignal, path: string): Promise<string> {
-    const output = await this.dockerExec(signal, ["readlink", "-f", path], 5000);
-    return output.trim();
+  async resolvePath(signal: AbortSignal, path: string): Promise<Result<string, string>> {
+    try {
+      const output = await this.dockerExec(signal, ["readlink", "-f", path], 5000);
+      return ok(output.trim());
+    } catch (e) {
+      return err(`Could not resolve path ${path}: ${errorToString(e)}`);
+    }
   }
 
   async mkdir(signal: AbortSignal, dirpath: string): Promise<void> {

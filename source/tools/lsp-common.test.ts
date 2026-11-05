@@ -17,13 +17,18 @@ describe("withLspFile", () => {
     "propagates a FileTracker error when %s fails without invoking the LSP client",
     async stage => {
       const transport = new MockTransport({ files: { "file.txt": "contents" } });
-      transport[stage] = async () => {
-        throw new Error("Filesystem failure");
-      };
+      if (stage === "resolvePath") {
+        transport.resolvePath = async () =>
+          err("Could not resolve path file.txt: Filesystem failure");
+      } else {
+        transport[stage] = async () => {
+          throw new Error("Filesystem failure");
+        };
+      }
       const client = createClient(transport);
       const openFile = mock(async () => {});
       client.openFile = openFile;
-      const query = mock(async () => "answer");
+      const query = mock(async () => ok("answer"));
 
       const result = await withLspFile(
         new AbortController().signal,
@@ -33,7 +38,11 @@ describe("withLspFile", () => {
         query,
       );
 
-      expect(result).toEqual(err("Could not read file file.txt"));
+      expect(result).toEqual(
+        stage === "resolvePath"
+          ? err("Could not resolve path file.txt: Filesystem failure")
+          : err("Could not read file file.txt"),
+      );
       expect(openFile).not.toHaveBeenCalled();
       expect(query).not.toHaveBeenCalled();
     },
@@ -44,12 +53,23 @@ describe("withLspFile", () => {
     const client = createClient(transport);
     const openFile = mock(async (_path: string, _content: string) => {});
     client.openFile = openFile;
-    const query = mock(async () => "answer");
+    const query = mock(async () => ok("answer"));
 
     expect(
       await withLspFile(new AbortController().signal, transport, client, "file.txt", query),
     ).toEqual(ok("answer"));
     expect(openFile).toHaveBeenCalledWith("file.txt", "contents");
     expect(query).toHaveBeenCalledWith(client);
+  });
+
+  it("wraps a query error with the file path", async () => {
+    const transport = new MockTransport({ files: { "file.txt": "contents" } });
+    const client = createClient(transport);
+    client.openFile = mock(async () => {});
+    const query = mock(async () => err("server crashed"));
+
+    expect(
+      await withLspFile(new AbortController().signal, transport, client, "file.txt", query),
+    ).toEqual(err("LSP query failed for file.txt: server crashed"));
   });
 });

@@ -16,9 +16,8 @@ describe("FileTracker", () => {
     const tracker = new FileTracker();
     const transport = new MockTransport({});
     const signal = new AbortController().signal;
-    transport.resolvePath = async () => {
-      throw new Error("Path resolution failed");
-    };
+    transport.resolvePath = async (_, file) =>
+      err(`Could not resolve path ${file}: Path resolution failed`);
 
     const result =
       operation === "write"

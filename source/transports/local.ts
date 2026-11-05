@@ -9,6 +9,7 @@ import {
   type BackgroundShellOptions,
 } from "./transport-common.ts";
 import { processes } from "../process-manager.ts";
+import { ok, type Result } from "../libocto/result.ts";
 import {
   TransportProcess,
   type TransportProcessOptions,
@@ -97,11 +98,11 @@ export class LocalTransport implements Transport {
     }
   }
 
-  async resolvePath(_: AbortSignal, file: string) {
+  async resolvePath(_: AbortSignal, file: string): Promise<Result<string, string>> {
     try {
-      return await fs.realpath(file);
+      return ok(await fs.realpath(file));
     } catch {
-      return path.resolve(file);
+      return ok(path.resolve(file));
     }
   }
 

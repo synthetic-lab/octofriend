@@ -50,9 +50,14 @@ describe("edit tool", () => {
     const tool = await createEditTool(transport);
     unwrap(await fileTracker.read(transport, signal, filePath));
     const modTime = transport.modTime.bind(transport);
-    transport[stage] = async () => {
-      throw Object.assign(new Error(`${code}: filesystem operation failed`), { code });
-    };
+    if (stage === "resolvePath") {
+      transport.resolvePath = async () =>
+        err(`Could not resolve path ${filePath}: ${code}: filesystem operation failed`);
+    } else {
+      transport[stage] = async () => {
+        throw Object.assign(new Error(`${code}: filesystem operation failed`), { code });
+      };
+    }
 
     const result = await tool.run({
       signal,
@@ -60,7 +65,11 @@ describe("edit tool", () => {
       toolCall: editToolCall({ filePath, search: "old", replace: "new" }),
       data: { yourName: "Test", models: [] },
     });
-    expect(result).toEqual(err(`Failed to write file ${filePath}`));
+    expect(result).toEqual(
+      stage === "resolvePath"
+        ? err(`Could not resolve path ${filePath}: ${code}: filesystem operation failed`)
+        : err(`Failed to write file ${filePath}`),
+    );
     expect(await transport.readFile(signal, filePath)).toBe(
       stage === "modTime" ? "new contents" : "old contents",
     );
@@ -76,9 +85,8 @@ describe("edit tool", () => {
       const signal = new AbortController().signal;
       const transport = new MockTransport({ files: { "missing-search.txt": "current contents" } });
       const tool = await createEditTool(transport);
-      transport.resolvePath = async () => {
-        throw new Error("Docker path resolution failed");
-      };
+      transport.resolvePath = async () =>
+        err("Could not resolve path missing-search.txt: Docker path resolution failed");
       const toolCall = editToolCall({
         filePath: "missing-search.txt",
         search: "not present",
@@ -88,7 +96,9 @@ describe("edit tool", () => {
         operation === "validate"
           ? await tool.validate(signal, transport, toolCall, { yourName: "Test", models: [] })
           : await tool.run({ signal, transport, toolCall, data: { yourName: "Test", models: [] } });
-      expect(result).toEqual(err("Could not check file missing-search.txt for changes"));
+      expect(result).toEqual(
+        err("Could not resolve path missing-search.txt: Docker path resolution failed"),
+      );
       expect(await transport.readFile(signal, "missing-search.txt")).toBe("current contents");
     },
   );

@@ -6,6 +6,7 @@ import {
   runBackgroundShell,
   type BackgroundShellOptions,
 } from "./transport-common.ts";
+import { ok, type Result } from "../libocto/result.ts";
 import {
   type ProcessExecFileCallback,
   type ProcessExecFileOptions,
@@ -155,8 +156,8 @@ export class MockTransport implements Transport {
     return modTime;
   }
 
-  async resolvePath(_: AbortSignal, file: string): Promise<string> {
-    return this.resolve(file);
+  async resolvePath(_: AbortSignal, file: string): Promise<Result<string, string>> {
+    return ok(this.resolve(file));
   }
 
   backgroundShell(options: BackgroundShellOptions) {

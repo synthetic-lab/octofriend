@@ -105,7 +105,7 @@ export interface Transport {
     }>
   >;
   modTime: (signal: AbortSignal, file: string) => Promise<number>;
-  resolvePath: (signal: AbortSignal, path: string) => Promise<string>;
+  resolvePath: (signal: AbortSignal, path: string) => Promise<Result<string, string>>;
   shell: (signal: AbortSignal, command: string, timeout: number) => Promise<string>;
   close: () => Promise<void>;
 }
