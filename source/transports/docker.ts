@@ -1,6 +1,7 @@
 import {
   Transport,
   TransportError,
+  CommandFailedError,
   runShell,
   runBackgroundShell,
   type BackgroundShellOptions,
@@ -218,129 +219,149 @@ export class DockerTransport implements Transport {
     signal: AbortSignal,
     command: string[],
     timeout: number,
-  ): Promise<string> {
+  ): Promise<Result<string, TransportError>> {
     return this.shell(signal, command.length === 1 ? command[0] : quote(command), timeout);
   }
 
-  async writeFile(signal: AbortSignal, file: string, contents: string): Promise<void> {
+  // `test` exits 1 when the check is false and 2 on an internal error; other dockerExec
+  // failures (dead container, timeout, abort) have no exit code.
+  private async runTest(
+    signal: AbortSignal,
+    args: string[],
+    file: string,
+    errorContext: string,
+  ): Promise<Result<boolean, string>> {
+    const result = await this.dockerExec(signal, args, 5000);
+    if (result.success) return ok(true);
+    if (result.error instanceof CommandFailedError && result.error.exitCode === 1) {
+      return ok(false);
+    }
+    return err(`Could not ${errorContext} ${file}: ${errorToString(result.error)}`);
+  }
+
+  async writeFile(
+    signal: AbortSignal,
+    file: string,
+    contents: string,
+  ): Promise<Result<null, string>> {
     // Create a temporary file with the contents
     const tempFile = `/tmp/octo_write_${randomSuffix()}`;
 
     // First, write the contents to the temp file using a base64 to avoid shellescape issues
     const base64Contents = Buffer.from(contents).toString("base64");
 
-    await this.dockerExec(signal, [`echo '${base64Contents}' | base64 -d > '${tempFile}'`], 5000);
+    const written = await this.dockerExec(
+      signal,
+      [`echo '${base64Contents}' | base64 -d > '${tempFile}'`],
+      5000,
+    );
+    if (!written.success) {
+      return err(`Could not write file ${file}: ${errorToString(written.error)}`);
+    }
 
-    try {
-      // Ensure directory exists
-      const dirPath = file.substring(0, file.lastIndexOf("/"));
-      if (dirPath) {
-        await this.mkdir(signal, dirPath);
-      }
-
-      // Move the temp file to the target location
-      await this.dockerExec(signal, ["mv", tempFile, file], 5000);
-    } catch (e) {
-      // Clean up temp file if anything fails
-      try {
+    // Ensure directory exists
+    const dirPath = file.substring(0, file.lastIndexOf("/"));
+    if (dirPath) {
+      const prepared = await this.mkdir(signal, dirPath);
+      if (!prepared.success) {
         await this.dockerExec(signal, ["rm", "-f", tempFile], 5000);
-      } catch {}
-      throw e;
+        return err(`Could not write file ${file}: ${prepared.error}`);
+      }
     }
+
+    // Move the temp file to the target location
+    const moved = await this.dockerExec(signal, ["mv", tempFile, file], 5000);
+    if (!moved.success) {
+      // Clean up temp file if anything fails
+      await this.dockerExec(signal, ["rm", "-f", tempFile], 5000);
+      return err(`Could not write file ${file}: ${errorToString(moved.error)}`);
+    }
+    return ok(null);
   }
 
-  async readFile(signal: AbortSignal, file: string): Promise<string> {
-    try {
-      const output = await this.dockerExec(signal, ["cat", file], 10000);
-      return output;
-    } catch (e) {
-      throw new TransportError(`Could not read file ${file}: ${e}`);
-    }
+  async readFile(signal: AbortSignal, file: string): Promise<Result<string, string>> {
+    const output = await this.dockerExec(signal, ["cat", file], 10000);
+    if (!output.success) return err(`Could not read file ${file}: ${errorToString(output.error)}`);
+    return ok(output.data);
   }
 
-  async modTime(signal: AbortSignal, file: string): Promise<number> {
-    try {
-      const output = await this.dockerExec(signal, ["stat", "-c", "%Y", file], 5000);
-      const timestamp = parseInt(output.trim());
-      return timestamp * 1000; // Convert seconds to milliseconds
-    } catch (e) {
-      throw new TransportError(`Could not get modified time for ${file}: ${e}`);
+  async modTime(signal: AbortSignal, file: string): Promise<Result<number, string>> {
+    const output = await this.dockerExec(signal, ["stat", "-c", "%Y", file], 5000);
+    if (!output.success) {
+      return err(`Could not get modified time for ${file}: ${errorToString(output.error)}`);
     }
+    const timestamp = parseInt(output.data.trim());
+    if (Number.isNaN(timestamp)) {
+      return err(`Could not parse modified time for ${file}: ${output.data.trim()}`);
+    }
+    // Convert seconds to milliseconds
+    return ok(timestamp * 1000);
   }
 
   async resolvePath(signal: AbortSignal, path: string): Promise<Result<string, string>> {
-    try {
-      const output = await this.dockerExec(signal, ["readlink", "-f", path], 5000);
-      return ok(output.trim());
-    } catch (e) {
-      return err(`Could not resolve path ${path}: ${errorToString(e)}`);
+    const output = await this.dockerExec(signal, ["readlink", "-f", path], 5000);
+    if (!output.success) {
+      return err(`Could not resolve path ${path}: ${errorToString(output.error)}`);
     }
+    return ok(output.data.trim());
   }
 
-  async mkdir(signal: AbortSignal, dirpath: string): Promise<void> {
-    await this.dockerExec(signal, ["mkdir", "-p", dirpath], 5000);
+  async mkdir(signal: AbortSignal, dirpath: string): Promise<Result<null, string>> {
+    const result = await this.dockerExec(signal, ["mkdir", "-p", dirpath], 5000);
+    if (!result.success) {
+      return err(`Could not create directory ${dirpath}: ${errorToString(result.error)}`);
+    }
+    return ok(null);
   }
 
   async readdir(
     signal: AbortSignal,
     dirpath: string,
-  ): Promise<
-    Array<{
-      entry: string;
-      isDirectory: boolean;
-    }>
-  > {
-    try {
-      const output = await this.dockerExec(signal, ["ls", "-la", dirpath], 5000);
-      const lines = output.trim().split("\n").slice(1); // Skip "total" line
-
-      const entries = [];
-      for (const line of lines) {
-        const parts = line.trim().split(/\s+/);
-        if (parts.length < 9) continue;
-
-        const permissions = parts[0];
-        const name = parts[8];
-
-        // Skip "." and ".." entries
-        if (name === "." || name === "..") continue;
-
-        const isDirectory = permissions.startsWith("d");
-        entries.push({
-          entry: name,
-          isDirectory,
-        });
-      }
-
-      return entries;
-    } catch (e) {
-      throw new TransportError(`Could not read directory ${dirpath}: ${e}`);
+  ): Promise<Result<Array<{ entry: string; isDirectory: boolean }>, string>> {
+    const output = await this.dockerExec(signal, ["ls", "-la", dirpath], 5000);
+    if (!output.success) {
+      return err(`Could not read directory ${dirpath}: ${errorToString(output.error)}`);
     }
+    const lines = output.data.trim().split("\n").slice(1); // Skip "total" line
+
+    const entries = [];
+    for (const line of lines) {
+      const parts = line.trim().split(/\s+/);
+      if (parts.length < 9) continue;
+
+      const permissions = parts[0];
+      const name = parts[8];
+
+      // Skip "." and ".." entries
+      if (name === "." || name === "..") continue;
+
+      const isDirectory = permissions.startsWith("d");
+      entries.push({
+        entry: name,
+        isDirectory,
+      });
+    }
+
+    return ok(entries);
   }
 
-  async pathExists(signal: AbortSignal, file: string): Promise<boolean> {
-    try {
-      await this.dockerExec(signal, ["test", "-e", file], 5000);
-      return true;
-    } catch {
-      return false;
-    }
+  async pathExists(signal: AbortSignal, file: string): Promise<Result<boolean, string>> {
+    return this.runTest(signal, ["test", "-e", file], file, "stat");
   }
 
-  async isDirectory(signal: AbortSignal, file: string): Promise<boolean> {
-    try {
-      await this.dockerExec(signal, ["test", "-d", file], 5000);
-      return true;
-    } catch {
-      return false;
-    }
+  async isDirectory(signal: AbortSignal, file: string): Promise<Result<boolean, string>> {
+    return this.runTest(signal, ["test", "-d", file], file, "stat");
   }
 
   backgroundShell(options: BackgroundShellOptions) {
     return runBackgroundShell(this, options);
   }
 
-  async shell(signal: AbortSignal, command: string, timeout: number): Promise<string> {
+  async shell(
+    signal: AbortSignal,
+    command: string,
+    timeout: number,
+  ): Promise<Result<string, TransportError>> {
     return runShell(this, signal, command, timeout);
   }
 }

@@ -4,7 +4,7 @@ import { FILE_OUTDATED_ERROR_MESSAGE } from "../common.ts";
 import { fileTracker } from "../file-tracker.ts";
 import { err, ok, unwrap } from "../../libocto/result.ts";
 import { MockTransport } from "../../transports/mock.ts";
-import { AbortError, type Transport } from "../../transports/transport-common.ts";
+import { type Transport } from "../../transports/transport-common.ts";
 
 function createTransport(files: Record<string, string>): Transport {
   return new MockTransport({ cwd: "/repo", files });
@@ -54,9 +54,7 @@ describe("edit tool", () => {
       transport.resolvePath = async () =>
         err(`Could not resolve path ${filePath}: ${code}: filesystem operation failed`);
     } else {
-      transport[stage] = async () => {
-        throw Object.assign(new Error(`${code}: filesystem operation failed`), { code });
-      };
+      transport[stage] = async () => err(`${code}: filesystem operation failed`);
     }
 
     const result = await tool.run({
@@ -68,10 +66,10 @@ describe("edit tool", () => {
     expect(result).toEqual(
       stage === "resolvePath"
         ? err(`Could not resolve path ${filePath}: ${code}: filesystem operation failed`)
-        : err(`Failed to write file ${filePath}`),
+        : err(`${code}: filesystem operation failed`),
     );
-    expect(await transport.readFile(signal, filePath)).toBe(
-      stage === "modTime" ? "new contents" : "old contents",
+    expect(await transport.readFile(signal, filePath)).toEqual(
+      ok(stage === "modTime" ? "new contents" : "old contents"),
     );
     if (stage === "modTime") {
       transport.modTime = modTime;
@@ -99,7 +97,9 @@ describe("edit tool", () => {
       expect(result).toEqual(
         err("Could not resolve path missing-search.txt: Docker path resolution failed"),
       );
-      expect(await transport.readFile(signal, "missing-search.txt")).toBe("current contents");
+      expect(await transport.readFile(signal, "missing-search.txt")).toEqual(
+        ok("current contents"),
+      );
     },
   );
 
@@ -112,8 +112,12 @@ describe("edit tool", () => {
       entered = resolve;
     });
     transport.writeFile = async signal => {
-      return new Promise<void>((_resolve, reject) => {
-        signal.addEventListener("abort", () => reject(new AbortError()), { once: true });
+      return new Promise(resolve => {
+        signal.addEventListener(
+          "abort",
+          () => resolve(err("Could not write file cancel-edit.txt: Aborted")),
+          { once: true },
+        );
         entered();
       });
     };
@@ -125,8 +129,10 @@ describe("edit tool", () => {
     });
     await writing;
     controller.abort();
-    await expect(result).resolves.toEqual(err("Failed to write file cancel-edit.txt"));
-    expect(await transport.readFile(new AbortController().signal, "cancel-edit.txt")).toBe("old");
+    await expect(result).resolves.toEqual(err("Could not write file cancel-edit.txt: Aborted"));
+    expect(await transport.readFile(new AbortController().signal, "cancel-edit.txt")).toEqual(
+      ok("old"),
+    );
   });
 
   it("edits stale files optimistically when the search string still matches", async () => {
@@ -162,8 +168,8 @@ describe("edit tool", () => {
         path: "optimistic.txt",
       },
     });
-    await expect(transport.readFile(signal, "optimistic.txt")).resolves.toBe(
-      "zero\none\nTWO\nthree",
+    await expect(transport.readFile(signal, "optimistic.txt")).resolves.toEqual(
+      ok("zero\none\nTWO\nthree"),
     );
   });
 
@@ -211,6 +217,8 @@ describe("edit tool", () => {
     expect(staleResult.success).toBe(false);
     if (staleResult.success) return;
     expect(staleResult.error).toBe(FILE_OUTDATED_ERROR_MESSAGE);
-    await expect(staleTransport.readFile(signal, "stale-missing.txt")).resolves.toBe("after edit");
+    await expect(staleTransport.readFile(signal, "stale-missing.txt")).resolves.toEqual(
+      ok("after edit"),
+    );
   });
 });

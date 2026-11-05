@@ -116,14 +116,10 @@ async function* walkDirectory(
   signal: AbortSignal,
   dirPath: string,
 ): AsyncGenerator<string> {
-  let entries: Array<{ entry: string; isDirectory: boolean }>;
-  try {
-    entries = await transport.readdir(signal, dirPath);
-  } catch {
-    return;
-  }
+  const entries = await transport.readdir(signal, dirPath);
+  if (!entries.success) return;
 
-  for (const entry of entries) {
+  for (const entry of entries.data) {
     if (signal.aborted) return;
 
     const fullPath = path.join(dirPath, entry.entry);
@@ -157,16 +153,21 @@ export async function discoverSkills(
     if (signal.aborted) break;
 
     const exists = await transport.pathExists(signal, basePath);
-    if (!exists) continue;
+    if (!exists.success || !exists.data) continue;
 
     for await (const filePath of walkDirectory(transport, signal, basePath)) {
       if (signal.aborted) break;
       if (seen.has(filePath)) continue;
       seen.add(filePath);
 
+      const content = await transport.readFile(signal, filePath);
+      if (!content.success) {
+        logger.error("info", `Error reading skill file ${filePath}: ${content.error}`);
+        continue;
+      }
+
       try {
-        const content = await transport.readFile(signal, filePath);
-        const skill = parseSkillContent(content, filePath);
+        const skill = parseSkillContent(content.data, filePath);
 
         if (!skill) {
           logger.error("info", `Failed to parse skill file: ${filePath}`);
@@ -224,7 +225,9 @@ export function toPromptXML(skills: Skill[]): string {
 async function getDefaultSkillsPaths(transport: Transport, signal: AbortSignal): Promise<string[]> {
   const paths: string[] = [];
   const home = await getEnvVar(signal, transport, "HOME", 5000);
-  paths.push(path.join(home, ".config/agents/skills"));
+  if (home.success && home.data) {
+    paths.push(path.join(home.data, ".config/agents/skills"));
+  }
   const pwd = transport.cwd;
   paths.push(path.join(pwd, ".agents", "skills"));
   return paths;

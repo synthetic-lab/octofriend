@@ -15,9 +15,15 @@ export async function systemPrompt({
   transport: Transport;
   signal: AbortSignal;
 }) {
-  const pwd = await transport.shell(signal, "pwd", 5000);
-  const currDir = await transport.readdir(signal, ".");
-  const currDirStr = currDir.map(entry => JSON.stringify(entry)).join("\n");
+  // Shell/transport failures here propagate: the trajectory turns AbortError into an
+  // interruption and aborts the request on anything else, rather than sending a request
+  // built on a half-finished prompt.
+  const pwdResult = await transport.shell(signal, "pwd", 5000);
+  if (!pwdResult.success) throw pwdResult.error;
+  const pwd = pwdResult.data;
+  const currDirResult = await transport.readdir(signal, ".");
+  if (!currDirResult.success) throw new Error(currDirResult.error);
+  const currDirStr = currDirResult.data.map(entry => JSON.stringify(entry)).join("\n");
 
   return `
 You are a coding assistant called Octo. The user's name is ${config.yourName}, and you're their
@@ -209,9 +215,11 @@ async function getLlmInstrs(transport: Transport, signal: AbortSignal) {
 
   for (const targetPath of targetPaths) {
     const contents = await transport.readFile(signal, targetPath.path);
+    // The file can disappear between the directory scan and the read; skip it if so.
+    if (!contents.success) continue;
     instrs.push({
       ...targetPath,
-      contents,
+      contents: contents.data,
     });
   }
 
@@ -219,8 +227,12 @@ async function getLlmInstrs(transport: Transport, signal: AbortSignal) {
 }
 
 async function getLlmInstrPaths(transport: Transport, signal: AbortSignal) {
-  const home = (await transport.shell(signal, 'echo "$HOME"', 5000)).trim();
-  let curr = (await transport.shell(signal, "pwd", 5000)).trim();
+  const homeResult = await transport.shell(signal, 'echo "$HOME"', 5000);
+  if (!homeResult.success) throw homeResult.error;
+  const home = homeResult.data.trim();
+  const pwdResult = await transport.shell(signal, "pwd", 5000);
+  if (!pwdResult.success) throw pwdResult.error;
+  let curr = pwdResult.data.trim();
   const paths: Array<{ path: string; target: LlmTarget }> = [];
 
   while (curr !== home && curr && curr !== "/") {
@@ -250,18 +262,23 @@ async function getUserConfigs(
   signal: AbortSignal,
 ): Promise<Array<{ path: string; target: LlmTarget }>> {
   const configs: Array<{ path: string; target: LlmTarget }> = [];
-  let configHome = await getEnvVar(signal, transport, "XDG_CONFIG_HOME", 5000);
-  if (!configHome) {
+  let configHome: string | null = null;
+  const xdgConfigHome = await getEnvVar(signal, transport, "XDG_CONFIG_HOME", 5000);
+  if (!xdgConfigHome.success) throw xdgConfigHome.error;
+  if (xdgConfigHome.data) {
+    configHome = xdgConfigHome.data;
+  } else {
     const home = await getEnvVar(signal, transport, "HOME", 5000);
-    if (home) {
-      configHome = await getEnvVar(signal, transport, path.join(home, ".config"), 5000);
+    if (!home.success) throw home.error;
+    if (home.data) {
+      configHome = path.join(home.data, ".config");
     }
   }
 
   if (configHome) {
     const userAgentsPath = path.join(configHome, "AGENTS.md");
     const exists = await transport.pathExists(signal, userAgentsPath);
-    if (exists) configs.push({ path: userAgentsPath, target: "AGENTS.md" });
+    if (exists.success && exists.data) configs.push({ path: userAgentsPath, target: "AGENTS.md" });
   }
 
   return configs;
@@ -278,15 +295,12 @@ async function getLlmInstrPathFromDir(
   const files = await Promise.all(
     LLM_INSTR_FILES.map(async f => {
       const filename = path.join(dir, f);
-      if (!(await transport.pathExists(signal, filename))) return null;
-      try {
-        return {
-          path: filename,
-          target: f,
-        };
-      } catch {
-        return null;
-      }
+      const exists = await transport.pathExists(signal, filename);
+      if (!exists.success || !exists.data) return null;
+      return {
+        path: filename,
+        target: f,
+      };
     }),
   );
 

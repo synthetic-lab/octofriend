@@ -3,7 +3,6 @@ import rewriteToolFactory from "./rewrite.ts";
 import { fileTracker } from "../file-tracker.ts";
 import { err, ok, unwrap } from "../../libocto/result.ts";
 import { MockTransport } from "../../transports/mock.ts";
-import { AbortError } from "../../transports/transport-common.ts";
 
 const config = { yourName: "Test", models: [] };
 
@@ -47,9 +46,7 @@ describe("rewrite tool", () => {
       transport.resolvePath = async () =>
         err(`Could not resolve path ${filePath}: ${code}: filesystem operation failed`);
     } else {
-      transport[stage] = async () => {
-        throw Object.assign(new Error(`${code}: filesystem operation failed`), { code });
-      };
+      transport[stage] = async () => err(`${code}: filesystem operation failed`);
     }
 
     const result = await tool.run({
@@ -61,10 +58,10 @@ describe("rewrite tool", () => {
     expect(result).toEqual(
       stage === "resolvePath"
         ? err(`Could not resolve path ${filePath}: ${code}: filesystem operation failed`)
-        : err(`Failed to write file ${filePath}`),
+        : err(`${code}: filesystem operation failed`),
     );
-    expect(await transport.readFile(signal, filePath)).toBe(
-      stage === "modTime" ? "new contents" : "old contents",
+    expect(await transport.readFile(signal, filePath)).toEqual(
+      ok(stage === "modTime" ? "new contents" : "old contents"),
     );
     if (stage === "modTime") {
       transport.modTime = modTime;
@@ -81,8 +78,12 @@ describe("rewrite tool", () => {
       entered = resolve;
     });
     transport.writeFile = async signal => {
-      return new Promise<void>((_resolve, reject) => {
-        signal.addEventListener("abort", () => reject(new AbortError()), { once: true });
+      return new Promise(resolve => {
+        signal.addEventListener(
+          "abort",
+          () => resolve(err("Could not write file cancel-rewrite.txt: Aborted")),
+          { once: true },
+        );
         entered();
       });
     };
@@ -94,9 +95,9 @@ describe("rewrite tool", () => {
     });
     await writing;
     controller.abort();
-    await expect(result).resolves.toEqual(err("Failed to write file cancel-rewrite.txt"));
-    expect(await transport.readFile(new AbortController().signal, "cancel-rewrite.txt")).toBe(
-      "old contents",
+    await expect(result).resolves.toEqual(err("Could not write file cancel-rewrite.txt: Aborted"));
+    expect(await transport.readFile(new AbortController().signal, "cancel-rewrite.txt")).toEqual(
+      ok("old contents"),
     );
   });
 
@@ -115,7 +116,7 @@ describe("rewrite tool", () => {
       success: true,
       data: { type: "custom-ir", data: { role: "file-mutate", path: "rewrite-success.txt" } },
     });
-    expect(await transport.readFile(signal, "rewrite-success.txt")).toBe("new contents");
+    expect(await transport.readFile(signal, "rewrite-success.txt")).toEqual(ok("new contents"));
     expect(await fileTracker.isOutdated(transport, signal, "rewrite-success.txt")).toEqual(
       ok(false),
     );

@@ -90,23 +90,32 @@ export interface Transport {
     options: ProcessExecFileOptions,
     callback: ProcessExecFileCallback | undefined,
   ): TransportProcess;
-  writeFile: (signal: AbortSignal, file: string, contents: string) => Promise<void>;
-  readFile: (signal: AbortSignal, file: string) => Promise<string>;
-  pathExists: (signal: AbortSignal, file: string) => Promise<boolean>;
-  isDirectory: (signal: AbortSignal, file: string) => Promise<boolean>;
-  mkdir: (signal: AbortSignal, dirpath: string) => Promise<void>;
+  writeFile: (signal: AbortSignal, file: string, contents: string) => Promise<Result<null, string>>;
+  readFile: (signal: AbortSignal, file: string) => Promise<Result<string, string>>;
+  // Returns ok(false) only when the file genuinely doesn't exist; permission errors and
+  // transport failures come back as errors rather than being silently treated as "missing".
+  pathExists: (signal: AbortSignal, file: string) => Promise<Result<boolean, string>>;
+  isDirectory: (signal: AbortSignal, file: string) => Promise<Result<boolean, string>>;
+  mkdir: (signal: AbortSignal, dirpath: string) => Promise<Result<null, string>>;
   readdir: (
     signal: AbortSignal,
     dirpath: string,
   ) => Promise<
-    Array<{
-      entry: string;
-      isDirectory: boolean;
-    }>
+    Result<
+      Array<{
+        entry: string;
+        isDirectory: boolean;
+      }>,
+      string
+    >
   >;
-  modTime: (signal: AbortSignal, file: string) => Promise<number>;
+  modTime: (signal: AbortSignal, file: string) => Promise<Result<number, string>>;
   resolvePath: (signal: AbortSignal, path: string) => Promise<Result<string, string>>;
-  shell: (signal: AbortSignal, command: string, timeout: number) => Promise<string>;
+  shell: (
+    signal: AbortSignal,
+    command: string,
+    timeout: number,
+  ) => Promise<Result<string, TransportError>>;
   close: () => Promise<void>;
 }
 
@@ -154,7 +163,7 @@ export async function findFiles(
     maxDepth?: number; // -maxdepth N
     maxResults?: number; // cap output count
   } = {},
-): Promise<string[]> {
+): Promise<Result<string[], TransportError>> {
   const cwd = options.path || transport.cwd;
 
   // Build find command with directory pruning
@@ -198,9 +207,10 @@ export async function findFiles(
   const findCmd = `find ${quote([cwd])} ${pruneArgs} -o ${predicates.join(" ")} -print`;
 
   const output = await transport.shell(signal, findCmd, 30000);
+  if (!output.success) return output;
 
   // Parse output and make paths relative to cwd
-  let results = output
+  let results = output.data
     .split("\n")
     .map(line => line.trim())
     .filter(line => line.length > 0)
@@ -218,7 +228,7 @@ export async function findFiles(
     results = results.slice(0, options.maxResults);
   }
 
-  return results;
+  return ok(results);
 }
 
 export class TransportError extends Error {
@@ -245,27 +255,34 @@ export async function getEnvVar(
   transport: Transport,
   envVarName: string,
   timeout: number,
-): Promise<string> {
-  return (await transport.shell(signal, "echo $" + envVarName, timeout)).replace(/\n$/, "");
+): Promise<Result<string, TransportError>> {
+  const output = await transport.shell(signal, "echo $" + envVarName, timeout);
+  return output.map(o => o.replace(/\n$/, ""));
 }
 
 const KILL_GRACE_MS = 500;
 
-export function runShell(
+export async function runShell(
   transport: Transport,
   signal: AbortSignal,
   cmd: string,
   timeout: number,
-): Promise<string> {
-  if (signal.aborted) return Promise.reject(new AbortError());
-  return new Promise<string>((resolve, reject) => {
-    const shellProcess = transport.spawn(transport.commandShell, ["-c", cmd], {
-      cwd: transport.cwd,
-      stdio: ["ignore", "pipe", "pipe"],
-      detached: true,
-    });
+): Promise<Result<string, TransportError>> {
+  if (signal.aborted) return err(new AbortError());
+  return new Promise<Result<string, TransportError>>(resolve => {
+    let shellProcess: TransportProcess;
+    try {
+      shellProcess = transport.spawn(transport.commandShell, ["-c", cmd], {
+        cwd: transport.cwd,
+        stdio: ["ignore", "pipe", "pipe"],
+        detached: true,
+      });
+    } catch (e) {
+      resolve(err(new CommandFailedError(`Command failed: ${errorToString(e)}`)));
+      return;
+    }
     if (!shellProcess.stdout || !shellProcess.stderr) {
-      reject(new Error("Failed to spawn shell process with piped stdio"));
+      resolve(err(new CommandFailedError("Failed to spawn shell process with piped stdio")));
       return;
     }
 
@@ -309,56 +326,58 @@ export function runShell(
     shellProcess.on("close", code => {
       cleanup();
       if (aborted) {
-        reject(new AbortError());
+        resolve(err(new AbortError()));
         return;
       }
       const commandOutput = output.getOutput();
       if (commandOutput == null) {
-        reject(
-          new CommandFailedError(
-            `Command output exceeded the ${MAX_SHELL_OUTPUT_MEMORY_LIMIT} character memory limit and was terminated.`,
+        resolve(
+          err(
+            new CommandFailedError(
+              `Command output exceeded the ${MAX_SHELL_OUTPUT_MEMORY_LIMIT} character memory limit and was terminated.`,
+            ),
           ),
         );
         return;
       }
       if (timedOut) {
-        reject(
-          new CommandFailedError(
-            `Command timed out.
+        resolve(
+          err(
+            new CommandFailedError(
+              `Command timed out.
 output: ${truncateCommandFailureOutput(commandOutput)}`,
+            ),
           ),
         );
         return;
       }
       if (code === 0) {
-        resolve(commandOutput);
+        resolve(ok(commandOutput));
       } else {
-        if (code == null) {
-          reject(
-            new CommandFailedError(
-              `Command killed by signal.
+        resolve(
+          err(
+            code == null
+              ? new CommandFailedError(
+                  `Command killed by signal.
 output: ${truncateCommandFailureOutput(commandOutput)}`,
-            ),
-          );
-        } else {
-          reject(
-            new CommandFailedError(
-              `Command exited with code: ${code}
+                )
+              : new CommandFailedError(
+                  `Command exited with code: ${code}
 output: ${truncateCommandFailureOutput(commandOutput)}`,
-              code,
-            ),
-          );
-        }
+                  code,
+                ),
+          ),
+        );
       }
     });
 
-    shellProcess.on("error", err => {
+    shellProcess.on("error", e => {
       cleanup();
       if (aborted) {
-        reject(new AbortError());
+        resolve(err(new AbortError()));
         return;
       }
-      reject(new CommandFailedError(`Command failed: ${err.message}`));
+      resolve(err(new CommandFailedError(`Command failed: ${e.message}`)));
     });
   });
 }

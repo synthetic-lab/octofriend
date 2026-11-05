@@ -1,7 +1,7 @@
 import { t } from "structural";
 import { TOOL, USER_ABORTED_ERROR_MESSAGE } from "../common.ts";
-import { AbortError, CommandFailedError } from "../../transports/transport-common.ts";
-import { ok, err, toErrString } from "../../libocto/result.ts";
+import { AbortError } from "../../transports/transport-common.ts";
+import { ok, err } from "../../libocto/result.ts";
 
 export default TOOL.declare({
   name: "shell",
@@ -27,16 +27,14 @@ Often interactive commands provide flags to run them non-interactively. Prefer t
 }).define(async () => ({
   async run({ signal, transport, toolCall }) {
     const { cmd, timeout } = toolCall.parsed.arguments;
-    try {
-      const content = await transport.shell(signal, cmd, timeout);
-      return ok({
-        type: "output",
-        content: [{ type: "text", content }],
-      });
-    } catch (e) {
-      if (e instanceof AbortError) return err(USER_ABORTED_ERROR_MESSAGE);
-      if (e instanceof CommandFailedError) return err(e.message);
-      return toErrString(e);
+    const result = await transport.shell(signal, cmd, timeout);
+    if (!result.success) {
+      if (result.error instanceof AbortError) return err(USER_ABORTED_ERROR_MESSAGE);
+      return err(result.error.message);
     }
+    return ok({
+      type: "output",
+      content: [{ type: "text", content: result.data }],
+    });
   },
 }));

@@ -1,7 +1,7 @@
 import type { Config } from "../config.ts";
 import { Transport } from "../transports/transport-common.ts";
 import { ImageInfo } from "../utils/image-utils.ts";
-import { attempt, Result, ok } from "../libocto/result.ts";
+import { err, Result, ok } from "../libocto/result.ts";
 import { TOOL_BUILDER, ToolCall } from "../libocto/tool-def.ts";
 
 export const USER_ABORTED_ERROR_MESSAGE = "Aborted by user";
@@ -13,11 +13,10 @@ export async function attemptUntrackedStat(
   signal: AbortSignal,
   path: string,
 ): Promise<Result<null, string>> {
-  return attempt(`Could not stat(${path}): does the file exist?`, async () => {
-    const exists = await transport.pathExists(signal, path);
-    if (!exists) throw new Error("Path doesn't exist");
-    return null;
-  });
+  const exists = await transport.pathExists(signal, path);
+  if (!exists.success) return exists;
+  if (!exists.data) return err(`Could not stat(${path}): does the file exist?`);
+  return ok(null);
 }
 
 export async function attemptUntrackedRead(
@@ -25,9 +24,7 @@ export async function attemptUntrackedRead(
   signal: AbortSignal,
   path: string,
 ): Promise<Result<string, string>> {
-  return await attempt(`${path} couldn't be read`, async () => {
-    return transport.readFile(signal, path);
-  });
+  return transport.readFile(signal, path);
 }
 
 // Used by some edit tools to add the original file contents to the parsed data for diff tracking

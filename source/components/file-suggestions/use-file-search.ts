@@ -65,12 +65,19 @@ async function getCachedFileList(
     return pending;
   }
 
-  const readFile = async (filePath: string) => transport.readFile(signal, filePath);
+  const readFile = async (filePath: string) => {
+    const contents = await transport.readFile(signal, filePath);
+    if (!contents.success) throw new Error(contents.error);
+    return contents.data;
+  };
   const ig = await getGitignoreFilter(cwd, readFile);
 
   const promise = findFiles(signal, transport, {
     type: "f",
-  }).then(files => ig.filter(files));
+  }).then(files => {
+    if (!files.success) return [];
+    return ig.filter(files.data);
+  });
 
   pendingRequests.set(cwd, promise);
 

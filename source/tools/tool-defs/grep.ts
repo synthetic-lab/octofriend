@@ -4,7 +4,7 @@ import { TOOL, USER_ABORTED_ERROR_MESSAGE } from "../common.ts";
 import { getModelFromConfig } from "../../config.ts";
 import { AbortError, CommandFailedError } from "../../transports/transport-common.ts";
 import { estimateTokens } from "../../ir/count-ir-tokens.ts";
-import { ok, err, toErrString } from "../../libocto/result.ts";
+import { ok, err } from "../../libocto/result.ts";
 
 export default TOOL.declare({
   name: "grep",
@@ -24,55 +24,52 @@ export default TOOL.declare({
 }).define(async () => ({
   async run({ signal, transport, toolCall, data }) {
     const search = toolCall.parsed.arguments;
-    try {
-      const args: string[] = ["-n", "-r", "-E"];
 
-      if (search.caseInsensitive) {
-        args.push("-i");
-      }
+    const args: string[] = ["-n", "-r", "-E"];
 
-      if (search.context !== undefined && search.context > 0) {
-        args.push(`-C${search.context}`);
-      }
+    if (search.caseInsensitive) {
+      args.push("-i");
+    }
 
-      args.push("--", quote([search.pattern ?? ""]));
+    if (search.context !== undefined && search.context > 0) {
+      args.push(`-C${search.context}`);
+    }
 
-      const searchPath = search.path ?? transport.cwd;
-      args.push(quote([searchPath]));
+    args.push("--", quote([search.pattern ?? ""]));
 
-      const cmd = `grep ${args.join(" ")}`;
-      const output = await transport.shell(signal, cmd, search.timeout ?? 30000);
+    const searchPath = search.path ?? transport.cwd;
+    args.push(quote([searchPath]));
 
-      let results = output.split("\n").filter(line => line.length > 0);
-
-      if (search.maxResults !== undefined && search.maxResults > 0) {
-        results = results.slice(0, search.maxResults);
-      }
-
-      const text = results.join("\n");
-      const { context } = getModelFromConfig(data, null);
-      const tok = estimateTokens(text);
-      if (tok > context) {
-        return err(`Grep content was too large: approx ${tok} tokens returned`);
-      }
-      return ok({
-        type: "output",
-        content: [{ type: "text", content: text }],
-      });
-    } catch (e) {
-      if (e instanceof AbortError || signal.aborted) {
+    const cmd = `grep ${args.join(" ")}`;
+    const output = await transport.shell(signal, cmd, search.timeout ?? 30000);
+    if (!output.success) {
+      if (output.error instanceof AbortError || signal.aborted) {
         return err(USER_ABORTED_ERROR_MESSAGE);
       }
-      if (e instanceof CommandFailedError) {
-        if (e.exitCode === 1) {
-          return ok({
-            type: "output",
-            content: [{ type: "text", content: "" }],
-          });
-        }
-        return err(e.message);
+      if (output.error instanceof CommandFailedError && output.error.exitCode === 1) {
+        return ok({
+          type: "output",
+          content: [{ type: "text", content: "" }],
+        });
       }
-      return toErrString(e);
+      return err(output.error.message);
     }
+
+    let results = output.data.split("\n").filter(line => line.length > 0);
+
+    if (search.maxResults !== undefined && search.maxResults > 0) {
+      results = results.slice(0, search.maxResults);
+    }
+
+    const text = results.join("\n");
+    const { context } = getModelFromConfig(data, null);
+    const tok = estimateTokens(text);
+    if (tok > context) {
+      return err(`Grep content was too large: approx ${tok} tokens returned`);
+    }
+    return ok({
+      type: "output",
+      content: [{ type: "text", content: text }],
+    });
   },
 }));

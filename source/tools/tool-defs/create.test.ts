@@ -30,9 +30,7 @@ describe("create tool", () => {
     "propagates the FileTracker error when %s fails",
     async stage => {
       const transport = new MockTransport({});
-      transport[stage] = async () => {
-        throw new Error("Filesystem failure");
-      };
+      transport[stage] = async () => err("Filesystem failure");
       const tool = await createTool(transport);
       expect(
         await tool.run({
@@ -41,7 +39,7 @@ describe("create tool", () => {
           toolCall: toolCall("new.txt"),
           data: config,
         }),
-      ).toEqual(err("Failed to write file new.txt"));
+      ).toEqual(err("Filesystem failure"));
     },
   );
 
@@ -56,7 +54,7 @@ describe("create tool", () => {
         : await tool.run({ signal, transport, toolCall: call, data: config });
 
     expect(result).toEqual(err("File already exists"));
-    expect(await transport.readFile(signal, "exists.txt")).toBe("original");
+    expect(await transport.readFile(signal, "exists.txt")).toEqual(ok("original"));
   });
 
   it("returns an error if path resolution fails during validation", async () => {
@@ -79,7 +77,7 @@ describe("create tool", () => {
       success: true,
       data: { type: "custom-ir", data: { role: "file-mutate", path: "create-success.txt" } },
     });
-    expect(await transport.readFile(signal, "create-success.txt")).toBe("new contents");
+    expect(await transport.readFile(signal, "create-success.txt")).toEqual(ok("new contents"));
     expect(await fileTracker.isOutdated(transport, signal, "create-success.txt")).toEqual(
       ok(false),
     );

@@ -1,6 +1,6 @@
 import * as path from "path";
 import { Transport } from "../transports/transport-common.ts";
-import { attempt, err, ok, type Result } from "../libocto/result.ts";
+import { err, ok, type Result } from "../libocto/result.ts";
 
 export class FileTracker {
   private readTimestamps = new Map<string, number>();
@@ -12,10 +12,7 @@ export class FileTracker {
   ): Promise<Result<string, string>> {
     const resolved = await transport.resolvePath(signal, filePath);
     if (!resolved.success) return resolved;
-    const absolutePath = resolved.data;
-    return attempt(`Could not read file ${filePath}`, async () => {
-      return transport.readFile(signal, absolutePath);
-    });
+    return transport.readFile(signal, resolved.data);
   }
 
   async read(
@@ -26,12 +23,15 @@ export class FileTracker {
     const resolved = await transport.resolvePath(signal, filePath);
     if (!resolved.success) return resolved;
     const absolutePath = resolved.data;
-    return attempt(`Could not read file ${filePath}`, async () => {
-      const content = await transport.readFile(signal, absolutePath);
-      const modified = await transport.modTime(signal, absolutePath);
-      this.readTimestamps.set(absolutePath, modified);
-      return content;
-    });
+
+    const content = await transport.readFile(signal, absolutePath);
+    if (!content.success) return content;
+
+    const modified = await transport.modTime(signal, absolutePath);
+    if (!modified.success) return modified;
+
+    this.readTimestamps.set(absolutePath, modified.data);
+    return content;
   }
 
   async recordFileReadTimestamp(
@@ -42,10 +42,12 @@ export class FileTracker {
     const resolved = await transport.resolvePath(signal, filePath);
     if (!resolved.success) return resolved;
     const absolutePath = resolved.data;
-    return attempt(`Could not record read timestamp for ${filePath}`, async () => {
-      const modified = await transport.modTime(signal, absolutePath);
-      this.readTimestamps.set(absolutePath, modified);
-    });
+
+    const modified = await transport.modTime(signal, absolutePath);
+    if (!modified.success) return modified;
+
+    this.readTimestamps.set(absolutePath, modified.data);
+    return ok(undefined);
   }
 
   async write(
@@ -57,15 +59,20 @@ export class FileTracker {
     const resolved = await transport.resolvePath(signal, filePath);
     if (!resolved.success) return resolved;
     const absolutePath = resolved.data;
-    return attempt(`Failed to write file ${filePath}`, async () => {
-      const dir = path.dirname(absolutePath);
-      await transport.mkdir(signal, dir);
-      await transport.writeFile(signal, absolutePath, content);
-      // Update mod time
-      const modified = await transport.modTime(signal, absolutePath);
-      this.readTimestamps.set(absolutePath, modified);
-      return absolutePath;
-    });
+
+    const dir = path.dirname(absolutePath);
+    const made = await transport.mkdir(signal, dir);
+    if (!made.success) return made;
+
+    const written = await transport.writeFile(signal, absolutePath, content);
+    if (!written.success) return written;
+
+    // Update mod time
+    const modified = await transport.modTime(signal, absolutePath);
+    if (!modified.success) return modified;
+
+    this.readTimestamps.set(absolutePath, modified.data);
+    return ok(absolutePath);
   }
 
   async isOutdated(
@@ -76,18 +83,16 @@ export class FileTracker {
     const resolved = await transport.resolvePath(signal, filePath);
     if (!resolved.success) return resolved;
     const absolutePath = resolved.data;
-    return attempt(`Could not check file ${filePath} for changes`, async () => {
-      if (!this.readTimestamps.has(absolutePath)) return false;
 
-      const lastReadTime = this.readTimestamps.get(absolutePath)!;
-      try {
-        const currentModified = await transport.modTime(signal, absolutePath);
-        return currentModified > lastReadTime;
-      } catch {
-        // File was deleted or is otherwise inaccessible
-        return false;
-      }
-    });
+    if (!this.readTimestamps.has(absolutePath)) return ok(false);
+    const lastReadTime = this.readTimestamps.get(absolutePath)!;
+
+    const currentModified = await transport.modTime(signal, absolutePath);
+    if (!currentModified.success) {
+      // File was deleted or is otherwise inaccessible
+      return ok(false);
+    }
+    return ok(currentModified.data > lastReadTime);
   }
 
   async canCreate(
@@ -97,15 +102,10 @@ export class FileTracker {
   ): Promise<Result<boolean, string>> {
     const resolved = await transport.resolvePath(signal, filePath);
     if (!resolved.success) return resolved;
-    const absolutePath = resolved.data;
-    return attempt(`Could not check whether file ${filePath} can be created`, async () => {
-      try {
-        await transport.modTime(signal, absolutePath);
-        return false;
-      } catch {
-        return true;
-      }
-    });
+
+    const exists = await transport.pathExists(signal, resolved.data);
+    if (!exists.success) return exists;
+    return ok(!exists.data);
   }
 
   async assertCanCreate(

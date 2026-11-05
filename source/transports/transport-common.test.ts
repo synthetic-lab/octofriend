@@ -1,4 +1,5 @@
 import { describe, expect, it } from "bun:test";
+import { ok } from "../libocto/result.ts";
 import { LocalTransport } from "./local.ts";
 import {
   MAX_COMMAND_FAILURE_OUTPUT_LENGTH,
@@ -25,7 +26,7 @@ describe("LocalTransport", () => {
         5000,
       );
 
-      expect(output).toBe("unset:unset:unset:retained");
+      expect(output).toEqual(ok("unset:unset:unset:retained"));
     } finally {
       if (previousNodeEnv == null) delete process.env["NODE_ENV"];
       else process.env["NODE_ENV"] = previousNodeEnv;
