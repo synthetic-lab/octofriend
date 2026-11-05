@@ -11,7 +11,7 @@ import { getCodexOAuthTokens } from "./codex-oauth.ts";
 import { serializeModelJson, tryDeserializeModelJson } from "./session-history/model-json.ts";
 import { isDeepStrictEqual } from "node:util";
 import { registry } from "antipattern";
-import { errorToString } from "./libocto/result.ts";
+import { err, errorToString, ok, type Result } from "./libocto/result.ts";
 import packageJson from "../package.json" with { type: "json" };
 
 const CONFIG_DIR = path.join(os.homedir(), ".config/octofriend");
@@ -213,12 +213,12 @@ const NOTIFY_COMMAND_TIMEOUT_MS = 10_000;
 
 const configTransport = new LocalTransport();
 
-export async function runNotifyCommand(config: Config): Promise<void> {
+export async function runNotifyCommand(config: Config): Promise<Result<null, string>> {
   const cmd = config.notifications?.notifyCommand;
-  if (!cmd || cmd.trim() === "") return;
+  if (!cmd || cmd.trim() === "") return ok(null);
   const shell = process.env["SHELL"] || "/bin/sh";
 
-  await new Promise<void>((resolve, reject) => {
+  return new Promise<Result<null, string>>(resolve => {
     const notifyProcess = configTransport.spawn(shell, ["-c", cmd], {
       stdio: ["ignore", "ignore", "ignore"],
       timeout: NOTIFY_COMMAND_TIMEOUT_MS,
@@ -227,13 +227,13 @@ export async function runNotifyCommand(config: Config): Promise<void> {
 
     notifyProcess.on("close", (code: number | null) => {
       if (code !== 0) {
-        reject(new Error(`notifyFinishCommand exited with code ${code}`));
+        resolve(err(`notify command exited with code ${code}`));
         return;
       }
-      resolve();
+      resolve(ok(null));
     });
 
-    notifyProcess.on("error", reject);
+    notifyProcess.on("error", e => resolve(err(errorToString(e))));
   });
 }
 
