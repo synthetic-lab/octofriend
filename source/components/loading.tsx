@@ -27,8 +27,9 @@ export default function Loading({ overrideStrings }: { overrideStrings?: Array<s
   const [idx, setIndex] = useState(0);
   const themeColor = useColor();
   const shimmerlock = useShimmerlock("root-loading");
-  const loadingStrings = overrideStrings || DEFAULT_LOADING_STRINGS;
-  const loadingString = loadingStrings[idx];
+  const loadingStrings = overrideStrings?.length ? overrideStrings : DEFAULT_LOADING_STRINGS;
+  // The list can shrink between sweeps, e.g. when switching to a compaction message.
+  const loadingString = loadingStrings[idx % loadingStrings.length];
   const { frame: dotFrame, reset: resetDots } = useAnimation({
     interval: shimmerTime(loadingString) / 4,
   });
