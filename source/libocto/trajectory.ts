@@ -48,7 +48,7 @@ import { Input } from "./input.ts";
 import { err, ok, type Result } from "./result.ts";
 import { OwnershipLock, type OwnershipLockRef } from "./ownership-lock.ts";
 import { waitForPermissionDecision, type PermissionGate } from "./permissions.ts";
-import { shouldAutoCompactHistory } from "./compilers/autocompact.ts";
+import { approximateIRTokens, shouldAutoCompactHistory } from "./compilers/autocompact.ts";
 import { trajectoryCompaction, type TrajectoryCompactionEvents } from "./trajectory-compaction.ts";
 import {
   trajectoryAssistantRequest,
@@ -594,6 +594,31 @@ export class Trajectory<A extends Agent<any, any, any>, Model> {
 
   get messages(): ReadonlyArray<AgentIR<A>> {
     return [...this.history];
+  }
+
+  // Approximate token length of the root history: the last assistant message's real usage
+  // plus an estimate of everything after it. Powers the HUD's context gauge; compaction
+  // checks use the same estimator with the resolved model's modalities.
+  approximateContextLength(): number {
+    const messages = this.lower(this.history, null).map(pair => pair.converted);
+    return approximateIRTokens(messages as Array<LoweredIR<A["tools"]>>);
+  }
+
+  // Same estimator, excluding in-flight subagent trajectories: completed subagents occupy
+  // the primary context, but a running subagent consumes its own.
+  primaryAgentApproximateContext(): number {
+    const messages = this.lower(
+      this.history.filter(ir => {
+        if (ir.role !== "subagent-trajectory") return true;
+        return (
+          this.inspectSubagentTrajectory(
+            ir as TreeIR<A> & { role: "subagent-trajectory"; ir: Array<TreeIR<A>> },
+          ).type !== "in-progress"
+        );
+      }),
+      null,
+    ).map(pair => pair.converted);
+    return approximateIRTokens(messages as Array<LoweredIR<A["tools"]>>);
   }
 
   get hasCompactableHistory(): boolean {

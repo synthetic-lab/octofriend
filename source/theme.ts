@@ -10,6 +10,17 @@ export const CODE_GUTTER_COLOR = "gray";
 export const BACKGROUND_COLOR = "#0f172a";
 export const MODAL_BACKGROUND_COLOR = "#1e293b";
 export const DIMMED_BACKGROUND_COLOR = "#020617";
+export const INPUT_BACKGROUND_COLOR = "#0b1223";
+export const DIMMED_INPUT_BACKGROUND_COLOR = "#010410";
+// A single slate hue at increasing lightness, starting from the modal surface color.
+export const HUD_CWD_BACKGROUND_COLOR = MODAL_BACKGROUND_COLOR;
+export const HUD_BRANCH_BACKGROUND_COLOR = "#3e495b";
+export const HUD_MODEL_BACKGROUND_COLOR = "#5e6a7c";
+export const HUD_CONTEXT_BACKGROUND_COLOR = "#7e8a9c";
+export const HUD_CONTEXT_WARNING_BACKGROUND_COLOR = "#e0af68";
+export const HUD_CONTEXT_DANGER_BACKGROUND_COLOR = "#f7768e";
+export const HUD_LIGHT_TEXT_COLOR = "#bbbbbb";
+export const HUD_DARK_TEXT_COLOR = BACKGROUND_COLOR;
 export const FOREGROUND_COLOR = "#cccccc";
 export const TOOL_LABEL_COLOR = "#808080";
 export const SUBAGENT_ACTIVITY_COLOR = "#808080";

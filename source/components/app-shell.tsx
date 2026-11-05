@@ -1,5 +1,5 @@
-import React, { useEffect, useState } from "react";
-import { useApp } from "paintcannon-react";
+import React from "react";
+import { useTerminalFocus } from "../hooks/use-terminal-focus.ts";
 import { BACKGROUND_COLOR, DIMMED_BACKGROUND_COLOR } from "../theme.ts";
 import { TerminalFlex } from "./terminal-flex.tsx";
 
@@ -8,21 +8,7 @@ type Props = {
 };
 
 export function AppShell({ children }: Props) {
-  const { paintCannon } = useApp();
-  const [hasFocus, setHasFocus] = useState(paintCannon.hasFocus);
-
-  useEffect(() => {
-    const handleBlur = () => setHasFocus(false);
-    const handleFocus = () => setHasFocus(true);
-
-    paintCannon.addEventListener("blur", handleBlur);
-    paintCannon.addEventListener("focus", handleFocus);
-    return () => {
-      paintCannon.removeEventListener("blur", handleBlur);
-      paintCannon.removeEventListener("focus", handleFocus);
-    };
-  }, [paintCannon]);
-
+  const hasFocus = useTerminalFocus();
   const backgroundColor = hasFocus ? BACKGROUND_COLOR : DIMMED_BACKGROUND_COLOR;
   return (
     <TerminalFlex

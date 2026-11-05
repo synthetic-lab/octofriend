@@ -5,6 +5,8 @@ import {
   type Transport,
   type TransportError,
   runBackgroundShell,
+  createPollingFileWatcher,
+  type FsWatcher,
   type BackgroundShellOptions,
 } from "./transport-common.ts";
 import { err, ok, type Result } from "../libocto/result.ts";
@@ -166,6 +168,14 @@ export class MockTransport implements Transport {
 
   backgroundShell(options: BackgroundShellOptions) {
     return runBackgroundShell(this, options);
+  }
+
+  async watchFile(
+    signal: AbortSignal,
+    file: string,
+    onEvent: () => void,
+  ): Promise<Result<FsWatcher, string>> {
+    return ok(createPollingFileWatcher(this, signal, file, onEvent));
   }
 
   async shell(_: AbortSignal, command: string): Promise<Result<string, TransportError>> {

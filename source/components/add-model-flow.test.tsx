@@ -22,7 +22,15 @@ function renderFlow(baseUrl: string, onCancel: () => void) {
   act(() => {
     renderer = TestRenderer.create(
       <AppContext.Provider
-        value={{ paintCannon: {} as PaintCannon, exit: () => {}, waitUntilExit: async () => {} }}
+        value={{
+          paintCannon: {
+            hasFocus: true,
+            addEventListener: () => {},
+            removeEventListener: () => {},
+          } as unknown as PaintCannon,
+          exit: () => {},
+          waitUntilExit: async () => {},
+        }}
       >
         <KeyboardProvider>
           <CustomModelFlow

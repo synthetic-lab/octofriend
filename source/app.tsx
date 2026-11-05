@@ -21,6 +21,7 @@ import RetryCountdown from "./components/retry-countdown.tsx";
 import { Header } from "./header.tsx";
 import {
   DIMMED_SCROLLBAR_COLOR,
+  MODAL_BACKGROUND_COLOR,
   SUBAGENT_SHIMMER_HIGHLIGHT_COLOR,
   MARKDOWN_INLINE_CODE_BACKGROUND_COLOR,
   MARKDOWN_INLINE_CODE_FOREGROUND_COLOR,
@@ -79,12 +80,13 @@ import Spinner from "./components/spinner.tsx";
 import PausableLineSpinner from "./components/pausable-line-spinner.tsx";
 import Shimmer from "./components/shimmer.tsx";
 import { Menu } from "./menu.tsx";
-import { modelDisplayName, type SyntheticModel } from "./synthetic-models.ts";
+import { type SyntheticModel } from "./synthetic-models.ts";
 import { Modal } from "./components/modal.tsx";
 import SelectInput from "./components/selection/select-input.tsx";
 import { IndicatorComponent } from "./components/select.tsx";
 import { displayLog } from "./logger.ts";
 import { CenteredBox } from "./components/centered-box.tsx";
+import { Hud, useHudLayout } from "./components/hud.tsx";
 import { Transport } from "./transports/transport-common.ts";
 import { TransportContext } from "./transport-context.ts";
 import { SessionContext } from "./session-context.ts";
@@ -113,6 +115,7 @@ import { writeFileSync } from "fs";
 import os from "os";
 import path from "path";
 import { CwdContext, useCwd } from "./hooks/use-cwd.tsx";
+import { useTerminalFocus } from "./hooks/use-terminal-focus.ts";
 import { LspToolRenderer } from "./components/lsp-tool-renderer.tsx";
 import { CustomAuthFlow } from "./components/add-model-flow.tsx";
 import { Span, useAnimation, useApp } from "paintcannon-react";
@@ -201,7 +204,7 @@ export default function App({
 }: Props) {
   const { paintCannon } = useApp();
   const showToast = useToast();
-  const [hasFocus, setHasFocus] = useState(paintCannon.hasFocus);
+  const hasFocus = useTerminalFocus();
   const transcriptRef = useRef<DivElement>(null);
   const followTranscriptRef = useRef(true);
   const keyboardScrollActiveRef = useRef(false);
@@ -211,17 +214,9 @@ export default function App({
     isActive: isKeyboardScrollActive,
   });
   useEffect(() => {
-    const handleBlur = () => setHasFocus(false);
-    const handleFocus = () => setHasFocus(true);
-
     const handleClipboardWrite = () => showToast("Copied to clipboard");
-
-    paintCannon.addEventListener("blur", handleBlur);
-    paintCannon.addEventListener("focus", handleFocus);
     paintCannon.addEventListener("clipboardWrite", handleClipboardWrite);
     return () => {
-      paintCannon.removeEventListener("blur", handleBlur);
-      paintCannon.removeEventListener("focus", handleFocus);
       paintCannon.removeEventListener("clipboardWrite", handleClipboardWrite);
     };
   }, [paintCannon]);
@@ -603,18 +598,47 @@ function BottomBar({
     return undefined;
   }, [tempNotification]);
   const unchained = useUnchained();
+  const queuedSteering = useAppStore(state => state.queuedSteering);
+  const showMenuHint = !isWorkingMode(liveMode.trajectoryMode, liveMode.permissionUi);
+  const hudCollapsed =
+    liveMode.trajectoryMode.mode === "tool-call-permission" &&
+    liveMode.permissionUi.type !== "awaiting-steering";
+  const hudLayout = useHudLayout(syntheticModels);
   return (
     <TerminalFlex style={{ flexDirection: "column", width: "100%" }}>
+      <QueuedSteeringPreview queued={queuedSteering} />
+      <WorkingBanner liveMode={liveMode} hudVisible={hudLayout != null} />
+      <TerminalFlex
+        style={{
+          width: "100%",
+        }}
+      >
+        {hudLayout && <Hud layout={hudLayout} collapsed={hudCollapsed} />}
+        <TerminalFlex
+          style={{
+            flexGrow: 1,
+            minHeight: 1,
+            backgroundColor: MODAL_BACKGROUND_COLOR,
+            borderRight: hudCollapsed ? "pill" : "none",
+            borderColor: MODAL_BACKGROUND_COLOR,
+            paddingRight: hudCollapsed ? 0 : 1,
+            justifyContent: "flex-end",
+          }}
+        >
+          {showMenuHint && <Span style={{ color: "gray" }}>(Ctrl+p to enter the menu)</Span>}
+        </TerminalFlex>
+      </TerminalFlex>
       <BottomBarContent
         inputHistory={inputHistory}
         liveMode={liveMode}
         updateConfig={updateConfig}
-        syntheticModels={syntheticModels}
       />
       <TerminalFlex
         style={{
           width: "100%",
           justifyContent: "space-between",
+          paddingLeft: 1,
+          paddingRight: 1,
           height: 1,
           flexShrink: 0,
           flexGrow: 1,
@@ -623,8 +647,10 @@ function BottomBar({
         <TerminalFlex style={{ height: 1 }}>
           <Span style={{ color: themeColor }}>{ctrlCPressed && "Press Ctrl+C again to exit."}</Span>
           {!ctrlCPressed && (
-            <Span style={{ color: "gray" }}>
-              {unchained ? "⚡ Unchained mode" : "Collaboration mode"}{" "}
+            <Span>
+              <Span style={{ color: themeColor }}>
+                {unchained ? "⚡ Unchained mode" : "Collaboration mode"}
+              </Span>{" "}
               <Span style={{ color: "gray" }}>(Shift+Tab to toggle)</Span>
             </Span>
           )}
@@ -639,10 +665,10 @@ function BottomBar({
         </Span>
       </TerminalFlex>
 
-      <TerminalFlex style={{ minHeight: 1 }}>
+      <TerminalFlex style={{ minHeight: 1, paddingLeft: 1, paddingRight: 1 }}>
         {displayedTempNotification && (
           <TerminalFlex style={{ width: "100%", flexShrink: 0 }}>
-            <Span style={{ color: themeColor, whiteSpace: "pre-wrap" }}>
+            <Span style={{ color: "gray", whiteSpace: "pre-wrap" }}>
               {displayedTempNotification}
             </Span>
           </TerminalFlex>
@@ -716,16 +742,109 @@ function useInputMode({
   return { inputMode, setVimMode, inputSubmitted };
 }
 
+type ActiveTrajectoryMode = Extract<
+  TrajectoryMode<typeof octoAgent>,
+  {
+    mode:
+      | "responding"
+      | "compacting"
+      | "autofix-json"
+      | "autofix-tool"
+      | "request-error-retrying"
+      | "tool-call"
+      | "running-tool";
+  }
+>;
+
+function isActiveMode(
+  trajectoryMode: TrajectoryMode<typeof octoAgent>,
+): trajectoryMode is ActiveTrajectoryMode {
+  return (
+    trajectoryMode.mode === "responding" ||
+    trajectoryMode.mode === "compacting" ||
+    trajectoryMode.mode === "autofix-json" ||
+    trajectoryMode.mode === "autofix-tool" ||
+    trajectoryMode.mode === "request-error-retrying" ||
+    trajectoryMode.mode === "tool-call" ||
+    trajectoryMode.mode === "running-tool"
+  );
+}
+
+function isWorkingMode(
+  trajectoryMode: TrajectoryMode<typeof octoAgent>,
+  permissionUi: PermissionUiState,
+): boolean {
+  return (
+    isActiveMode(trajectoryMode) ||
+    (trajectoryMode.mode === "tool-call-permission" && permissionUi.type === "idle")
+  );
+}
+
+function WorkingBanner({ liveMode, hudVisible }: { liveMode: LiveMirror; hudVisible: boolean }) {
+  const { trajectoryMode, permissionUi } = liveMode;
+  const byteCount = useAppStore(state => state.byteCount);
+  const color = useColor();
+  // Reserve the line when idle so it appearing/disappearing doesn't shift the layout.
+  if (!isWorkingMode(trajectoryMode, permissionUi)) return <Span> </Span>;
+  const overrideStrings = (() => {
+    // Subagent compaction stays inside the subagent renderer: the main UI only narrates
+    // the root arc, so a child compacting must not look like the session itself compacting.
+    if (trajectoryMode.root && trajectoryMode.mode === "compacting") {
+      return ["Compacting history to save context tokens"];
+    }
+    if (trajectoryMode.mode === "autofix-tool") return ["Auto-fixing diff"];
+    if (trajectoryMode.mode === "autofix-json") return ["Auto-fixing JSON"];
+    return undefined;
+  })();
+  return (
+    <TerminalFlex
+      style={{
+        justifyContent: "space-between",
+        paddingLeft: hudVisible ? 2 : 0,
+      }}
+    >
+      {trajectoryMode.mode === "request-error-retrying" ? (
+        <RetryCountdown
+          key={trajectoryMode.attempt}
+          error={trajectoryMode.error}
+          attempt={trajectoryMode.attempt}
+          max={MAX_RETRY_COUNT}
+          delayMs={trajectoryMode.delayMs}
+        />
+      ) : (
+        <Loading overrideStrings={overrideStrings} />
+      )}
+      <TerminalFlex>
+        {byteCount === 0 ? null : (
+          <Span
+            style={{
+              color: color,
+            }}
+          >
+            ⇩ {byteCount} bytes
+          </Span>
+        )}
+        <Span> </Span>
+        <Span
+          style={{
+            color: "gray",
+          }}
+        >
+          (Press ESC to interrupt)
+        </Span>
+      </TerminalFlex>
+    </TerminalFlex>
+  );
+}
+
 function BottomBarContent({
   inputHistory,
   liveMode,
   updateConfig,
-  syntheticModels,
 }: {
   inputHistory: InputHistory;
   liveMode: LiveMirror;
   updateConfig: (config: Config) => void;
-  syntheticModels: SyntheticModel[];
 }) {
   const config = useConfig();
   const model = useModel();
@@ -733,26 +852,22 @@ function BottomBarContent({
   const {
     clearNonce,
     openMenu,
-    byteCount,
     query,
     setQuery,
     attachedImages,
     addAttachedImage,
     removeLastAttachedImage,
     clearAttachedImages,
-    queuedSteering,
   } = useAppStore(
     useShallow(state => ({
       clearNonce: state.clearNonce,
       openMenu: state.openMenu,
-      byteCount: state.byteCount,
       query: state.query,
       setQuery: state.setQuery,
       attachedImages: state.attachedImages,
       addAttachedImage: state.addAttachedImage,
       removeLastAttachedImage: state.removeLastAttachedImage,
       clearAttachedImages: state.clearAttachedImages,
-      queuedSteering: state.queuedSteering,
     })),
   );
 
@@ -803,7 +918,6 @@ function BottomBarContent({
       openMenu();
     }
   });
-  const color = useColor();
   const onSubmit = useCallback(
     (submittedQuery?: string, images?: ImageInfo[]) => {
       const finalQuery = submittedQuery ?? query;
@@ -838,68 +952,15 @@ function BottomBarContent({
     [query, permissionUi, trajectoryMode, setQuery, inputSubmitted],
   );
   if (
-    trajectoryMode.mode === "responding" ||
-    trajectoryMode.mode === "compacting" ||
-    trajectoryMode.mode === "autofix-json" ||
-    trajectoryMode.mode === "autofix-tool" ||
-    trajectoryMode.mode === "request-error-retrying" ||
-    trajectoryMode.mode === "tool-call" ||
-    trajectoryMode.mode === "running-tool" ||
+    isActiveMode(trajectoryMode) ||
     (trajectoryMode.mode === "tool-call-permission" && permissionUi.type === "idle")
   ) {
-    const overrideStrings = (() => {
-      // Subagent compaction stays inside the subagent renderer: the main UI only narrates
-      // the root arc, so a child compacting must not look like the session itself compacting.
-      if (trajectoryMode.root && trajectoryMode.mode === "compacting") {
-        return ["Compacting history to save context tokens"];
-      }
-      if (trajectoryMode.mode === "autofix-tool") return ["Auto-fixing diff"];
-      if (trajectoryMode.mode === "autofix-json") return ["Auto-fixing JSON"];
-      return undefined;
-    })();
     return (
       <TerminalFlex
         style={{
           flexDirection: "column",
         }}
       >
-        <TerminalFlex
-          style={{
-            justifyContent: "space-between",
-          }}
-        >
-          {trajectoryMode.mode === "request-error-retrying" ? (
-            <RetryCountdown
-              key={trajectoryMode.attempt}
-              error={trajectoryMode.error}
-              attempt={trajectoryMode.attempt}
-              max={MAX_RETRY_COUNT}
-              delayMs={trajectoryMode.delayMs}
-            />
-          ) : (
-            <Loading overrideStrings={overrideStrings} />
-          )}
-          <TerminalFlex>
-            {byteCount === 0 ? null : (
-              <Span
-                style={{
-                  color: color,
-                }}
-              >
-                ⇩ {byteCount} bytes
-              </Span>
-            )}
-            <Span> </Span>
-            <Span
-              style={{
-                color: "gray",
-              }}
-            >
-              (Press ESC to interrupt)
-            </Span>
-          </TerminalFlex>
-        </TerminalFlex>
-        <QueuedSteeringPreview queued={queuedSteering} />
         <MultimediaInput
           inputHistory={inputHistory}
           value={query}
@@ -962,28 +1023,6 @@ function BottomBarContent({
         flexDirection: "column",
       }}
     >
-      <TerminalFlex
-        style={{
-          marginLeft: 1,
-          justifyContent: "space-between",
-        }}
-      >
-        <Span
-          style={{
-            color: "gray",
-          }}
-        >
-          Model: {modelDisplayName(model, syntheticModels)}
-        </Span>
-        <Span
-          style={{
-            color: "gray",
-          }}
-        >
-          (Ctrl+p to enter the menu)
-        </Span>
-      </TerminalFlex>
-      <QueuedSteeringPreview queued={queuedSteering} />
       <MultimediaInput
         inputHistory={inputHistory}
         value={query}

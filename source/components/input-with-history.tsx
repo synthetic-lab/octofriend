@@ -1,6 +1,6 @@
 import React, { useState, useCallback } from "react";
 import TextInput from "../components/text-input.tsx";
-import { useColor } from "../theme.ts";
+import { MODAL_BACKGROUND_COLOR } from "../theme.ts";
 import { InputHistory } from "../input-history/index.ts";
 import { FileSuggestionBox } from "./file-suggestions/index.js";
 import { ImageInfo } from "../utils/image-utils.ts";
@@ -21,7 +21,6 @@ interface Props {
   setVimMode?: (mode: VimMode) => void;
 }
 export const InputWithHistory = React.memo((props: Props) => {
-  const themeColor = useColor();
   const [currentIndex, setCurrentIndex] = useState(-1);
   const [originalInput, setOriginalInput] = useState("");
   const [suggestionState, setSuggestionState] = useState<{
@@ -163,10 +162,10 @@ export const InputWithHistory = React.memo((props: Props) => {
         style={{
           width: "100%",
           minWidth: 0,
-          paddingLeft: 1,
-          paddingRight: 1,
-          border: "rounded",
-          borderColor: themeColor,
+          border: "chunky-best-effort",
+          borderTop: "none",
+          borderColor: MODAL_BACKGROUND_COLOR,
+          backgroundColor: MODAL_BACKGROUND_COLOR,
         }}
       >
         <TextInput

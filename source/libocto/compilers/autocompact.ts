@@ -7,7 +7,7 @@ import type {
 } from "./compiler-interface.ts";
 import { Result, ok, err } from "../result.ts";
 
-const AUTOCOMPACT_THRESHOLD = 0.9;
+export const AUTOCOMPACT_THRESHOLD = 0.8;
 
 export type CompactionError =
   | {
@@ -111,7 +111,7 @@ export function processCompactedHistory<A extends Agent<any, any, any>>(
   return undefined;
 }
 
-function approximateIRTokens<T extends ToolMap<any, any>>(ir: Array<LoweredIR<T>>): number {
+export function approximateIRTokens<T extends ToolMap<any, any>>(ir: Array<LoweredIR<T>>): number {
   let mostRecentAssistantIndex = -1;
   for (let i = ir.length - 1; i >= 0; i--) {
     if (ir[i].role === "assistant") {

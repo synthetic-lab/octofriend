@@ -4,10 +4,13 @@ import {
   CommandFailedError,
   runShell,
   runBackgroundShell,
+  createPollingFileWatcher,
+  type FsWatcher,
   type BackgroundShellOptions,
 } from "./transport-common.ts";
 import { ProcessManager, processes } from "../process-manager.ts";
 import { spawn, execFile, type ChildProcess } from "child_process";
+import { posix } from "path";
 import * as logger from "../logger.ts";
 import { err, errorToString, ok, type Result } from "../libocto/result.ts";
 import { quote } from "shell-quote";
@@ -79,6 +82,15 @@ export async function manageContainer(args: string[]) {
 
 function randomSuffix() {
   return `${Date.now()}_${Math.random().toString(16)}`;
+}
+
+// inotifywait with --format '%w%f' prints the full path; busybox inotifyd prints
+// `events\twatched_dir[\tsubfile]`.
+function parseWatcherEventPath(binary: "inotifywait" | "busybox", line: string): string | null {
+  if (binary === "inotifywait") return line;
+  const parts = line.split("\t");
+  if (parts.length < 2 || parts[1] === "") return null;
+  return parts.length >= 3 && parts[2] !== "" ? `${parts[1]}/${parts[2]}` : parts[1];
 }
 
 function runDockerCommand(
@@ -355,6 +367,68 @@ export class DockerTransport implements Transport {
 
   backgroundShell(options: BackgroundShellOptions) {
     return runBackgroundShell(this, options);
+  }
+
+  // inotifywait comes from inotify-tools (debian-ish images); busybox inotifyd is present on
+  // alpine/busybox images. With PROG="-", inotifyd streams events to stdout.
+  private fileWatcherBinary: "inotifywait" | "busybox" | null | undefined;
+
+  private async detectFileWatcherBinary(
+    signal: AbortSignal,
+  ): Promise<"inotifywait" | "busybox" | null> {
+    if (this.fileWatcherBinary !== undefined) return this.fileWatcherBinary;
+    for (const binary of ["inotifywait", "busybox"] as const) {
+      const available = await this.shell(signal, `command -v ${binary}`, 5000);
+      if (available.success) {
+        this.fileWatcherBinary = binary;
+        return binary;
+      }
+    }
+    this.fileWatcherBinary = null;
+    return null;
+  }
+
+  async watchFile(
+    signal: AbortSignal,
+    file: string,
+    onEvent: () => void,
+  ): Promise<Result<FsWatcher, string>> {
+    // Watch the parent directory and filter for the file: files swapped in by atomic rename
+    // (git's HEAD.lock -> HEAD) silently kill file-level inotify watches.
+    const dir = posix.dirname(file);
+    const binary = await this.detectFileWatcherBinary(signal);
+    if (binary == null) {
+      return ok(createPollingFileWatcher(this, signal, file, onEvent));
+    }
+
+    const command =
+      binary === "inotifywait"
+        ? `inotifywait -m -e modify,create,delete,moved_to,moved_from --format '%w%f' ${quote([dir])}`
+        : `busybox inotifyd - ${quote([dir])}`;
+    const watcherProcess = this.spawn(this.commandShell, ["-c", command], {
+      stdio: ["ignore", "pipe", "ignore"],
+    });
+    if (!watcherProcess.stdout) {
+      return err("Failed to spawn filesystem watcher with piped stdout");
+    }
+
+    let buffer = "";
+    watcherProcess.stdout.on("data", (chunk: string) => {
+      buffer += chunk;
+      const lines = buffer.split("\n");
+      buffer = lines.pop() ?? "";
+      for (const line of lines) {
+        if (line === "") continue;
+        if (parseWatcherEventPath(binary, line) === file) onEvent();
+      }
+    });
+
+    const close = async () => {
+      await watcherProcess.terminate({ graceMs: 500 });
+    };
+    if (signal.aborted) await close();
+    else signal.addEventListener("abort", () => void close(), { once: true });
+    return ok({ close });
   }
 
   async shell(
