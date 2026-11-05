@@ -1979,27 +1979,27 @@ function renderLlmIR(
             ▶
           </Span>
         </TerminalFlex>
-        {imageParts.length > 0 && (
-          <TerminalFlex
-            style={{
-              marginRight: 1,
-            }}
-          >
-            <Span
-              style={{
-                color: "#111827",
-                backgroundColor: "#e5e7eb",
-              }}
-            >
-              ⟦ 📎 {imageParts.length} image{imageParts.length > 1 ? "s" : ""} attached ⟧
-            </Span>
-          </TerminalFlex>
-        )}
         <TerminalFlex
           style={{
             flexDirection: "column",
           }}
         >
+          {imageParts.length > 0 && (
+            <TerminalFlex
+              style={{
+                marginRight: 1,
+              }}
+            >
+              <Span
+                style={{
+                  color: "#111827",
+                  backgroundColor: "#e5e7eb",
+                }}
+              >
+                ⟦ 📎 {imageParts.length} image{imageParts.length > 1 ? "s" : ""} attached ⟧
+              </Span>
+            </TerminalFlex>
+          )}
           {contentLines.map((line, i) => (
             <TerminalFlex key={i} style={{ minHeight: 1 }}>
               <Span>{line}</Span>
