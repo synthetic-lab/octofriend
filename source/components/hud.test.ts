@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import { hudSectionColors, responsiveHudSections } from "./hud.tsx";
+import { hudSectionColors, hudTextOffset, responsiveHudSections } from "./hud.tsx";
 import {
   HUD_BRANCH_BACKGROUND_COLOR,
   HUD_CONTEXT_BACKGROUND_COLOR,
@@ -42,6 +42,14 @@ describe("responsiveHudSections", () => {
 
   it("keeps the model visible on extremely narrow screens without a branch", () => {
     expect(responsiveHudSections([cwd, model, context], false, 0, false, false)).toEqual([model]);
+  });
+});
+
+describe("hudTextOffset", () => {
+  it("matches the first HUD character with and without a corner or collapsed pill", () => {
+    expect(hudTextOffset({ legacyCorner: false }, false)).toBe(1);
+    expect(hudTextOffset({ legacyCorner: true }, false)).toBe(2);
+    expect(hudTextOffset({ legacyCorner: false }, true)).toBe(2);
   });
 });
 

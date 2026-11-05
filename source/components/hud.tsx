@@ -21,6 +21,7 @@ import { usePowerlineFont } from "../hooks/use-powerline-font.ts";
 import { useLegacyComputingSymbols } from "../hooks/use-legacy-computing-symbols.ts";
 import { useTransport } from "../transport-context.ts";
 import { getEnvVar } from "../transports/transport-common.ts";
+import { TopLeftCorner } from "./corner.tsx";
 
 const MAX_MODEL_CHARS = 24;
 const MAX_CWD_CHARS = 36;
@@ -31,7 +32,6 @@ const MAX_BRANCH_CHARS = 28;
 const HINT_COLS = 32;
 
 const DIVIDER = String.fromCodePoint(0xe0b4); // powerline right-pointing rounded cap
-const LEFT_CORNER = String.fromCodePoint(0x1fb41); // legacy computing smooth top-left corner
 const BRANCH_ICON = String.fromCodePoint(0xe0a0); // powerline git branch glyph
 const ROBOT_ICON = String.fromCodePoint(0xee0d); // nerd font robot glyph
 
@@ -107,6 +107,10 @@ export function useHudLayout(syntheticModels: SyntheticModel[]): HudLayout {
   return { sections, legacyCorner, powerlineExtended };
 }
 
+export function hudTextOffset(layout: Pick<HudLayout, "legacyCorner">, collapsed: boolean): number {
+  return 1 + (collapsed || layout.legacyCorner ? 1 : 0);
+}
+
 export function responsiveHudSections(
   allSections: Section[],
   hasBranch: boolean,
@@ -130,9 +134,7 @@ export function Hud({ layout, collapsed }: { layout: HudLayout; collapsed: boole
   return (
     <TerminalFlex>
       {legacyCorner && !collapsed && (
-        <Span style={{ color: hudSectionColors(sections[0], 0).backgroundColor }}>
-          {LEFT_CORNER}
-        </Span>
+        <TopLeftCorner color={hudSectionColors(sections[0], 0).backgroundColor} />
       )}
       {sections.map((section, index) => {
         const colors = hudSectionColors(section, index);

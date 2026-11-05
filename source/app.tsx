@@ -86,7 +86,7 @@ import SelectInput from "./components/selection/select-input.tsx";
 import { IndicatorComponent } from "./components/select.tsx";
 import { displayLog } from "./logger.ts";
 import { CenteredBox } from "./components/centered-box.tsx";
-import { Hud, useHudLayout } from "./components/hud.tsx";
+import { Hud, hudTextOffset, useHudLayout } from "./components/hud.tsx";
 import { Transport } from "./transports/transport-common.ts";
 import { TransportContext } from "./transport-context.ts";
 import { SessionContext } from "./session-context.ts";
@@ -607,7 +607,7 @@ function BottomBar({
   return (
     <TerminalFlex style={{ flexDirection: "column", width: "100%" }}>
       <QueuedSteeringPreview queued={queuedSteering} />
-      <WorkingBanner liveMode={liveMode} />
+      <WorkingBanner liveMode={liveMode} hudLayout={hudLayout} hudCollapsed={hudCollapsed} />
       <TerminalFlex
         style={{
           width: "100%",
@@ -780,7 +780,15 @@ function isWorkingMode(
   );
 }
 
-function WorkingBanner({ liveMode }: { liveMode: LiveMirror }) {
+function WorkingBanner({
+  liveMode,
+  hudLayout,
+  hudCollapsed,
+}: {
+  liveMode: LiveMirror;
+  hudLayout: ReturnType<typeof useHudLayout>;
+  hudCollapsed: boolean;
+}) {
   const { trajectoryMode, permissionUi } = liveMode;
   const byteCount = useAppStore(state => state.byteCount);
   const color = useColor();
@@ -800,7 +808,7 @@ function WorkingBanner({ liveMode }: { liveMode: LiveMirror }) {
     <TerminalFlex
       style={{
         justifyContent: "space-between",
-        paddingLeft: 2,
+        paddingLeft: hudTextOffset(hudLayout, hudCollapsed),
       }}
     >
       {trajectoryMode.mode === "request-error-retrying" ? (
