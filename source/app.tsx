@@ -20,6 +20,8 @@ import Loading from "./components/loading.tsx";
 import RetryCountdown from "./components/retry-countdown.tsx";
 import { Header } from "./header.tsx";
 import {
+  BACKGROUND_COLOR,
+  DIMMED_BACKGROUND_COLOR,
   DIMMED_SCROLLBAR_COLOR,
   MODAL_BACKGROUND_COLOR,
   SUBAGENT_SHIMMER_HIGHLIGHT_COLOR,
@@ -500,6 +502,7 @@ export default function App({
                                   />
                                 )}
                             </TerminalFlex>
+                            <TerminalFlex style={{ height: 1, flexShrink: 0 }} />
                           </TerminalFlex>
                         </TerminalFlex>
                         {sessionMode.mode === "lost" ? (
@@ -572,6 +575,8 @@ function BottomBar({
   const [displayedTempNotification, setDisplayedTempNotification] =
     useState<React.ReactNode | null>(null);
   const themeColor = useColor();
+  const hasFocus = useTerminalFocus();
+  const backgroundColor = hasFocus ? BACKGROUND_COLOR : DIMMED_BACKGROUND_COLOR;
   const ctrlCPressed = useCtrlCPressed();
   useEffect(() => {
     getLatestVersion().then(latestVersion => {
@@ -607,12 +612,23 @@ function BottomBar({
   return (
     <TerminalFlex style={{ flexDirection: "column", width: "100%" }}>
       <QueuedSteeringPreview queued={queuedSteering} />
-      <WorkingBanner liveMode={liveMode} hudLayout={hudLayout} hudCollapsed={hudCollapsed} />
       <TerminalFlex
         style={{
           width: "100%",
+          position: "relative",
         }}
       >
+        <TerminalFlex
+          style={{
+            position: "absolute",
+            top: -1,
+            left: 0,
+            right: 1,
+            backgroundColor,
+          }}
+        >
+          <WorkingBanner liveMode={liveMode} hudLayout={hudLayout} hudCollapsed={hudCollapsed} />
+        </TerminalFlex>
         <Hud layout={hudLayout} collapsed={hudCollapsed} />
         <TerminalFlex
           style={{
@@ -792,7 +808,7 @@ function WorkingBanner({
   const { trajectoryMode, permissionUi } = liveMode;
   const byteCount = useAppStore(state => state.byteCount);
   const color = useColor();
-  // Reserve the line when idle so it appearing/disappearing doesn't shift the layout.
+  // Keep the overlay populated when idle so its layout remains stable.
   if (!isWorkingMode(trajectoryMode, permissionUi)) return <Span> </Span>;
   const overrideStrings = (() => {
     // Subagent compaction stays inside the subagent renderer: the main UI only narrates
@@ -807,6 +823,7 @@ function WorkingBanner({
   return (
     <TerminalFlex
       style={{
+        width: "100%",
         justifyContent: "space-between",
         paddingLeft: hudTextOffset(hudLayout, hudCollapsed),
       }}
