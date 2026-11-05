@@ -42,9 +42,7 @@ import edit from "./tools/tool-defs/edit.ts";
 import rewrite from "./tools/tool-defs/rewrite.ts";
 import createTool from "./tools/tool-defs/create.ts";
 import mcp from "./tools/tool-defs/mcp.ts";
-import fetchTool from "./tools/tool-defs/fetch.ts";
 import skill from "./tools/tool-defs/skill.ts";
-import webSearch from "./tools/tool-defs/web-search.ts";
 import glob from "./tools/tool-defs/glob.ts";
 import grep from "./tools/tool-defs/grep.ts";
 import backgroundProcess from "./tools/tool-defs/background-process.ts";
@@ -73,7 +71,7 @@ import type {
   ClearControl,
 } from "./libocto/trajectory.ts";
 import type { octoAgent, OctoIR } from "./ir/octo-ir.ts";
-import type { UserMessage } from "./libocto/llm-ir.ts";
+import type { SubagentIR, UserMessage } from "./libocto/llm-ir.ts";
 import type { HistoryNode } from "./session-history/index.ts";
 import { tryDeserializeModelJson } from "./session-history/model-json.ts";
 import { Octo } from "./components/octo.tsx";
@@ -105,7 +103,6 @@ import { VimModeIndicator } from "./components/vim-mode.tsx";
 import { DEFAULT_INPUT_MODE, type InputMode, type VimMode } from "./components/input-mode.ts";
 import type { ToolCall } from "./libocto/tool-def.ts";
 import { type OctoPermissionControl } from "./octo-permissions.ts";
-import type toolMap from "./tools/tool-defs/index.ts";
 import type { Content, MalformedToolRequest } from "./libocto/llm-ir.ts";
 import {
   InputPriorityProvider,
@@ -137,7 +134,7 @@ type ParsedToolSchemaFrom<T extends (...args: any) => any> = {
   name: LoadedToolFrom<T>["name"];
   arguments: t.GetType<LoadedToolFrom<T>["ParsedSchema"]>;
 };
-type ToolCallRequest = ToolCall<typeof toolMap>;
+type ToolCallRequest = ToolCall<(typeof octoAgent)["tools"]>;
 type AssistantDisplayItem = {
   content: string;
   reasoningContent?: string | null;
@@ -1411,10 +1408,12 @@ const ToolRequestItem = ({
 };
 type ToolTrajectoryMode = Extract<
   TrajectoryMode<typeof octoAgent>,
-  { mode: "tool-call" | "running-tool" | "tool-call-permission" }
+  { root: true; mode: "tool-call" | "running-tool" | "tool-call-permission" }
 >;
 
-function isToolTrajectoryMode(mode: TrajectoryMode<typeof octoAgent>): mode is ToolTrajectoryMode {
+function isToolTrajectoryMode(
+  mode: Extract<TrajectoryMode<typeof octoAgent>, { root: true }>,
+): mode is ToolTrajectoryMode {
   return (
     mode.mode === "tool-call" ||
     mode.mode === "running-tool" ||
@@ -1502,12 +1501,11 @@ function ToolPermissionSelect({
       case "read":
       case "partial-read":
       case "shell":
-      case "fetch":
       case "list":
       case "mcp":
       case "glob":
       case "grep":
-      case "web-search":
+      case "web-research":
       case "lsp-definition":
       case "lsp-references":
       case "lsp-hover":
@@ -2025,7 +2023,7 @@ function SubagentTrajectoryRenderer({
   trajectory,
 }: {
   inspection: SubagentTrajectoryInspection;
-  history: Extract<OctoIR, { role: "subagent-trajectory" }>["ir"];
+  history: readonly SubagentIR<typeof octoAgent>[];
   subagent: Extract<OctoIR, { role: "subagent-trajectory" }>;
   trajectory: LiveTrajectory["instance"];
 }) {
@@ -2051,13 +2049,16 @@ function SubagentTrajectoryRenderer({
             return { ...base, detail: call.parsed.dirPath || cwd };
           case "grep":
           case "glob":
+          case "web-search":
             return { ...base, detail: null };
+          case "fetch":
+            return { ...base, detail: call.parsed.url };
         }
       });
   });
   return (
     <TerminalFlex style={{ flexDirection: "column", marginBottom: 1 }}>
-      <ExploreHeading inspection={inspection} />
+      <SubagentHeading inspection={inspection} subagent={subagent.subagent} />
       {inspection.type === "in-progress" && (
         <SubagentProgressRenderer items={items} subagent={subagent} trajectory={trajectory} />
       )}
@@ -2129,7 +2130,7 @@ function SubagentProgressRenderer({
     }),
   );
   const color = useColor();
-  const shimmerlock = useShimmerlock("explore-subagent-loading");
+  const shimmerlock = useShimmerlock("subagent-loading");
   return (
     <TerminalFlex style={{ flexDirection: "column", marginLeft: 2 }}>
       {items.map((item, index) => {
@@ -2150,7 +2151,7 @@ function SubagentProgressRenderer({
             {running && item.name === "grep" ? (
               <SubagentToolShimmer name={item.name} />
             ) : (
-              <Span style={{ color }}>{item.name}</Span>
+              <Span style={{ color }}>{item.name === "web-search" ? "web search" : item.name}</Span>
             )}
             {item.detail != null && <Span style={{ color: "gray" }}>: {item.detail}</Span>}
           </Span>
@@ -2177,7 +2178,7 @@ function SubagentProgressRenderer({
 
 function SubagentToolShimmer({ name }: { name: string }) {
   const color = useColor();
-  const shimmerlock = useShimmerlock("explore-subagent-tool");
+  const shimmerlock = useShimmerlock("subagent-tool");
   return (
     <Shimmer
       segments={[{ text: name, from: color, to: SHIMMER_HIGHLIGHT_COLOR }]}
@@ -2187,23 +2188,45 @@ function SubagentToolShimmer({ name }: { name: string }) {
   );
 }
 
-function ExploreHeading({ inspection }: { inspection: SubagentTrajectoryInspection }) {
+const SUBAGENT_HEADINGS = {
+  explore: {
+    inProgress: "Exploring",
+    complete: "Octo finished exploring!",
+    error: "exploring",
+    aborted: "Octo's exploration was aborted",
+  },
+  researcher: {
+    inProgress: "Searching the web",
+    complete: "Octo finished searching the web!",
+    error: "searching the web",
+    aborted: "Octo's web search was aborted",
+  },
+} as const;
+
+function SubagentHeading({
+  inspection,
+  subagent,
+}: {
+  inspection: SubagentTrajectoryInspection;
+  subagent: keyof typeof SUBAGENT_HEADINGS;
+}) {
   const color = useColor();
+  const headings = SUBAGENT_HEADINGS[subagent];
   const heading = (() => {
     switch (inspection.type) {
       case "in-progress":
-        return <ExploringHeading />;
+        return <InProgressSubagentHeading task={headings.inProgress} />;
       case "complete":
-        return "Octo finished exploring!";
+        return headings.complete;
       case "error":
         return (
           <>
-            Octo encountered an error while exploring:{" "}
+            Octo encountered an error while {headings.error}:{" "}
             <Span style={{ color: "red" }}>{inspection.error}</Span>
           </>
         );
       case "aborted":
-        return "Octo's exploration was aborted";
+        return headings.aborted;
     }
   })();
   return (
@@ -2214,15 +2237,15 @@ function ExploreHeading({ inspection }: { inspection: SubagentTrajectoryInspecti
   );
 }
 
-function ExploringHeading() {
+function InProgressSubagentHeading({ task }: { task: string }) {
   const color = useColor();
-  const shimmerlock = useShimmerlock("explore-subagent-header");
+  const shimmerlock = useShimmerlock("subagent-header");
   const { frame } = useAnimation({ interval: 300 });
   const dots = ["...", "", ".", ".."][frame % 4];
   return (
     <>
       <Shimmer
-        segments={[{ text: "Exploring", from: color, to: SHIMMER_HIGHLIGHT_COLOR }]}
+        segments={[{ text: task, from: color, to: SHIMMER_HIGHLIGHT_COLOR }]}
         lock={shimmerlock}
         running
       />
@@ -2355,10 +2378,8 @@ function toolFailureAction(toolCall: ToolFailureItem["toolCall"]): {
       return { action: "start a background process" };
     case "manage-background-process":
       return { action: "manage a background process" };
-    case "fetch":
-      return { action: "fetch", detail: args?.url };
-    case "web-search":
-      return { action: "search the web", detail: args?.query };
+    case "web-research":
+      return { action: "research the web" };
     case "skill":
       return args?.skillName
         ? { action: "read", detail: `the ${args.skillName} skill` }
@@ -2390,6 +2411,7 @@ function ToolMessageRenderer({
   }
   switch (item.name) {
     case "explore":
+    case "web-research":
       return null;
     case "read":
       return <ReadToolRenderer item={parsedToolSchema(item)} />;
@@ -2411,14 +2433,10 @@ function ToolMessageRenderer({
       return <CreateToolRenderer item={parsedToolSchema(item)} />;
     case "mcp":
       return <McpToolRenderer item={parsedToolSchema(item)} animate={animate} />;
-    case "fetch":
-      return <FetchToolRenderer item={parsedToolSchema(item)} animate={animate} />;
     case "rewrite":
       return <RewriteToolRenderer item={parsedToolSchema(item)} />;
     case "skill":
       return <SkillToolRenderer item={parsedToolSchema(item)} />;
-    case "web-search":
-      return <WebSearchToolRenderer item={parsedToolSchema(item)} animate={animate} />;
     case "glob":
       return <GlobRenderer item={parsedToolSchema(item)} animate={animate} />;
     case "grep":
@@ -2434,7 +2452,7 @@ function ToolMessageRenderer({
       return <LspToolRenderer item={parsedToolSchema(item)} animate={animate} />;
   }
 }
-function parsedToolSchema(toolCall: ToolCallRequest): any {
+function parsedToolSchema(toolCall: OctoPermissionControl["toolCall"]): any {
   return {
     name: toolCall.name,
     arguments: toolCall.parsed,
@@ -2502,14 +2520,6 @@ function GlobArg({ name, arg }: { name: string; arg: string | number | boolean |
     </Span>
   );
 }
-function WebSearchToolRenderer({
-  animate,
-}: {
-  item: ParsedToolSchemaFrom<typeof webSearch>;
-  animate: boolean;
-}) {
-  return <ToolCallRow name="Octo searched the web" animate={animate} />;
-}
 function SkillToolRenderer({ item }: { item: ParsedToolSchemaFrom<typeof skill> }) {
   return (
     <TerminalFlex>
@@ -2522,15 +2532,6 @@ function SkillToolRenderer({ item }: { item: ParsedToolSchemaFrom<typeof skill> 
       </Span>
     </TerminalFlex>
   );
-}
-function FetchToolRenderer({
-  item,
-  animate,
-}: {
-  item: ParsedToolSchemaFrom<typeof fetchTool>;
-  animate: boolean;
-}) {
-  return <ToolCallRow name={item.name} details={item.arguments.url} animate={animate} />;
 }
 function ShellToolRenderer({
   item,
@@ -2867,7 +2868,11 @@ function ImageContentRenderer({ image }: { image: ImageInfo }) {
     </Span>
   );
 }
-function WhitelistAllowDescription({ toolCallRequest }: { toolCallRequest: ToolCallRequest }) {
+function WhitelistAllowDescription({
+  toolCallRequest,
+}: {
+  toolCallRequest: OctoPermissionControl["toolCall"];
+}) {
   const fn = parsedToolSchema(toolCallRequest);
   const cwd = useCwd();
   switch (fn.name) {
@@ -2889,11 +2894,8 @@ function WhitelistAllowDescription({ toolCallRequest }: { toolCallRequest: ToolC
         </Span>
       );
     }
-    case "fetch": {
-      return <Span> fetches from the web during this session.</Span>;
-    }
-    case "web-search": {
-      return <Span> Web Searches during this session.</Span>;
+    case "web-research": {
+      return <Span> web research during this session.</Span>;
     }
     case "list":
     case "read":

@@ -26,7 +26,7 @@ const animation = {
 };
 
 function Harness({ text, running }: { text: string; running: boolean }) {
-  const lock = useShimmerlock("explore-subagent-loading");
+  const lock = useShimmerlock("subagent-loading");
   return (
     <AnimationContext.Provider value={animation}>
       <Shimmer

@@ -13,10 +13,9 @@ import { compilerUsage } from "./compiler-interface.ts";
 import { runAgent, toLlmMessages } from "./standard.ts";
 import type { LoweredIR, MalformedToolRequest } from "../llm-ir.ts";
 import type { ToolCall } from "../tool-def.ts";
-import type toolMap from "../../tools/tool-defs/index.ts";
 
-type Ir = LoweredIR<typeof toolMap>;
-type ShellToolCall = Extract<ToolCall<typeof toolMap>, { name: "shell" }>;
+type Ir = LoweredIR<typeof octoAgent.tools>;
+type ShellToolCall = Extract<ToolCall<typeof octoAgent.tools>, { name: "shell" }>;
 
 describe("standard mixed stream chunks", () => {
   it.each(["reasoning", "reasoning_content"])(

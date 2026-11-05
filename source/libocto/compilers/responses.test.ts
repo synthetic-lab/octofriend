@@ -11,7 +11,6 @@ import {
 import { compilerUsage } from "./compiler-interface.ts";
 import type { LoweredIR } from "../llm-ir.ts";
 import type { ToolCall } from "../tool-def.ts";
-import type toolMap from "../../tools/tool-defs/index.ts";
 
 describe("openAIStrictFunctionParameters", () => {
   it("closes object schemas for OpenAI strict function calling", () => {
@@ -186,8 +185,8 @@ describe("runResponsesAgent", () => {
   });
 });
 
-type ShellToolCall = Extract<ToolCall<typeof toolMap>, { name: "shell" }>;
-type Ir = LoweredIR<typeof toolMap>;
+type ShellToolCall = Extract<ToolCall<typeof octoAgent.tools>, { name: "shell" }>;
+type Ir = LoweredIR<typeof octoAgent.tools>;
 
 function shellCall(id: string, cmd: string): ShellToolCall {
   return {

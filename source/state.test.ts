@@ -709,8 +709,12 @@ describe("explore subagent", () => {
         "subagent-trajectory",
       ]);
       const node = useAppStore.getState().history[5];
-      if (node.type !== "llm-ir" || node.ir.role !== "subagent-trajectory")
-        throw new Error("Expected trajectory");
+      if (
+        node.type !== "llm-ir" ||
+        node.ir.role !== "subagent-trajectory" ||
+        node.ir.subagent !== "explore"
+      )
+        throw new Error("Expected explore trajectory");
       const trajectory = node.ir;
       expect(trajectory.ir.map(ir => ir.role)).toEqual(["user", ...assistantSnapshot, "file-read"]);
       const sessionId = session.metadata.sessionId!;

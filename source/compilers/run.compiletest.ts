@@ -6,16 +6,17 @@ import type {
 import type { LoweredIR } from "../libocto/llm-ir.ts";
 import type { JsonFixResponse } from "../prompts/autofix-prompts.ts";
 import type { Transport } from "../transports/transport-common.ts";
-import type { LoadedTools } from "../tools/index.ts";
-import type toolMap from "../tools/tool-defs/index.ts";
+import type { LoadedTools as GenericLoadedTools } from "../libocto/tool-def.ts";
 import { octoAgent } from "../ir/octo-ir.ts";
 import { run } from "./run.ts";
 import type { ModelData } from "./run.ts";
 
 function expectType<T>(_: T) {}
 
+type LoadedTools = GenericLoadedTools<typeof octoAgent.tools>;
+
 declare const modelData: ModelData;
-declare const messages: Array<LoweredIR<typeof toolMap>>;
+declare const messages: Array<LoweredIR<typeof octoAgent.tools>>;
 declare const signal: AbortSignal;
 declare const transport: Transport;
 declare const autofixJson: (badJson: string, signal: AbortSignal) => Promise<JsonFixResponse>;
