@@ -105,6 +105,11 @@ export function useHudLayout(syntheticModels: SyntheticModel[]): HudLayout {
   return { sections, legacyCorner, powerlineExtended };
 }
 
+export function useHudTextOffset(collapsed: boolean): number {
+  const { legacyComputing } = useFontCapabilities();
+  return hudTextOffset({ legacyCorner: legacyComputing }, collapsed);
+}
+
 export function hudTextOffset(layout: Pick<HudLayout, "legacyCorner">, collapsed: boolean): number {
   return 1 + (collapsed || layout.legacyCorner ? 1 : 0);
 }

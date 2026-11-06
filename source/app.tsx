@@ -88,7 +88,7 @@ import SelectInput from "./components/selection/select-input.tsx";
 import { IndicatorComponent } from "./components/select.tsx";
 import { displayLog } from "./logger.ts";
 import { CenteredBox } from "./components/centered-box.tsx";
-import { Hud, hudTextOffset, useHudLayout } from "./components/hud.tsx";
+import { Hud, useHudTextOffset, useHudLayout } from "./components/hud.tsx";
 import { EnvironmentProvider } from "./environment.tsx";
 import { Transport } from "./transports/transport-common.ts";
 import { TransportContext } from "./transport-context.ts";
@@ -522,7 +522,10 @@ function AppContent({
                                 visibility: "hidden",
                               }}
                             >
-                              <QueuedSteeringPreview queued={queuedSteering} />
+                              <QueuedSteeringPreview
+                                queued={queuedSteering}
+                                hudCollapsed={isHudCollapsed(liveMirror)}
+                              />
                               <TerminalFlex style={{ height: 1, flexShrink: 0 }} />
                             </TerminalFlex>
                           </TerminalFlex>
@@ -627,9 +630,7 @@ function BottomBar({
   const unchained = useUnchained();
   const queuedSteering = useAppStore(state => state.queuedSteering);
   const showMenuHint = !isWorkingMode(liveMode.trajectoryMode, liveMode.permissionUi);
-  const hudCollapsed =
-    liveMode.trajectoryMode.mode === "tool-call-permission" &&
-    liveMode.permissionUi.type !== "awaiting-steering";
+  const hudCollapsed = isHudCollapsed(liveMode);
   const hudLayout = useHudLayout(syntheticModels);
   return (
     <TerminalFlex style={{ flexDirection: "column", width: "100%" }}>
@@ -649,8 +650,8 @@ function BottomBar({
             backgroundColor,
           }}
         >
-          <QueuedSteeringPreview queued={queuedSteering} />
-          <WorkingBanner liveMode={liveMode} hudLayout={hudLayout} hudCollapsed={hudCollapsed} />
+          <QueuedSteeringPreview queued={queuedSteering} hudCollapsed={hudCollapsed} />
+          <WorkingBanner liveMode={liveMode} hudCollapsed={hudCollapsed} />
         </TerminalFlex>
         <Hud layout={hudLayout} collapsed={hudCollapsed} />
         <TerminalFlex
@@ -731,7 +732,21 @@ async function getLatestVersion() {
     return null;
   }
 }
-function QueuedSteeringPreview({ queued }: { queued: readonly UserMessage["content"][] }) {
+function isHudCollapsed(liveMode: LiveMirror | null): boolean {
+  return (
+    liveMode?.trajectoryMode.mode === "tool-call-permission" &&
+    liveMode.permissionUi.type !== "awaiting-steering"
+  );
+}
+
+function QueuedSteeringPreview({
+  queued,
+  hudCollapsed,
+}: {
+  queued: readonly UserMessage["content"][];
+  hudCollapsed: boolean;
+}) {
+  const textOffset = useHudTextOffset(hudCollapsed);
   if (queued.length === 0) return null;
   const preview = excerpt(
     queued
@@ -742,13 +757,11 @@ function QueuedSteeringPreview({ queued }: { queued: readonly UserMessage["conte
       .join(" · "),
   );
   return (
-    <Span
-      style={{
-        color: "gray",
-      }}
-    >
-      Queued ({queued.length}): {preview}
-    </Span>
+    <TerminalFlex style={{ paddingLeft: textOffset }}>
+      <Span style={{ color: "gray" }}>
+        Queued ({queued.length}): {preview}
+      </Span>
+    </TerminalFlex>
   );
 }
 
@@ -821,13 +834,12 @@ function isWorkingMode(
 
 function WorkingBanner({
   liveMode,
-  hudLayout,
   hudCollapsed,
 }: {
   liveMode: LiveMirror;
-  hudLayout: ReturnType<typeof useHudLayout>;
   hudCollapsed: boolean;
 }) {
+  const textOffset = useHudTextOffset(hudCollapsed);
   const { trajectoryMode, permissionUi } = liveMode;
   const byteCount = useAppStore(state => state.byteCount);
   const color = useColor();
@@ -848,7 +860,7 @@ function WorkingBanner({
       style={{
         width: "100%",
         justifyContent: "space-between",
-        paddingLeft: hudTextOffset(hudLayout, hudCollapsed),
+        paddingLeft: textOffset,
       }}
     >
       {trajectoryMode.mode === "request-error-retrying" ? (
