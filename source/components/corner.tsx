@@ -1,6 +1,6 @@
 import React from "react";
 import { Span } from "paintcannon-react";
-import { useLegacyComputingSymbols } from "../hooks/use-legacy-computing-symbols.ts";
+import { useFontCapabilities } from "../font-capabilities.tsx";
 
 const CORNER_GLYPHS = {
   "top-left": String.fromCodePoint(0x1fb41),
@@ -17,8 +17,8 @@ type CornerProps = {
 type CornerPosition = keyof typeof CORNER_GLYPHS;
 
 function Corner({ position, color }: CornerProps & { position: CornerPosition }) {
-  const legacyCorner = useLegacyComputingSymbols();
-  return <Span style={{ color }}>{legacyCorner ? CORNER_GLYPHS[position] : SQUARE_CORNER}</Span>;
+  const { legacyComputing } = useFontCapabilities();
+  return <Span style={{ color }}>{legacyComputing ? CORNER_GLYPHS[position] : SQUARE_CORNER}</Span>;
 }
 
 export function TopLeftCorner({ color }: CornerProps) {

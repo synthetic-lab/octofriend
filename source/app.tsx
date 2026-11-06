@@ -89,6 +89,7 @@ import { IndicatorComponent } from "./components/select.tsx";
 import { displayLog } from "./logger.ts";
 import { CenteredBox } from "./components/centered-box.tsx";
 import { Hud, hudTextOffset, useHudLayout } from "./components/hud.tsx";
+import { EnvironmentProvider } from "./environment.tsx";
 import { Transport } from "./transports/transport-common.ts";
 import { TransportContext } from "./transport-context.ts";
 import { SessionContext } from "./session-context.ts";
@@ -193,7 +194,15 @@ function UnchainedShiftTabHandler({
   });
   return null;
 }
-export default function App({
+export default function App(props: Props) {
+  return (
+    <EnvironmentProvider transport={props.transport}>
+      <AppContent {...props} />
+    </EnvironmentProvider>
+  );
+}
+
+function AppContent({
   config,
   configPath,
   cwd,
@@ -276,6 +285,7 @@ export default function App({
     cancelNotifyReadyForInput,
     closeMenu,
     query,
+    queuedSteering,
     unchained,
   } = useAppStore(
     useShallow(state => ({
@@ -289,6 +299,7 @@ export default function App({
       cancelNotifyReadyForInput: state.cancelNotifyReadyForInput,
       closeMenu: state.closeMenu,
       query: state.query,
+      queuedSteering: state.queuedSteering,
       unchained: state.unchained,
     })),
   );
@@ -378,6 +389,7 @@ export default function App({
     permissionUiType,
     bootItems.length,
     query,
+    queuedSteering,
     scrollTranscriptToBottom,
   ]);
   useEffect(() => {
@@ -502,7 +514,17 @@ export default function App({
                                   />
                                 )}
                             </TerminalFlex>
-                            <TerminalFlex style={{ height: 1, flexShrink: 0 }} />
+                            {/* Match the overlay's wrapped queue height, plus its status row. */}
+                            <TerminalFlex
+                              style={{
+                                flexDirection: "column",
+                                flexShrink: 0,
+                                visibility: "hidden",
+                              }}
+                            >
+                              <QueuedSteeringPreview queued={queuedSteering} />
+                              <TerminalFlex style={{ height: 1, flexShrink: 0 }} />
+                            </TerminalFlex>
                           </TerminalFlex>
                         </TerminalFlex>
                         {sessionMode.mode === "lost" ? (
@@ -611,7 +633,6 @@ function BottomBar({
   const hudLayout = useHudLayout(syntheticModels);
   return (
     <TerminalFlex style={{ flexDirection: "column", width: "100%" }}>
-      <QueuedSteeringPreview queued={queuedSteering} />
       <TerminalFlex
         style={{
           width: "100%",
@@ -621,12 +642,14 @@ function BottomBar({
         <TerminalFlex
           style={{
             position: "absolute",
-            top: -1,
+            bottom: "100%",
             left: 0,
             right: 1,
+            flexDirection: "column",
             backgroundColor,
           }}
         >
+          <QueuedSteeringPreview queued={queuedSteering} />
           <WorkingBanner liveMode={liveMode} hudLayout={hudLayout} hudCollapsed={hudCollapsed} />
         </TerminalFlex>
         <Hud layout={hudLayout} collapsed={hudCollapsed} />

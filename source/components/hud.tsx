@@ -16,11 +16,8 @@ import {
   MODAL_BACKGROUND_COLOR,
 } from "../theme.ts";
 import { useCwd } from "../hooks/use-cwd.tsx";
-import { useGitBranch } from "../hooks/use-git-branch.ts";
-import { usePowerlineFont } from "../hooks/use-powerline-font.ts";
-import { useLegacyComputingSymbols } from "../hooks/use-legacy-computing-symbols.ts";
-import { useTransport } from "../transport-context.ts";
-import { getEnvVar } from "../transports/transport-common.ts";
+import { useEnvironment } from "../environment.tsx";
+import { useFontCapabilities } from "../font-capabilities.tsx";
 import { TopLeftCorner } from "./corner.tsx";
 
 const MAX_MODEL_CHARS = 24;
@@ -57,12 +54,13 @@ type HudLayout = {
 export function useHudLayout(syntheticModels: SyntheticModel[]): HudLayout {
   const model = useModel();
   const cwd = useCwd();
-  const branch = useGitBranch();
-  const powerline = usePowerlineFont();
-  const powerlineExtended = usePowerlineFont("powerline-extended");
-  const materialDesign = usePowerlineFont("material-design");
-  const legacyCorner = useLegacyComputingSymbols();
-  const home = useHomeDir();
+  const { branch, home } = useEnvironment();
+  const {
+    powerline,
+    "powerline-extended": powerlineExtended,
+    "material-design": materialDesign,
+    legacyComputing: legacyCorner,
+  } = useFontCapabilities();
   const cols = useTerminalCols();
   const sessionMode = useAppStore(state => state.sessionMode);
   const history = useAppStore(state => state.history);
@@ -202,20 +200,6 @@ function useTerminalCols(): number {
     };
   }, [paintCannon]);
   return cols;
-}
-
-function useHomeDir(): string | null {
-  const transport = useTransport();
-  const [home, setHome] = useState<string | null>(null);
-  useEffect(() => {
-    const controller = new AbortController();
-    void getEnvVar(controller.signal, transport, "HOME", 5000).then(result => {
-      if (controller.signal.aborted || !result.success || result.data === "") return;
-      setHome(result.data);
-    });
-    return () => controller.abort();
-  }, [transport]);
-  return home;
 }
 
 export function displayCwd(cwd: string, home: string | null): string {

@@ -2,6 +2,7 @@ import React from "react";
 import { render, type CreateRootOptions } from "paintcannon-react";
 import { KeyboardProvider } from "../hooks/use-keyboard.ts";
 import { ToastProvider } from "../components/toast.tsx";
+import { FontCapabilitiesProvider } from "../font-capabilities.tsx";
 import { FOREGROUND_COLOR } from "../theme.ts";
 import * as logger from "../logger.ts";
 
@@ -18,9 +19,11 @@ export async function renderInteractive(
   logger.startBuffering();
   try {
     const root = render(
-      <ToastProvider>
-        <KeyboardProvider>{element}</KeyboardProvider>
-      </ToastProvider>,
+      <FontCapabilitiesProvider>
+        <ToastProvider>
+          <KeyboardProvider>{element}</KeyboardProvider>
+        </ToastProvider>
+      </FontCapabilitiesProvider>,
       {
         ...INTERACTIVE_RENDER_OPTIONS,
         captureCtrlC: options.captureCtrlC,
