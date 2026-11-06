@@ -142,7 +142,7 @@ export type UiState = {
   byteCount: number;
   query: string;
   attachedImages: ImageInfo[];
-  clearNonce: number;
+  inputResetNonce: number;
   sessionHydrationNonce: number;
   whitelistState: Set<string>;
   unchained: boolean;
@@ -503,14 +503,14 @@ export const useAppStore = create<UiState>((set, get) => {
                 history: state.history.slice(0, start),
                 query: textParts.map(item => item.content).join(""),
                 attachedImages: images.map(item => item.image),
-                clearNonce: state.clearNonce + 1,
+                inputResetNonce: state.inputResetNonce + 1,
               };
             });
             return;
           }
           set(state => {
             const textPart = content?.find(part => part.type === "text");
-            return { query: textPart?.content ?? "", clearNonce: state.clearNonce + 1 };
+            return { query: textPart?.content ?? "", inputResetNonce: state.inputResetNonce + 1 };
           });
         },
         steeringChange: ({ queued }) => {
@@ -661,7 +661,7 @@ export const useAppStore = create<UiState>((set, get) => {
       inflightResponse: null,
       queuedSteering: [],
       byteCount: 0,
-      clearNonce: state.clearNonce + 1,
+      inputResetNonce: state.inputResetNonce + 1,
       sessionHydrationNonce: state.sessionHydrationNonce + 1,
       sessionAutoNotify: false,
     }));
@@ -722,7 +722,7 @@ export const useAppStore = create<UiState>((set, get) => {
     byteCount: 0,
     query: "",
     attachedImages: [],
-    clearNonce: 0,
+    inputResetNonce: 0,
     sessionHydrationNonce: 0,
     whitelistState: new Set<string>(),
     unchained: false,
