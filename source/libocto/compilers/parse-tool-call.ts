@@ -3,7 +3,7 @@ import type { JsonFixResponse } from "./compiler-interface.ts";
 import type { LoadedTools, ToolCall, ToolMap } from "../tool-def.ts";
 import { Transport } from "../transport.ts";
 import { consoleLogger, type Logger } from "../logger.ts";
-import { tryexpr } from "../tryexpr.ts";
+import { attemptSync } from "../result.ts";
 
 export type ParsedToolCallResult<T extends ToolMap<any, any>> =
   | {
@@ -114,10 +114,10 @@ async function parseJsonArguments(
   { success: true; args: unknown } | { success: false; status: "error"; message: string }
 > {
   const source = rawArgs === "" ? "{}" : rawArgs;
-  const [err, initialArgs] = tryexpr(() => JSON.parse(source));
-  let args = initialArgs;
+  const initialArgs = attemptSync("Invalid JSON", () => JSON.parse(source));
+  let args = initialArgs.success ? initialArgs.data : undefined;
 
-  if (err) {
+  if (!initialArgs.success) {
     if (!autofixJson) {
       return {
         success: false,
@@ -138,8 +138,8 @@ async function parseJsonArguments(
   }
 
   if (typeof args === "string") {
-    const [doubleEncodedErr, doubleDecodedArgs] = tryexpr(() => JSON.parse(args));
-    if (!doubleEncodedErr) args = doubleDecodedArgs;
+    const doubleDecodedArgs = attemptSync("Invalid double-encoded JSON", () => JSON.parse(args));
+    if (doubleDecodedArgs.success) args = doubleDecodedArgs.data;
   }
 
   return { success: true, args };

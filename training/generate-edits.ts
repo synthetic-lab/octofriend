@@ -3,7 +3,7 @@ import parseGitDiff from "parse-git-diff";
 import { getAllCommits, getCommitDiff, getFileContentsBeforeAfter } from "./git.ts";
 import { DiffEditSchema } from "../source/tools/tool-defs/edit.ts";
 import { parseLines } from "./parse.ts";
-import { asynctryexpr } from "../source/libocto/tryexpr.ts";
+import { attempt } from "../source/libocto/result.ts";
 
 export type Diff = {
   edit: t.GetType<typeof DiffEditSchema>,
@@ -12,17 +12,17 @@ export type Diff = {
 
 export async function* genDiffs(gitDir: string): AsyncGenerator<Diff> {
   for await(const sha of getAllCommits(gitDir)) {
-    const [ err, diff ] = await asynctryexpr(async () => await getCommitDiff(sha, gitDir));
-    if(err) continue;
-    const parsed = parseGitDiff(diff);
+    const diff = await attempt("Failed to get commit diff", () => getCommitDiff(sha, gitDir));
+    if(!diff.success) continue;
+    const parsed = parseGitDiff(diff.data);
     if(parsed.type !== "GitDiff") continue;
     for(const file of parsed.files) {
       if(file.type !== "ChangedFile") continue;
-      const [ err, result ] = await asynctryexpr(async () => {
-        return await getFileContentsBeforeAfter(file.path, sha, gitDir);
+      const contents = await attempt("Failed to get file contents", () => {
+        return getFileContentsBeforeAfter(file.path, sha, gitDir);
       });
-      if(err) continue;
-      const [ before, after ] = result;
+      if(!contents.success) continue;
+      const [ before, after ] = contents.data;
       const beforeLines = parseLines(before);
       const afterLines = parseLines(after);
 

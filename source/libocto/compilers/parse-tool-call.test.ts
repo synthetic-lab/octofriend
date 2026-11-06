@@ -69,6 +69,68 @@ describe("parseToolCall", () => {
     }
   });
 
+  it("decodes double-encoded JSON arguments", async () => {
+    const parsed = await parseToolCall({
+      toolCall: {
+        toolCallId: "call-1",
+        toolName: "search",
+        args: JSON.stringify(JSON.stringify({ query: "double-encoded" })),
+      },
+      toolDefs: { search: searchTool() },
+      abortSignal: new AbortController().signal,
+      transport: {} as any,
+    });
+
+    expect(parsed.status).toBe("success");
+    if (parsed.status === "success") {
+      expect(parsed.tool.original).toEqual({ query: "double-encoded" });
+    }
+  });
+
+  it("decodes a double-encoded string returned by autofix", async () => {
+    const parsed = await parseToolCall({
+      toolCall: {
+        toolCallId: "call-1",
+        toolName: "search",
+        args: "{query:",
+      },
+      toolDefs: { search: searchTool() },
+      autofixJson: mock(async () => ({
+        success: true,
+        fixed: JSON.stringify({ query: "fixed-twice" }),
+      })),
+      abortSignal: new AbortController().signal,
+      transport: {} as any,
+    });
+
+    expect(parsed.status).toBe("success");
+    if (parsed.status === "success") {
+      expect(parsed.tool.original).toEqual({ query: "fixed-twice" });
+    }
+  });
+
+  it("retains an autofix string when its second decode fails", async () => {
+    const autofixJson = mock(async () => ({ success: true, fixed: "still not JSON" }));
+    const parsed = await parseToolCall({
+      toolCall: {
+        toolCallId: "call-1",
+        toolName: "search",
+        args: "{query:",
+      },
+      toolDefs: { search: searchTool() },
+      autofixJson,
+      abortSignal: new AbortController().signal,
+      transport: {} as any,
+      logger: { log: mock(), error: mock() },
+    });
+
+    expect(autofixJson).toHaveBeenCalledTimes(1);
+    expect(parsed.status).toBe("error");
+    if (parsed.status === "error") {
+      expect(parsed.message).toContain("Failed to parse tool call");
+    }
+  });
+
   it("reports invalid JSON when no autofix function is provided", async () => {
     const parsed = await parseToolCall({
       toolCall: {
