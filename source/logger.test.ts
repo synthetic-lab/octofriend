@@ -92,4 +92,20 @@ describe("logger", () => {
 
     stdout.mockRestore();
   });
+
+  it("maps libocto diagnostics to verbose buffered logs", () => {
+    logger.startBuffering();
+
+    logger.liboctoLogger.error("hidden");
+    expect(logger.flush()).toEqual([]);
+
+    logger.setLevel("verbose");
+    logger.liboctoLogger.log("shown");
+    logger.liboctoLogger.error({ reason: "invalid" });
+
+    expect(logger.flush()).toEqual([
+      { target: "stdout", content: ["shown"] },
+      { target: "stderr", content: [{ reason: "invalid" }] },
+    ]);
+  });
 });

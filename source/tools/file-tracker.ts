@@ -1,5 +1,5 @@
 import * as path from "path";
-import { Transport } from "../transports/transport-common.ts";
+import { Transport } from "../libocto/transport.ts";
 import { err, ok, type Result } from "../libocto/result.ts";
 
 export class FileTracker {

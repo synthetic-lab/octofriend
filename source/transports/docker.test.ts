@@ -6,11 +6,11 @@ import { EventEmitter } from "events";
 import { PassThrough } from "stream";
 import { DockerTransport, manageContainer } from "./docker.ts";
 import * as logger from "../logger.ts";
-import { BackgroundProcessManager } from "../background-process.ts";
+import { BackgroundProcessManager } from "../libocto/background-process.ts";
 import { ProcessManager, processes } from "../process-manager.ts";
 import backgroundProcessTool from "../tools/tool-defs/background-process.ts";
 import manageBackgroundProcessTool from "../tools/tool-defs/manage-background-process.ts";
-import type { ProcessExecFileCallback } from "./transport-process.ts";
+import type { ProcessExecFileCallback } from "../libocto/transport.ts";
 
 class FakeChild extends EventEmitter {
   stdin = new PassThrough();

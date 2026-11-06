@@ -3,7 +3,7 @@ import parseGitDiff from "parse-git-diff";
 import { getAllCommits, getCommitDiff, getFileContentsBeforeAfter } from "./git.ts";
 import { DiffEditSchema } from "../source/tools/tool-defs/edit.ts";
 import { parseLines } from "./parse.ts";
-import { asynctryexpr } from "../source/tryexpr.ts";
+import { asynctryexpr } from "../source/libocto/tryexpr.ts";
 
 export type Diff = {
   edit: t.GetType<typeof DiffEditSchema>,

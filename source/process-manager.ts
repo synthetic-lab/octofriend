@@ -1,5 +1,5 @@
 import { registry } from "antipattern";
-import type { TransportProcess } from "./transports/transport-process.ts";
+import type { TransportProcess } from "./libocto/transport.ts";
 
 const CLEANUP_TIMEOUT_MS = 5000;
 const FORCE_EXIT_FALLBACK_MS = 1000;

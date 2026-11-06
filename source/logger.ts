@@ -1,3 +1,5 @@
+import type { Logger } from "./libocto/logger.ts";
+
 const levelNames = ["verbose", "info"] as const;
 type LogLevel = (typeof levelNames)[number];
 let level = process.env["OCTO_VERBOSE"] ? 0 : 1;
@@ -59,3 +61,8 @@ export function displayLog({ info, verbose }: { info: string; verbose: string })
   if (currLevel === "verbose") return verbose;
   return info;
 }
+
+export const liboctoLogger: Logger = {
+  log: (...args) => log("verbose", ...args),
+  error: (...args) => error("verbose", ...args),
+};

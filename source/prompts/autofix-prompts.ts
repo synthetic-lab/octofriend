@@ -34,7 +34,6 @@ export const JsonFixFailure = t.subtype({
   success: t.value(false),
 });
 export const JsonFixResponseSchema = JsonFixSuccess.or(JsonFixFailure);
-export type JsonFixResponse = t.GetType<typeof JsonFixResponseSchema>;
 
 export function fixJsonPrompt(str: string) {
   return `The following string may be broken JSON. Fix it if possible. Respond with JSON in the following

@@ -15,7 +15,7 @@ import { getMcpClient, connectMcpServer, shutdownMcpClients } from "../tools/too
 import { FirstTimeSetup } from "../first-time-setup.tsx";
 import { loadSyntheticModels, type SyntheticModel } from "../synthetic-models.ts";
 import { PreflightModelAuth, PreflightAutofixAuth } from "../preflight-auth.tsx";
-import { Transport } from "../transports/transport-common.ts";
+import { Transport } from "../libocto/transport.ts";
 import { LocalTransport } from "../transports/local.ts";
 import { DockerTransport, manageContainer } from "../transports/docker.ts";
 import { readUpdates, markUpdatesSeen } from "../update-notifs/update-notifs.ts";

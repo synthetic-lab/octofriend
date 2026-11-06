@@ -2,7 +2,7 @@ import path from "path";
 import { Config } from "../config.ts";
 import { getMcpClient } from "../tools/tool-defs/mcp.ts";
 import { tagged } from "../xml.ts";
-import { Transport, getEnvVar } from "../transports/transport-common.ts";
+import { Transport, getEnvVar } from "../libocto/transport.ts";
 
 const LLM_INSTR_FILES = ["OCTO.md", "CLAUDE.md", "AGENTS.md"] as const;
 

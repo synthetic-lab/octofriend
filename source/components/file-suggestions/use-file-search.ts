@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from "react";
 import ignore from "ignore";
 import { usePriorityInput, FILE_SUGGESTIONS_PRIORITY } from "../../hooks/use-priority-input.tsx";
 import { useTransport } from "../../transport-context.ts";
-import { AbortError, findFiles } from "../../transports/transport-common.ts";
+import { AbortError, findFiles } from "../../libocto/transport.ts";
 import * as logger from "../../logger.ts";
 
 const MAX_SUGGESTIONS = 8;

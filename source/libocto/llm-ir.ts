@@ -1,4 +1,4 @@
-import { ImageInfo } from "../utils/image-utils.ts";
+import { ImageInfo } from "./images.ts";
 import { BUILTIN_IR_ROLES } from "./ir-roles.ts";
 import type { BuiltinIRRole } from "./ir-roles.ts";
 import type { CompilerUsage } from "./compilers/compiler-interface.ts";

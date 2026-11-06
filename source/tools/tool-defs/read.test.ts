@@ -8,7 +8,7 @@ import partialReadToolFactory from "./partial-read.ts";
 import { fileTracker } from "../file-tracker.ts";
 import { err, ok, unwrap } from "../../libocto/result.ts";
 import { MockTransport } from "../../transports/mock.ts";
-import type { Transport } from "../../transports/transport-common.ts";
+import type { Transport } from "../../libocto/transport.ts";
 
 function createTransport(files: Record<string, string>): Transport {
   return new MockTransport({ cwd: "/repo", files });

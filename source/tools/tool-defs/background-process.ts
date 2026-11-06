@@ -1,7 +1,7 @@
 import { t } from "structural";
 import { TOOL, USER_ABORTED_ERROR_MESSAGE } from "../common.ts";
-import { backgroundProcesses } from "../../background-process.ts";
-import { AbortError } from "../../transports/transport-common.ts";
+import { backgroundProcesses } from "../../libocto/background-process.ts";
+import { AbortError } from "../../libocto/transport.ts";
 import { ok, err } from "../../libocto/result.ts";
 
 export default TOOL.declare({

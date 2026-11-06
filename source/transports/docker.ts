@@ -7,7 +7,7 @@ import {
   createPollingFileWatcher,
   type FsWatcher,
   type BackgroundShellOptions,
-} from "./transport-common.ts";
+} from "../libocto/transport.ts";
 import { ProcessManager, processes } from "../process-manager.ts";
 import { spawn, execFile, type ChildProcess } from "child_process";
 import { posix } from "path";
@@ -19,7 +19,7 @@ import {
   type ProcessSpawnOptions,
   type ProcessExecFileOptions,
   type ProcessExecFileCallback,
-} from "./transport-process.ts";
+} from "../libocto/transport.ts";
 
 export async function manageContainer(args: string[]) {
   const processManager = processes.manager();

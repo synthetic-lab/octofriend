@@ -1,6 +1,6 @@
 import path from "path";
 import { parse as parseYaml } from "yaml";
-import { Transport, getEnvVar } from "../transports/transport-common.ts";
+import { Transport, getEnvVar } from "../libocto/transport.ts";
 import * as logger from "../logger.ts";
 import { Config } from "../config.ts";
 

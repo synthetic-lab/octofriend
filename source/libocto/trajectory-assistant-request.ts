@@ -1,6 +1,6 @@
 import { registry } from "antipattern";
 import type { t } from "structural";
-import type { Transport } from "../transports/transport-common.ts";
+import type { Transport } from "./transport.ts";
 import { err, ok, type Result } from "./result.ts";
 import { combineSignals } from "./signals.ts";
 import type {
@@ -20,6 +20,7 @@ import type { LoadedTools, ToolCall, ToolDef } from "./tool-def.ts";
 import type { AutofixJsonFn, Compiler, CompilerError } from "./compilers/compiler-interface.ts";
 import { compilerUsage } from "./compilers/compiler-interface.ts";
 import { userInterruptReason } from "./compilers/ir-prompts.ts";
+import type { Logger } from "./logger.ts";
 
 const SKIP_INVALID_REASON = "One of your other tool calls was invalid, so no tool calls were run";
 const SKIP_ABORTED_REASON = "The user aborted the response, so this tool was skipped";
@@ -115,6 +116,7 @@ export type TrajectoryAssistantRequestParams<A extends Agent<any, any, any>, Mod
   lowerMessages: (messages: Array<TreeIR<A>>) => Array<CompilerReadyIR<A>>;
   systemPrompt?: (signal: AbortSignal) => Promise<string>;
   transport: Transport;
+  logger?: Logger;
   abortSignal: AbortSignal;
   quitSignal: AbortSignal;
   errorCorrection?: ErrorCorrection<A>;
@@ -155,6 +157,7 @@ async function assistantRequestAttempt<A extends Agent<any, any, any>, Model>({
   lowerMessages,
   systemPrompt,
   transport,
+  logger,
   abortSignal,
   errorCorrection,
   handler,
@@ -180,6 +183,7 @@ async function assistantRequestAttempt<A extends Agent<any, any, any>, Model>({
     irs: lowerMessages(messages).map(({ converted }) => converted),
     abortSignal,
     transport,
+    logger,
     tools,
     systemPrompt: systemPrompt == null ? undefined : () => systemPrompt(abortSignal),
     autofixJson: jsonCorrectorWithEvent,

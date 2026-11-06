@@ -3,11 +3,12 @@ import path from "path";
 import fs from "fs/promises";
 import json5 from "json5";
 import { fileURLToPath } from "url";
-import { fixJsonPrompt, JsonFixResponse } from "../../source/prompts/autofix-prompts.ts";
+import { fixJsonPrompt } from "../../source/prompts/autofix-prompts.ts";
+import type { JsonFixResponse } from "../../source/libocto/compilers/compiler-interface.ts";
 import { genDiffs } from "../generate-edits.ts";
 import { cutIndex, insertAt } from "../str.ts";
 import { randomIndex, pickRandom, zeroToN, percentChance, randomLowercase } from "../random.ts";
-import { tryexpr } from "../../source/tryexpr.ts";
+import { tryexpr } from "../../source/libocto/tryexpr.ts";
 import {
   parseJson, JSONASTNode, NullNode, NumberNode, StringNode, ArrayNode, ObjectNode, BooleanNode
 } from "./json-parser.ts";

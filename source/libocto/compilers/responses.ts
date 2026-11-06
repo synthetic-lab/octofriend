@@ -341,7 +341,7 @@ export const runResponsesAgent: Compiler<OpenAICompilerModel> = defineCompiler(
   async <A extends Agent<any, any, any>>(
     params: CompilerImplementationParams<A, OpenAICompilerModel>,
   ) => {
-    const { model, irs, abortSignal, transport, systemPrompt, autofixJson } = params;
+    const { model, irs, abortSignal, transport, logger, systemPrompt, autofixJson } = params;
     const input = await toResponseInput(irs, model.modalities);
     const instructions = systemPrompt ? await systemPrompt() : undefined;
 
@@ -531,6 +531,7 @@ export const runResponsesAgent: Compiler<OpenAICompilerModel> = defineCompiler(
               autofixJson,
               abortSignal,
               transport,
+              logger,
             });
 
             if (parseResult.status === "error") {

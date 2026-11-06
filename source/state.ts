@@ -6,7 +6,7 @@ import {
   readAuthForModel,
   runNotifyCommand,
 } from "./config.ts";
-import { ImageInfo } from "./utils/image-utils.ts";
+import { ImageInfo } from "./libocto/images.ts";
 import {
   createSession,
   deleteHistoryNodes,
@@ -27,7 +27,7 @@ import type { ParsedCliArgs } from "./cli/cli-args.ts";
 import { create } from "zustand";
 import { useShallow } from "zustand/shallow";
 import { toLlmIR } from "./ir/convert-history-ir.ts";
-import { Transport } from "./transports/transport-common.ts";
+import { Transport } from "./libocto/transport.ts";
 import { run, type ModelData } from "./compilers/run.ts";
 import type { Compiler } from "./libocto/compilers/compiler-interface.ts";
 import type { MultimodalConfig } from "./libocto/modalities.ts";
@@ -352,6 +352,7 @@ export const useAppStore = create<UiState>((set, get) => {
       runCompiler,
       lowerMessages: lowerOctoToLlmIR,
       transport,
+      logger: logger.liboctoLogger,
       errorCorrection: {
         json: makeAutofixJson(config),
         tools: {

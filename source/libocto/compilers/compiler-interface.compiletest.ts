@@ -1,5 +1,5 @@
 import type { Agent } from "../llm-ir.ts";
-import type { Transport } from "../../transports/transport-common.ts";
+import type { Transport } from "../transport.ts";
 import type {
   Compiler,
   CompilerImplementationParams,

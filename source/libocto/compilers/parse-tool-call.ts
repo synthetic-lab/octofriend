@@ -1,9 +1,9 @@
 import { toTypescript } from "structural";
-import { JsonFixResponse } from "../../prompts/autofix-prompts.ts";
+import type { JsonFixResponse } from "./compiler-interface.ts";
 import type { LoadedTools, ToolCall, ToolMap } from "../tool-def.ts";
-import { Transport } from "../../transports/transport-common.ts";
-import * as logger from "../../logger.ts";
-import { tryexpr } from "../../tryexpr.ts";
+import { Transport } from "../transport.ts";
+import { consoleLogger, type Logger } from "../logger.ts";
+import { tryexpr } from "../tryexpr.ts";
 
 export type ParsedToolCallResult<T extends ToolMap<any, any>> =
   | {
@@ -27,12 +27,14 @@ export async function parseToolCall<T extends ToolMap<any, any>>({
   autofixJson,
   abortSignal,
   transport,
+  logger = consoleLogger,
 }: {
   toolCall: ToolCallToParse;
   toolDefs: Partial<LoadedTools<T>>;
   autofixJson?: (badJson: string, signal: AbortSignal) => Promise<JsonFixResponse>;
   abortSignal: AbortSignal;
   transport: Transport;
+  logger?: Logger;
 }): Promise<ParsedToolCallResult<T>> {
   const name = toolCall.toolName;
   const toolDefsByName = toolDefs as Partial<Record<string, LoadedTools<T>[keyof LoadedTools<T>]>>;
@@ -86,8 +88,8 @@ Please try calling a valid tool.
       message: parsed.error,
     };
   } catch (e: unknown) {
-    logger.error("verbose", e);
-    logger.error("verbose", toolCall);
+    logger.error(e);
+    logger.error(toolCall);
     const error = e instanceof Error ? e.message : "Invalid arguments in tool call";
     return {
       status: "error",

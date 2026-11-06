@@ -1,6 +1,6 @@
 import type { Config } from "../config.ts";
-import { Transport } from "../transports/transport-common.ts";
-import { ImageInfo } from "../utils/image-utils.ts";
+import { Transport } from "../libocto/transport.ts";
+import { ImageInfo } from "../libocto/images.ts";
 import { err, Result, ok } from "../libocto/result.ts";
 import { TOOL_BUILDER, ToolCall } from "../libocto/tool-def.ts";
 

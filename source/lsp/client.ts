@@ -14,8 +14,8 @@ import type {
   Range,
 } from "vscode-languageserver-types";
 import { DiagnosticSeverity, SymbolKind } from "vscode-languageserver-types";
-import { type TransportProcess } from "../transports/transport-process.ts";
-import type { Transport } from "../transports/transport-common.ts";
+import { type TransportProcess } from "../libocto/transport.ts";
+import type { Transport } from "../libocto/transport.ts";
 
 // https://microsoft.github.io/language-server-protocol/specifications/lsp/3.17/specification/#headerPart
 const HEADER_DELIMITER_STRING = "\r\n\r\n";

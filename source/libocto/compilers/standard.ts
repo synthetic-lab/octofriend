@@ -286,7 +286,7 @@ export const runAgent: Compiler<OpenAICompilerModel> = defineCompiler(
   async <A extends Agent<any, any, any>>(
     params: CompilerImplementationParams<A, OpenAICompilerModel>,
   ) => {
-    const { model, irs, abortSignal, transport, systemPrompt, autofixJson } = params;
+    const { model, irs, abortSignal, transport, logger, systemPrompt, autofixJson } = params;
     const messages = await toLlmMessages(irs, systemPrompt, model.modalities);
 
     const toolDefs = params.tools || {};
@@ -490,6 +490,7 @@ export const runAgent: Compiler<OpenAICompilerModel> = defineCompiler(
               autofixJson,
               abortSignal,
               transport,
+              logger,
             });
 
             if (parseResult.status === "error") {

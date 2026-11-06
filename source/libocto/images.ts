@@ -1,6 +1,5 @@
 import fs from "fs/promises";
 import path from "path";
-import type { PaintFile } from "paintcannon";
 
 // NOTE: not every model will support all image mime types.
 const IMAGE_MIME_TYPES = ["image/png", "image/jpeg", "image/webp", "image/gif"] as const;
@@ -56,7 +55,7 @@ function bufferToBase64(buffer: Buffer): string {
   return buffer.toString("base64");
 }
 
-function createDataUrl(mimeType: ImageMimeType, base64Data: string): string {
+export function createDataUrl(mimeType: ImageMimeType, base64Data: string): string {
   return `data:${mimeType};base64,${base64Data}`;
 }
 
@@ -79,22 +78,7 @@ export async function loadImageFromPath(filePath: string): Promise<ImageInfo> {
   };
 }
 
-export async function loadImageFromPaintFile(file: PaintFile): Promise<ImageInfo> {
-  if (!isSupportedImageMimeType(file.type)) {
-    throw new Error(`Unsupported pasted image format: ${file.type}`);
-  }
-  const buffer = Buffer.from(await file.bytes());
-  const base64Data = bufferToBase64(buffer);
-  return {
-    mimeType: file.type,
-    base64Data,
-    dataUrl: createDataUrl(file.type, base64Data),
-    filePath: file.name,
-    sizeBytes: file.size,
-  };
-}
-
-const isSupportedImageMimeType = (mimeType: string): mimeType is ImageMimeType => {
+export const isSupportedImageMimeType = (mimeType: string): mimeType is ImageMimeType => {
   return (IMAGE_MIME_TYPES as readonly string[]).includes(mimeType);
 };
 

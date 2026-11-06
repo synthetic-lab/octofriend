@@ -1,6 +1,6 @@
 import path from "path";
 import { quote } from "shell-quote";
-import type { Transport } from "../transports/transport-common.ts";
+import type { Transport } from "../libocto/transport.ts";
 import { ok, type Result } from "../libocto/result.ts";
 import { RecommendedLspServers } from "./lsp-server-registry.ts";
 import { InstalledLspConfig, LspClient, getOrStartLspClient } from "./client.ts";

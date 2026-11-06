@@ -1,5 +1,5 @@
 import { registry } from "antipattern";
-import type { Transport } from "../transports/transport-common.ts";
+import type { Transport } from "./transport.ts";
 import {
   generateCompactionCheckpointContent,
   type CompactionError,
@@ -15,6 +15,7 @@ import type {
 import { userInterruptReason } from "./compilers/ir-prompts.ts";
 import { err, ok, type Result } from "./result.ts";
 import { combineSignals } from "./signals.ts";
+import type { Logger } from "./logger.ts";
 
 export type AutocompactionStream = {
   type: "autocompaction-stream";
@@ -38,6 +39,7 @@ export type TrajectoryCompactionParams<A extends Agent<any, any, any>, Model> = 
   messages: Array<CompilerIR<A>>;
   runCompiler: Compiler<Model>;
   transport: Transport;
+  logger?: Logger;
   abortSignal: AbortSignal;
   quitSignal: AbortSignal;
   autofixJson?: AutofixJsonFn;
@@ -74,6 +76,7 @@ async function compactionAttempt<A extends Agent<any, any, any>, Model>({
   messages,
   runCompiler,
   transport,
+  logger,
   abortSignal,
   autofixJson,
   handler,
@@ -95,6 +98,7 @@ async function compactionAttempt<A extends Agent<any, any, any>, Model>({
         irs: compactionMessages,
         abortSignal,
         transport,
+        logger,
         autofixJson,
         onTokens: async (tokens, type) => {
           if (abortSignal.aborted) return;

@@ -1,5 +1,5 @@
 import { Hotkey } from "./components/kb-select/kb-shortcut-select.tsx";
-import { ImageInfo } from "./utils/image-utils.ts";
+import { ImageInfo } from "./libocto/images.ts";
 import type { MultimodalConfig } from "./libocto/modalities.ts";
 
 export type ProviderModelConfig = {

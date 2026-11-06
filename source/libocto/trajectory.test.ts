@@ -1,8 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import { t } from "structural";
 import { LocalTransport } from "../transports/local.ts";
-import type { Transport } from "../transports/transport-common.ts";
-import type { ImageInfo } from "../utils/image-utils.ts";
+import type { Transport } from "./transport.ts";
+import type { Logger } from "./logger.ts";
+import type { ImageInfo } from "./images.ts";
 import type { MultimodalConfig } from "./modalities.ts";
 import { err, ok, type Result } from "./result.ts";
 import { ToolBuilder, type LoadedTools, type ToolCall, type ToolReturn } from "./tool-def.ts";
@@ -45,7 +46,7 @@ import {
 type TestData = { marker: string };
 type RunResult = Result<ToolReturn<"research", never>, string>;
 
-let runImpl: (query: string) => Promise<RunResult>;
+let runImpl: (query: string, logger?: Logger) => Promise<RunResult>;
 
 const searchTool = new ToolBuilder<TestData>()
   .declare({
@@ -59,8 +60,8 @@ const searchTool = new ToolBuilder<TestData>()
       if (toolCall.parsed.arguments.query === "invalid") return err("invalid query");
       return ok(null);
     },
-    run: async ({ toolCall }: { toolCall: { parsed: { arguments: { query: string } } } }) => {
-      return runImpl(toolCall.parsed.arguments.query);
+    run: async ({ toolCall, logger }) => {
+      return runImpl(toolCall.parsed.arguments.query, logger);
     },
   }));
 
@@ -164,7 +165,11 @@ function assistantMessage(opts: {
 }
 
 type Emit = (tokens: string, type: "reasoning" | "content") => Promise<void>;
-type CompilerQueueItemParams = { autofixJson?: AutofixJsonFn; abortSignal: AbortSignal };
+type CompilerQueueItemParams = {
+  autofixJson?: AutofixJsonFn;
+  abortSignal: AbortSignal;
+  logger?: Logger;
+};
 type CompilerQueueItem = (
   onTokens: Emit,
   params: CompilerQueueItemParams,
@@ -221,6 +226,7 @@ function makeRunCompiler(queue: CompilerQueueItem[]) {
 
 function makeTrajectory(opts?: {
   permission?: (toolCall: ToolCall<TestAgent["tools"]>) => Promise<PermissionDecision>;
+  logger?: Logger;
   contextWindow?: number;
   modalities?: MultimodalConfig | null;
   maxToolOutput?: number;
@@ -325,6 +331,7 @@ function makeTrajectory(opts?: {
         return pairs;
       },
       transport,
+      logger: opts?.logger,
       abortSignal: exit.signal,
       permission: async toolCall => {
         return opts?.permission ? opts.permission(toolCall) : { decision: "allow" };
@@ -487,11 +494,19 @@ describe("trajectory", () => {
   });
 
   it("runs an allowed tool batch and responds with its output", async () => {
-    const { build, rec } = makeTrajectory();
+    const logger: Logger = { log() {}, error() {} };
+    const { build, rec } = makeTrajectory({ logger });
     const { traj, compilerCalls } = await build([
-      () => okResult(assistantMessage({ toolCalls: [searchCall("cats", "c1")] })),
+      (_onTokens, params) => {
+        expect(params.logger).toBe(logger);
+        return okResult(assistantMessage({ toolCalls: [searchCall("cats", "c1")] }));
+      },
       plainOk,
     ]);
+    runImpl = async (query, toolLogger) => {
+      expect(toolLogger).toBe(logger);
+      return ok({ type: "output", content: text(`results: ${query}`) });
+    };
 
     inputControl(traj).enqueueSteering(text("search for cats"));
     expect(await traj.step()).toBe(true);

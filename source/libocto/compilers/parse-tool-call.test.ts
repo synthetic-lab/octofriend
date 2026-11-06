@@ -1,4 +1,4 @@
-import { describe, expect, it, mock } from "bun:test";
+import { describe, expect, it, jest, mock } from "bun:test";
 import { t } from "structural";
 import { ok } from "../result.ts";
 import { parseToolCall } from "./parse-tool-call.ts";
@@ -103,6 +103,66 @@ describe("parseToolCall", () => {
     expect(parsed.status).toBe("error");
     if (parsed.status === "error") {
       expect(parsed.message).toContain("Unknown tool missing");
+    }
+  });
+
+  it("reports parser exceptions through an injected logger", async () => {
+    const thrown = new Error("parser exploded");
+    const toolCall = {
+      toolCallId: "call-1",
+      toolName: "search",
+      args: JSON.stringify({ query: "needle" }),
+    };
+    const logger = { log: mock(), error: mock() };
+
+    const parsed = await parseToolCall({
+      toolCall,
+      toolDefs: {
+        search: {
+          ...searchTool(),
+          parse: async () => {
+            throw thrown;
+          },
+        },
+      },
+      abortSignal: new AbortController().signal,
+      transport: {} as any,
+      logger,
+    });
+
+    expect(parsed.status).toBe("error");
+    expect(logger.error.mock.calls).toEqual([[thrown], [toolCall]]);
+    expect(logger.log).not.toHaveBeenCalled();
+  });
+
+  it("defaults parser exception logging to console.error", async () => {
+    const thrown = new Error("parser exploded");
+    const toolCall = {
+      toolCallId: "call-1",
+      toolName: "search",
+      args: JSON.stringify({ query: "needle" }),
+    };
+    const stderr = jest.spyOn(console, "error").mockImplementation(() => {});
+
+    try {
+      const parsed = await parseToolCall({
+        toolCall,
+        toolDefs: {
+          search: {
+            ...searchTool(),
+            parse: async () => {
+              throw thrown;
+            },
+          },
+        },
+        abortSignal: new AbortController().signal,
+        transport: {} as any,
+      });
+
+      expect(parsed.status).toBe("error");
+      expect(stderr.mock.calls).toEqual([[thrown], [toolCall]]);
+    } finally {
+      stderr.mockRestore();
     }
   });
 });
