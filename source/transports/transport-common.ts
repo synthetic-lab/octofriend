@@ -79,10 +79,19 @@ export type BackgroundShellOptions = {
   backgroundProcessManager: BackgroundProcessManager;
 };
 
+export type FsWatcher = {
+  close(): Promise<void>;
+};
+
 export interface Transport {
   readonly cwd: string;
   readonly commandShell: string;
   backgroundShell(options: BackgroundShellOptions): Result<BackgroundProcess, TransportError>;
+  watchFile(
+    signal: AbortSignal,
+    path: string,
+    onEvent: () => void,
+  ): Promise<Result<FsWatcher, string>>;
   spawn(command: string, args: readonly string[], options: ProcessSpawnOptions): TransportProcess;
   execFile(
     file: string,
@@ -400,4 +409,39 @@ export function runBackgroundShell(
     );
   }
   return ok(backgroundProcessManager.track(process, label, command));
+}
+
+const WATCH_FILE_POLL_INTERVAL_MS = 5_000;
+
+export function createPollingFileWatcher(
+  transport: Transport,
+  signal: AbortSignal,
+  file: string,
+  onEvent: () => void,
+): FsWatcher {
+  let closed = false;
+  let ticking = false;
+  let lastModified: number | null = null;
+  const timer = setInterval(() => {
+    if (ticking) return;
+    ticking = true;
+    void transport
+      .modTime(signal, file)
+      .then(modified => {
+        const current = modified.success ? modified.data : null;
+        if (lastModified !== null && current !== lastModified) onEvent();
+        lastModified = current;
+      })
+      .finally(() => {
+        ticking = false;
+      });
+  }, WATCH_FILE_POLL_INTERVAL_MS);
+  const close = async () => {
+    if (closed) return;
+    closed = true;
+    clearInterval(timer);
+  };
+  if (signal.aborted) void close();
+  else signal.addEventListener("abort", () => void close(), { once: true });
+  return { close };
 }

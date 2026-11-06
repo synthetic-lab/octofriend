@@ -17,7 +17,6 @@ import packageJson from "../package.json" with { type: "json" };
 const CONFIG_DIR = path.join(os.homedir(), ".config/octofriend");
 const KEY_FILE = path.join(CONFIG_DIR, "keys.json5");
 const KeyConfigSchema = t.dict(t.str);
-export const DEFAULT_AUTOCOMPACT_THRESHOLD = 0.8;
 
 export const APP_METADATA = await readMetadata();
 export const CURRENT_CONFIG_VERSION = 2;

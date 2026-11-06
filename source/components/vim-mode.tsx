@@ -1,6 +1,5 @@
 import React from "react";
 import type { CursorVisualPosition, PaintKeyboardEvent, VisualLineRange } from "paintcannon";
-import { useColor } from "../theme.ts";
 import { Span } from "paintcannon-react";
 import { TerminalFlex } from "./terminal-flex.tsx";
 import type { InputMode, VimMode } from "./input-mode.ts";
@@ -391,20 +390,20 @@ const operators: Record<string, Operator> = {
   },
 };
 export function VimModeIndicator({ inputMode }: { inputMode: InputMode }) {
-  const themeColor = useColor();
   if (inputMode.kind === "emacs") return null;
   return (
     <TerminalFlex
       style={{
         visibility: inputMode.mode === "INSERT" ? "visible" : "hidden",
+        paddingLeft: 1,
+        paddingRight: 1,
         height: 1,
         flexShrink: 0,
       }}
     >
       <Span
         style={{
-          color: themeColor,
-          fontWeight: "bold",
+          color: "gray",
         }}
       >
         -- INSERT --

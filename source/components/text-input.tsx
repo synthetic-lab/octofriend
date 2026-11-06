@@ -5,7 +5,12 @@ import { Div, Span, useApp } from "paintcannon-react";
 import { Textarea } from "paintcannon-react";
 import { useVimKeyHandler } from "./vim-mode.tsx";
 import { DEFAULT_INPUT_MODE, type InputMode, type VimMode } from "./input-mode.ts";
-import { FOREGROUND_COLOR } from "../theme.ts";
+import {
+  DIMMED_INPUT_BACKGROUND_COLOR,
+  FOREGROUND_COLOR,
+  INPUT_BACKGROUND_COLOR,
+} from "../theme.ts";
+import { useTerminalFocus } from "../hooks/use-terminal-focus.ts";
 import { ImageInfo } from "../utils/image-utils.ts";
 import { useInputDisabled } from "../hooks/use-input-disabled.tsx";
 
@@ -52,6 +57,8 @@ export default function TextInput({
   setVimMode,
   onKeyDown,
 }: Props) {
+  const hasFocus = useTerminalFocus();
+  const backgroundColor = hasFocus ? INPUT_BACKGROUND_COLOR : DIMMED_INPUT_BACKGROUND_COLOR;
   const inputDisabled = useInputDisabled();
   const focus = focusProp && !inputDisabled;
   const { paintCannon } = useApp();
@@ -212,8 +219,11 @@ export default function TextInput({
           minWidth: 0,
           minHeight: 1,
           flexGrow: 1,
+          border: "chunky-best-effort",
+          borderColor: backgroundColor,
           whiteSpace: "pre-wrap",
           color: FOREGROUND_COLOR,
+          backgroundColor,
           placeholderColor: "gray",
           overflowY: "visible",
         }}

@@ -248,7 +248,11 @@ for (const alreadyAdded of [false, true]) {
                 renderer = TestRenderer.create(
                   <AppContext.Provider
                     value={{
-                      paintCannon: {} as PaintCannon,
+                      paintCannon: {
+                        hasFocus: true,
+                        addEventListener: () => {},
+                        removeEventListener: () => {},
+                      } as unknown as PaintCannon,
                       exit: () => {},
                       waitUntilExit: async () => undefined,
                     }}
