@@ -278,6 +278,7 @@ export const useAppStore = create<UiState>((set, get) => {
             irs.map(ir => ({ type: "llm-ir", ir })),
             currentModel(),
           ),
+          inflightResponse: null,
         };
       });
       // One database transaction for the entire commit; retain every IR's node identity
