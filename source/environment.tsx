@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useEffect, useState } from "react";
 import { useApp } from "paintcannon-react";
-import { getEnvVar, type FsWatcher, type Transport } from "./transports/transport-common.ts";
+import { getEnvVar, type FsWatcher, type Transport } from "./libocto/transport.ts";
 
 const ENVIRONMENT_TIMEOUT_MS = 5_000;
 

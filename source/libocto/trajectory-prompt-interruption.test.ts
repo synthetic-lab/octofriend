@@ -3,7 +3,7 @@ import Anthropic from "@anthropic-ai/sdk";
 import OpenAI from "openai";
 import { systemPrompt } from "../prompts/system-prompt.ts";
 import { MockTransport } from "../transports/mock.ts";
-import { AbortError, TransportError } from "../transports/transport-common.ts";
+import { AbortError, TransportError } from "./transport.ts";
 import { runAnthropicAgent } from "./compilers/anthropic.ts";
 import type { Compiler } from "./compilers/compiler-interface.ts";
 import { runResponsesAgent } from "./compilers/responses.ts";

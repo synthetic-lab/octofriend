@@ -5,12 +5,12 @@ import * as childProcess from "child_process";
 import { EventEmitter } from "events";
 import { PassThrough } from "stream";
 import { DockerTransport, manageContainer } from "./docker.ts";
-import * as logger from "../logger.ts";
-import { BackgroundProcessManager } from "../background-process.ts";
+import { logger } from "../libocto/logger.ts";
+import { BackgroundProcessManager } from "../libocto/background-process.ts";
 import { ProcessManager, processes } from "../process-manager.ts";
 import backgroundProcessTool from "../tools/tool-defs/background-process.ts";
 import manageBackgroundProcessTool from "../tools/tool-defs/manage-background-process.ts";
-import type { ProcessExecFileCallback } from "./transport-process.ts";
+import type { ProcessExecFileCallback } from "../libocto/transport.ts";
 
 class FakeChild extends EventEmitter {
   stdin = new PassThrough();
@@ -70,7 +70,7 @@ afterEach(() => jest.restoreAllMocks());
 describe("DockerTransport", () => {
   it("reports container cleanup failures and shares concurrent cleanup requests", async () => {
     const { manager, children, execFile } = await harness();
-    const logError = jest.spyOn(logger, "error").mockImplementation(() => {});
+    const logError = jest.spyOn(logger.log, "error").mockImplementation(() => {});
     const failure = Object.assign(new Error("Docker daemon unavailable"), { code: 1 });
     execFile.mockImplementationOnce(((
       _file: string,
@@ -103,7 +103,6 @@ describe("DockerTransport", () => {
           expect.any(Function),
         );
         expect(logError).toHaveBeenCalledWith(
-          "info",
           "Failed to stop Docker container test-container:",
           failure,
         );

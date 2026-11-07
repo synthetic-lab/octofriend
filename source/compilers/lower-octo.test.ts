@@ -5,7 +5,7 @@ import { compilerUsage } from "../libocto/compilers/compiler-interface.ts";
 import type { ToolCall } from "../libocto/tool-def.ts";
 import type toolMap from "../tools/tool-defs/index.ts";
 import type { octoAgent } from "../ir/octo-ir.ts";
-import type { ImageInfo } from "../utils/image-utils.ts";
+import type { ImageInfo } from "../libocto/images.ts";
 import type { MultimodalConfig } from "../libocto/modalities.ts";
 
 /*

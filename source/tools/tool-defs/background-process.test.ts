@@ -1,6 +1,6 @@
 import { describe, expect, it, spyOn } from "bun:test";
 import { withMock } from "antipattern";
-import { BackgroundProcessManager, backgroundProcesses } from "../../background-process.ts";
+import { BackgroundProcessManager, backgroundProcesses } from "../../libocto/background-process.ts";
 import { MockTransport } from "../../transports/mock.ts";
 import { unwrap } from "../../libocto/result.ts";
 import backgroundProcessTool from "./background-process.ts";

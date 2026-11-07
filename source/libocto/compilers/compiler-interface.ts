@@ -1,8 +1,7 @@
 import { err, ok, type Result } from "../result.ts";
 import type { Agent, AssistantMessage, LoweredIR } from "../llm-ir.ts";
 import type { LoadedTools, ToolMap } from "../tool-def.ts";
-import { JsonFixResponse } from "../../prompts/autofix-prompts.ts";
-import { Transport } from "../../transports/transport-common.ts";
+import { Transport } from "../transport.ts";
 
 export type CompilerIR<A extends Agent<any, any, any>> = LoweredIR<A["tools"]>;
 export type CompilerTokenType<Tools = unknown> = [Tools] extends [undefined]
@@ -119,6 +118,8 @@ export type CompilerResultWithoutToolCalls<A extends Agent<any, any, any>> = Com
   A,
   undefined
 >;
+
+export type JsonFixResponse = { success: true; fixed: any } | { success: false };
 
 export type AutofixJsonFn = (badJson: string, signal: AbortSignal) => Promise<JsonFixResponse>;
 

@@ -1,6 +1,6 @@
 import { t } from "structural";
 import { TOOL } from "../common.ts";
-import { Transport } from "../../transports/transport-common.ts";
+import { Transport } from "../../libocto/transport.ts";
 import { ok, err } from "../../libocto/result.ts";
 
 const ArgumentsSchema = t.subtype({

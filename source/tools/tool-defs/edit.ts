@@ -7,7 +7,7 @@ import {
   fileMutateIR,
   parseOriginalFile,
 } from "../common.ts";
-import { Transport } from "../../transports/transport-common.ts";
+import { Transport } from "../../libocto/transport.ts";
 import { ok, err } from "../../libocto/result.ts";
 
 // Construct the intersection manually, since OpenAI and Anthropic can't handle top-level allOf(...)

@@ -8,7 +8,7 @@ import {
   createPollingFileWatcher,
   type FsWatcher,
   type BackgroundShellOptions,
-} from "./transport-common.ts";
+} from "../libocto/transport.ts";
 import { err, ok, type Result } from "../libocto/result.ts";
 import {
   type ProcessExecFileCallback,
@@ -17,7 +17,7 @@ import {
   type TransportProcessEvents,
   type ProcessSpawnOptions,
   type TransportProcessOptions,
-} from "./transport-process.ts";
+} from "../libocto/transport.ts";
 
 export type MockProcessCall = {
   command: string;

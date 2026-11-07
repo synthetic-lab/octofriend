@@ -7,11 +7,11 @@ import {
   createPollingFileWatcher,
   type FsWatcher,
   type BackgroundShellOptions,
-} from "./transport-common.ts";
+} from "../libocto/transport.ts";
 import { ProcessManager, processes } from "../process-manager.ts";
 import { spawn, execFile, type ChildProcess } from "child_process";
 import { posix } from "path";
-import * as logger from "../logger.ts";
+import { logger } from "../libocto/logger.ts";
 import { err, errorToString, ok, type Result } from "../libocto/result.ts";
 import { quote } from "shell-quote";
 import {
@@ -19,11 +19,11 @@ import {
   type ProcessSpawnOptions,
   type ProcessExecFileOptions,
   type ProcessExecFileCallback,
-} from "./transport-process.ts";
+} from "../libocto/transport.ts";
 
 export async function manageContainer(args: string[]) {
   const processManager = processes.manager();
-  logger.log("info", "Spawning Docker container...");
+  logger.log.info("Spawning Docker container...");
 
   const { stdout } = await new Promise<{
     stdout: string;
@@ -65,7 +65,7 @@ export async function manageContainer(args: string[]) {
           surviveAfterOctoExit: true,
         });
       } catch (error) {
-        logger.error("info", `Failed to stop Docker container ${name}:`, error);
+        logger.log.error(`Failed to stop Docker container ${name}:`, error);
       }
     })();
     return containerKillPromise;

@@ -1,8 +1,9 @@
 import { afterEach, describe, expect, it, jest } from "bun:test";
 import { withMock } from "antipattern";
+import { ok } from "../libocto/result.ts";
 import { ProcessManager, processes } from "../process-manager.ts";
 import { LocalTransport } from "./local.ts";
-import type { TransportProcess } from "./transport-process.ts";
+import type { TransportProcess } from "../libocto/transport.ts";
 import { once } from "events";
 
 async function withTestManager(cb: (manager: ProcessManager) => Promise<void>): Promise<void> {
@@ -25,6 +26,39 @@ function spawnSleeper(surviveAfterOctoExit = false): TransportProcess {
 afterEach(() => {
   jest.restoreAllMocks();
   jest.useRealTimers();
+});
+
+describe("LocalTransport", () => {
+  it("does not leak internal env vars into child processes", async () => {
+    const previousNodeEnv = process.env["NODE_ENV"];
+    const previousNapiPath = process.env["NAPI_RS_NATIVE_LIBRARY_PATH"];
+    const previousCanary = process.env["CANARY_OCTO"];
+    const previousTestEnv = process.env["OCTO_TEST_TRANSPORT_ENV"];
+    process.env["NODE_ENV"] = "production";
+    process.env["NAPI_RS_NATIVE_LIBRARY_PATH"] = "/$bunfs/root/paintcannon.node";
+    process.env["CANARY_OCTO"] = "1";
+    process.env["OCTO_TEST_TRANSPORT_ENV"] = "retained";
+
+    try {
+      const transport = new LocalTransport();
+      const output = await transport.shell(
+        new AbortController().signal,
+        `printf '%s:%s:%s:%s' "\${NODE_ENV-unset}" "\${NAPI_RS_NATIVE_LIBRARY_PATH-unset}" "\${CANARY_OCTO-unset}" "$OCTO_TEST_TRANSPORT_ENV"`,
+        5000,
+      );
+
+      expect(output).toEqual(ok("unset:unset:unset:retained"));
+    } finally {
+      if (previousNodeEnv == null) delete process.env["NODE_ENV"];
+      else process.env["NODE_ENV"] = previousNodeEnv;
+      if (previousNapiPath == null) delete process.env["NAPI_RS_NATIVE_LIBRARY_PATH"];
+      else process.env["NAPI_RS_NATIVE_LIBRARY_PATH"] = previousNapiPath;
+      if (previousCanary == null) delete process.env["CANARY_OCTO"];
+      else process.env["CANARY_OCTO"] = previousCanary;
+      if (previousTestEnv == null) delete process.env["OCTO_TEST_TRANSPORT_ENV"];
+      else process.env["OCTO_TEST_TRANSPORT_ENV"] = previousTestEnv;
+    }
+  });
 });
 
 describe("LocalTransport.spawn", () => {

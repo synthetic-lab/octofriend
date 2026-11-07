@@ -1,7 +1,7 @@
 import { t } from "structural";
 import { fileTracker } from "../file-tracker.ts";
 import { attemptUntrackedStat, TOOL } from "../common.ts";
-import { isImagePath } from "../../utils/image-utils.ts";
+import { isImagePath } from "../../libocto/images.ts";
 import { err, ok } from "../../libocto/result.ts";
 import { LINE_NUMBER_PROMPT, withLineNumbers } from "./line-numbers.ts";
 

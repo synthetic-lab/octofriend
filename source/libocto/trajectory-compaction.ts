@@ -1,5 +1,5 @@
 import { registry } from "antipattern";
-import type { Transport } from "../transports/transport-common.ts";
+import type { Transport } from "./transport.ts";
 import {
   generateCompactionCheckpointContent,
   type CompactionError,

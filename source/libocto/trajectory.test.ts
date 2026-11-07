@@ -1,8 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import { t } from "structural";
 import { LocalTransport } from "../transports/local.ts";
-import type { Transport } from "../transports/transport-common.ts";
-import type { ImageInfo } from "../utils/image-utils.ts";
+import type { Transport } from "./transport.ts";
+import type { ImageInfo } from "./images.ts";
 import type { MultimodalConfig } from "./modalities.ts";
 import { err, ok, type Result } from "./result.ts";
 import { ToolBuilder, type LoadedTools, type ToolCall, type ToolReturn } from "./tool-def.ts";
@@ -59,7 +59,7 @@ const searchTool = new ToolBuilder<TestData>()
       if (toolCall.parsed.arguments.query === "invalid") return err("invalid query");
       return ok(null);
     },
-    run: async ({ toolCall }: { toolCall: { parsed: { arguments: { query: string } } } }) => {
+    run: async ({ toolCall }) => {
       return runImpl(toolCall.parsed.arguments.query);
     },
   }));
@@ -164,7 +164,10 @@ function assistantMessage(opts: {
 }
 
 type Emit = (tokens: string, type: "reasoning" | "content") => Promise<void>;
-type CompilerQueueItemParams = { autofixJson?: AutofixJsonFn; abortSignal: AbortSignal };
+type CompilerQueueItemParams = {
+  autofixJson?: AutofixJsonFn;
+  abortSignal: AbortSignal;
+};
 type CompilerQueueItem = (
   onTokens: Emit,
   params: CompilerQueueItemParams,

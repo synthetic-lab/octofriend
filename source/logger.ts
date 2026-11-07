@@ -1,14 +1,12 @@
-const levelNames = ["verbose", "info"] as const;
-type LogLevel = (typeof levelNames)[number];
-let level = process.env["OCTO_VERBOSE"] ? 0 : 1;
+let verboseEnabled = !!process.env["OCTO_VERBOSE"];
 
 export type LogItem = { target: "stdout" | "stderr"; content: any };
 
 let buffering = false;
 let queued: LogItem[] = [];
 
-export function setLevel(newLevel: LogLevel) {
-  level = levelNames.indexOf(newLevel);
+export function setVerbose(enabled: boolean) {
+  verboseEnabled = enabled;
 }
 
 // Paintcannon only repaints the cells it knows it owns, so writing to the
@@ -37,25 +35,30 @@ export function drain() {
   for (const item of flush()) write(item);
 }
 
-function emit(target: LogItem["target"], logLevel: LogLevel, ...args: any[]) {
-  // Filtered-out messages are never queued, so the queue doesn't carry a level.
-  if (levelNames.indexOf(logLevel) < level) return;
-
+function emit(target: LogItem["target"], ...args: any[]) {
   const item: LogItem = { target, content: args };
   if (buffering) queued.push(item);
   else write(item);
 }
 
-export function log(logLevel: LogLevel, ...args: any[]) {
-  emit("stdout", logLevel, ...args);
+export function verbose(...args: any[]) {
+  if (!verboseEnabled) return;
+  emit("stdout", ...args);
 }
 
-export function error(logLevel: LogLevel, ...args: any[]) {
-  emit("stderr", logLevel, ...args);
+export function info(...args: any[]) {
+  emit("stdout", ...args);
+}
+
+export function warn(...args: any[]) {
+  emit("stderr", ...args);
+}
+
+export function error(...args: any[]) {
+  emit("stderr", ...args);
 }
 
 export function displayLog({ info, verbose }: { info: string; verbose: string }) {
-  const currLevel = levelNames[level];
-  if (currLevel === "verbose") return verbose;
+  if (verboseEnabled) return verbose;
   return info;
 }
