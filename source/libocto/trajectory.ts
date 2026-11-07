@@ -908,7 +908,6 @@ export class Trajectory<A extends Agent<any, any, any>, Model> {
           lowerMessages(irs as Array<TreeIR<A>>) as Array<CompilerReadyIR<A> & CompilerReadyIR<B>>,
         systemPrompt,
         transport: params.transport,
-        logger: params.logger,
         errorCorrection: params.errorCorrection as ErrorCorrection<B> | undefined,
         abortSignal: this.turnController.signal,
         quitSignal: params.abortSignal,
@@ -1182,7 +1181,6 @@ export class Trajectory<A extends Agent<any, any, any>, Model> {
       )(location.history).map(pair => pair.converted),
       runCompiler: this.params.runCompiler,
       transport: this.params.transport,
-      logger: this.params.logger,
       abortSignal: this.turnController.signal,
       quitSignal: this.params.abortSignal,
       autofixJson: this.params.errorCorrection?.json,
@@ -1354,7 +1352,6 @@ export class Trajectory<A extends Agent<any, any, any>, Model> {
     const output: Result<ToolReturn<string, ToolExtensionIR<any>>, string> = await def.run({
       signal,
       transport: this.params.transport,
-      logger: this.params.logger,
       toolCall: {
         toolCallId: toolCall.toolCallId,
         original: { name: toolCall.name, arguments: toolCall.original },

@@ -1,7 +1,6 @@
 import { t } from "structural";
 import type { Transport } from "./transport.ts";
 import { Result, ok } from "./result.ts";
-import { consoleLogger, type Logger } from "./logger.ts";
 import type { BuiltinIRRole } from "./ir-roles.ts";
 import type { Content, UserMessage } from "./llm-ir.ts";
 
@@ -60,7 +59,6 @@ export type ToolParseArgs<Arguments> = {
 export type ToolRunArgs<Data, Name extends string, Arguments, Parsed> = {
   signal: AbortSignal;
   transport: Transport;
-  logger?: Logger;
   toolCall: {
     toolCallId: string;
     original: Schema<Name, Arguments>;
@@ -69,11 +67,13 @@ export type ToolRunArgs<Data, Name extends string, Arguments, Parsed> = {
   data: Data;
 };
 
-type ToolImplementationRunArgs<Data, Name extends string, Arguments, Parsed, CustomIR> = Omit<
-  ToolRunArgs<Data, Name, Arguments, Parsed>,
-  "logger"
-> & {
-  logger: Logger;
+type ToolImplementationRunArgs<
+  Data,
+  Name extends string,
+  Arguments,
+  Parsed,
+  CustomIR,
+> = ToolRunArgs<Data, Name, Arguments, Parsed> & {
   customIR: CustomIR;
 };
 
@@ -414,7 +414,6 @@ export class DeclaredTool<
         run: async (runArgs: ToolRunArgs<Data, Name, Arguments, Parsed>) =>
           def.run({
             ...runArgs,
-            logger: runArgs.logger ?? consoleLogger,
             customIR: bindCustomIR(customIRBuilders, flattenToolCall(runArgs.toolCall)),
           }),
       };

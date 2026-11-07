@@ -2,7 +2,7 @@ import { type Writable } from "node:stream";
 import path from "path";
 import { t } from "structural";
 import { err, errorToString, ok, type Result } from "../libocto/result.ts";
-import * as logger from "../logger.ts";
+import { logger } from "../libocto/logger.ts";
 import type {
   CallHierarchyIncomingCall,
   CallHierarchyOutgoingCall,
@@ -459,8 +459,7 @@ export class LspClient {
         this.handleMessage(JSON.parse(body));
       } catch (e) {
         // A malformed frame shouldn't kill the process: drop it and keep processing.
-        logger.error(
-          "verbose",
+        logger.log.verbose(
           `Dropping malformed LSP data from "${this.serverConfig.serverName}": ${errorToString(e)}`,
         );
       }

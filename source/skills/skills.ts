@@ -1,7 +1,7 @@
 import path from "path";
 import { parse as parseYaml } from "yaml";
 import { Transport, getEnvVar } from "../libocto/transport.ts";
-import * as logger from "../logger.ts";
+import { logger } from "../libocto/logger.ts";
 import { Config } from "../config.ts";
 
 const SKILL_FILE_NAME = "SKILL.md";
@@ -162,7 +162,7 @@ export async function discoverSkills(
 
       const content = await transport.readFile(signal, filePath);
       if (!content.success) {
-        logger.error("info", `Error reading skill file ${filePath}: ${content.error}`);
+        logger.log.warn(`Error reading skill file ${filePath}: ${content.error}`);
         continue;
       }
 
@@ -170,25 +170,25 @@ export async function discoverSkills(
         const skill = parseSkillContent(content.data, filePath);
 
         if (!skill) {
-          logger.error("info", `Failed to parse skill file: ${filePath}`);
+          logger.log.warn(`Failed to parse skill file: ${filePath}`);
           continue;
         }
 
         const errors = validateSkill(skill);
         if (errors.length > 0) {
-          logger.error("info", `Skill validation failed for ${filePath}: ${errors.join(", ")}`);
+          logger.log.warn(`Skill validation failed for ${filePath}: ${errors.join(", ")}`);
           continue;
         }
 
         if (seenNames.has(skill.name)) {
-          logger.error("info", `Duplicate skill name "${skill.name}" at ${filePath}, skipping`);
+          logger.log.warn(`Duplicate skill name "${skill.name}" at ${filePath}, skipping`);
           continue;
         }
         seenNames.add(skill.name);
 
         skills.push(skill);
       } catch (e) {
-        logger.error("info", `Error reading skill file ${filePath}: ${e}`);
+        logger.log.warn(`Error reading skill file ${filePath}: ${e}`);
       }
     }
   }

@@ -7,6 +7,7 @@ import path from "path";
 import os from "os";
 import chalk from "chalk";
 import { Command } from "@commander-js/extra-typings";
+import { mock } from "antipattern";
 import { fileExists } from "../fs-utils.ts";
 import App from "../app.tsx";
 import { readConfig, readAuthForModel, AUTOFIX_KEYS, APP_METADATA } from "../config.ts";
@@ -44,7 +45,10 @@ import { renderInteractive } from "./render-interactive.tsx";
 import { setOctoTitles } from "./titles.ts";
 import changelog from "../../CHANGELOG.md" with { type: "text" };
 import { processes } from "../process-manager.ts";
-import * as logger from "../logger.ts";
+import { logger } from "../libocto/logger.ts";
+import * as octoLogger from "../logger.ts";
+
+mock(logger, "log", octoLogger);
 
 const CONFIG_STANDARD_DIR = path.join(os.homedir(), ".config/octofriend/");
 const CONFIG_JSON5_FILE = path.join(CONFIG_STANDARD_DIR, "octofriend.json5");
@@ -59,7 +63,7 @@ const cli = withOctoFlags(
   .action(async (dockerRunArgs, opts) => {
     const resumeSessionId = opts.resume ?? null;
     if (resumeSessionId == null && dockerRunArgs.length > 0) {
-      logger.error("info", "Use octo docker run <args> to start a new session with Docker.");
+      logger.log.error("Use octo docker run <args> to start a new session with Docker.");
       process.exitCode = 1;
       return;
     }
@@ -144,7 +148,7 @@ async function buildConfigForResuming(
 } | null> {
   const loadedSession = loadSession(resumeSessionId);
   if (loadedSession == null) {
-    logger.error("info", `No session found with ID ${resumeSessionId}.`);
+    logger.log.error(`No session found with ID ${resumeSessionId}.`);
     process.exit(1);
   }
 
@@ -152,12 +156,9 @@ async function buildConfigForResuming(
   let effectiveCliArgs = replaceOctoFlags(storedCliArgs, overrides);
   if (overrides.dockerRunArgs != null) {
     if (effectiveCliArgs.kind !== "docker-run") {
-      logger.error(
-        "info",
-        `
+      logger.log.error(`
         Cannot override Docker run args for session ${resumeSessionId}: that session was not initialized with \`octo docker run\`.,
-      `,
-      );
+      `);
       process.exit(1);
     } else {
       effectiveCliArgs = replaceDockerRunArgs(effectiveCliArgs, overrides.dockerRunArgs);
@@ -217,7 +218,7 @@ async function runMain(opts: {
     if (config.mcpServers && Object.keys(config.mcpServers).length > 0) {
       for (const server of Object.keys(config.mcpServers)) {
         try {
-          logger.log("info", "Connecting to", server, "MCP server...");
+          logger.log.info("Connecting to", server, "MCP server...");
           // Run the basic connection setup with logging enabled, so that first-time setup gets logged
           const client = await connectMcpServer(server, config, true);
           if (!client.success) throw new Error(client.error);
@@ -225,16 +226,15 @@ async function runMain(opts: {
           // Then run the cache setup codepath, so future results use a cached client with logging off
           const cachedClient = await getMcpClient(server, config);
           if (!cachedClient.success) throw new Error(cachedClient.error);
-          logger.log("info", "Connected to", server, "MCP server");
+          logger.log.info("Connected to", server, "MCP server");
         } catch (error) {
-          logger.error(
-            "info",
+          logger.log.error(
             `Warning: Failed to connect to "${server}" MCP server: ${error instanceof Error ? error.message : String(error)}`,
           );
-          logger.error("info", "Octo will continue without this MCP server.");
+          logger.log.error("Octo will continue without this MCP server.");
         }
       }
-      logger.log("info", "MCP server initialization complete.");
+      logger.log.info("MCP server initialization complete.");
     }
 
     const skills = await discoverSkills(opts.transport, timeout(5000), config);
@@ -285,21 +285,21 @@ async function runMain(opts: {
       const resumeCommand = chalk.hex(THEME_COLOR)(
         `octo --resume ${sessionMode.session.metadata.sessionId}`,
       );
-      logger.log("info", `\nResume this session with ${resumeCommand}`);
+      logger.log.info(`\nResume this session with ${resumeCommand}`);
     }
 
-    logger.log("info", "\nApprox. tokens used:");
+    logger.log.info("\nApprox. tokens used:");
     if (Object.keys(tokenCounts()).length === 0) {
-      logger.log("info", "0");
+      logger.log.info("0");
     } else {
       for (const [model, count] of Object.entries(tokenCounts())) {
         const input = count.input.toLocaleString();
         const output = count.output.toLocaleString();
-        logger.log("info", `${model}: ${input} input, ${output} output`);
+        logger.log.info(`${model}: ${input} input, ${output} output`);
       }
     }
   } catch (e) {
-    logger.error("info", e);
+    logger.log.error(e);
   } finally {
     await processes.manager().terminateOnOctoExit();
     unregisterCleanup();
@@ -310,7 +310,7 @@ cli
   .command("version")
   .description("Prints the current version")
   .action(async () => {
-    logger.log("info", APP_METADATA.version);
+    logger.log.info(APP_METADATA.version);
   });
 
 cli
@@ -330,7 +330,7 @@ cli
   .command("changelog")
   .description("List the changelog")
   .action(async () => {
-    logger.log("info", changelog);
+    logger.log.info(changelog);
   });
 
 cli
@@ -338,7 +338,7 @@ cli
   .description("List all models you've configured with Octo")
   .action(async () => {
     const { config } = await loadConfigWithoutReauth(undefined, null);
-    logger.log("info", config.models.map(m => m.nickname).join("\n"));
+    logger.log.info(config.models.map(m => m.nickname).join("\n"));
   });
 
 const sessionCommand = cli.command("session").description("Manage Octo sessions");
@@ -351,18 +351,15 @@ sessionCommand
 
     const { rows, sessionIdWidth, previewWidth } = sessionListTable(sessions);
     const octoTheme = chalk.hex(THEME_COLOR);
-    logger.log("info", `Resume a session with: ${octoTheme("octo --resume <session-id>")}\n`);
-    logger.log(
-      "info",
+    logger.log.info(`Resume a session with: ${octoTheme("octo --resume <session-id>")}\n`);
+    logger.log.info(
       `${SESSION_ID_HEADER.padEnd(sessionIdWidth)}  ${SESSION_PREVIEW_HEADER.padEnd(previewWidth)}  ${SESSION_UPDATED_HEADER}`,
     );
-    logger.log(
-      "info",
+    logger.log.info(
       `${"─".repeat(sessionIdWidth)}  ${"─".repeat(previewWidth)}  ${"─".repeat(SESSION_UPDATED_HEADER.length)}`,
     );
     for (const row of rows) {
-      logger.log(
-        "info",
+      logger.log.info(
         `${octoTheme(row.sessionId.padEnd(sessionIdWidth))}  ${chalk.dim((row.preview ?? "").padEnd(previewWidth))}  ${chalk.white(row.updatedAtText)}`,
       );
     }
@@ -373,11 +370,11 @@ sessionCommand
   .argument("<session-id>", "The session ID to delete")
   .action(sessionId => {
     if (!deleteSession(sessionId)) {
-      logger.error("info", `No session found with ID ${sessionId}.`);
+      logger.log.error(`No session found with ID ${sessionId}.`);
       process.exitCode = 1;
       return;
     }
-    logger.log("info", `Deleted session ${sessionId}.`);
+    logger.log.info(`Deleted session ${sessionId}.`);
   });
 
 const bench = cli.command("bench");
@@ -401,12 +398,9 @@ bench
       : config.models[0];
 
     if (model == null) {
-      logger.error(
-        "info",
-        `No model with the nickname ${opts.model} found. Did you add it to Octo?`,
-      );
-      logger.error("info", "The available models are:");
-      logger.error("info", "- " + config.models.map(m => m.nickname).join("\n- "));
+      logger.log.error(`No model with the nickname ${opts.model} found. Did you add it to Octo?`);
+      logger.log.error("The available models are:");
+      logger.log.error("- " + config.models.map(m => m.nickname).join("\n- "));
       process.exit(1);
     }
 
@@ -415,7 +409,7 @@ bench
     if (model.type === "codex") {
       const authResult = await readAuthForModel(model, config);
       if (!authResult.ok) {
-        logger.error("info", authResult.error.message);
+        logger.log.error(authResult.error.message);
         process.exit(1);
       }
       modelData = {
@@ -426,7 +420,7 @@ bench
     } else {
       const authResult = await readAuthForModel(model, config);
       if (!authResult.ok) {
-        logger.error("info", authResult.error.message);
+        logger.log.error(authResult.error.message);
         process.exit(1);
       }
       modelData = {
@@ -437,13 +431,12 @@ bench
     }
     const autofixJson = makeAutofixJson(config);
 
-    logger.log(
-      "info",
+    logger.log.info(
       `Benchmarking ${model.nickname} with ${concurrency} concurrent request${concurrency > 1 ? "s" : ""}`,
     );
     const abortController = new AbortController();
     const timer = setInterval(() => {
-      logger.log("info", "Still working...");
+      logger.log.info("Still working...");
     }, 5000);
 
     type SuccessfulBenchmark = {
@@ -543,9 +536,9 @@ bench
 
     const failures = results.filter((r): r is FailedBenchmark => !r.success);
     if (failures.length > 0) {
-      logger.error("info", `\n${failures.length} request(s) failed:`);
+      logger.log.error(`\n${failures.length} request(s) failed:`);
       for (const f of failures) {
-        logger.error("info", `  - ${f.error}`);
+        logger.log.error(`  - ${f.error}`);
       }
       if (failures.length === concurrency) {
         process.exit(1);
@@ -555,7 +548,7 @@ bench
     const successes = results.filter((r): r is SuccessfulBenchmark => r.success);
 
     if (successes.length === 0) {
-      logger.log("info", "No successful requests");
+      logger.log.info("No successful requests");
       process.exit(1);
     }
 
@@ -570,16 +563,13 @@ bench
     const totalTime = (benchmarkEnd.getTime() - benchmarkStart.getTime()) / 1000;
     const tps = totalTokens / totalTime;
 
-    logger.log(
-      "info",
-      `\n
+    logger.log.info(`\n
 Successful requests: ${successes.length}/${concurrency}
 Total tokens: ${totalTokens}
 Avg tokens per request: ${avgTokens.toFixed(2)}
 Total time: ${totalTime.toFixed(2)}s
 Avg time to first token: ${(avgTtft / 1000).toFixed(3)}s
-`,
-    );
+`);
 
     if (allInterTokenLatencies.length > 0) {
       let minLatency = allInterTokenLatencies[0];
@@ -592,23 +582,17 @@ Avg time to first token: ${(avgTtft / 1000).toFixed(3)}s
       }
       const avgLatency = total / allInterTokenLatencies.length;
 
-      logger.log(
-        "info",
-        `Inter-token latencies (${allInterTokenLatencies.length} total):
+      logger.log.info(`Inter-token latencies (${allInterTokenLatencies.length} total):
   Min: ${minLatency}ms
   Max: ${maxLatency}ms
   Avg: ${avgLatency.toFixed(2)}ms
   Avg stream time per request: ${(avgTokenElapsed / 1000).toFixed(3)}s
-`,
-      );
+`);
     }
 
-    logger.log(
-      "info",
-      `Tok/sec output (overall): ${tps.toFixed(2)}
+    logger.log.info(`Tok/sec output (overall): ${tps.toFixed(2)}
 Tok/sec output (per-request avg): ${successes.map(r => r.tokens / (r.tokenElapsed / 1000)).reduce((a, b) => a + b, 0) / successes.length}
-`,
-    );
+`);
   });
 
 cli
@@ -628,12 +612,9 @@ cli
       : config.models[0];
 
     if (model == null) {
-      logger.error(
-        "info",
-        `No model with the nickname ${opts.model} found. Did you add it to Octo?`,
-      );
-      logger.error("info", "The available models are:");
-      logger.error("info", "- " + config.models.map(m => m.nickname).join("\n- "));
+      logger.log.error(`No model with the nickname ${opts.model} found. Did you add it to Octo?`);
+      logger.log.error("The available models are:");
+      logger.log.error("- " + config.models.map(m => m.nickname).join("\n- "));
       process.exit(1);
     }
 
@@ -641,21 +622,21 @@ cli
     if (model.type === "codex") {
       const authResult = await readAuthForModel(model, config);
       if (!authResult.ok) {
-        logger.error("info", `${model.nickname} doesn't have auth set up.`);
+        logger.log.error(`${model.nickname} doesn't have auth set up.`);
         const error = authResult.error;
 
         if (error.type === "missing") {
-          logger.error("info", `${error.message}`);
+          logger.log.error(`${error.message}`);
         } else if (error.type === "command_failed") {
-          logger.error("info", `Command execution failed: ${error.message}`);
+          logger.log.error(`Command execution failed: ${error.message}`);
           if (error.exitCode != null) {
-            logger.error("info", `Exit code: ${error.exitCode}`);
+            logger.log.error(`Exit code: ${error.exitCode}`);
           }
           if (error.stderr) {
-            logger.error("info", `stderr: ${error.stderr}`);
+            logger.log.error(`stderr: ${error.stderr}`);
           }
         } else if (error.type === "invalid") {
-          logger.error("info", `Invalid auth configuration: ${error.message}`);
+          logger.log.error(`Invalid auth configuration: ${error.message}`);
         }
 
         process.exit(1);
@@ -668,24 +649,24 @@ cli
     } else {
       const authResult = await readAuthForModel(model, config);
       if (!authResult.ok) {
-        logger.error("info", `${model.nickname} doesn't have auth set up.`);
+        logger.log.error(`${model.nickname} doesn't have auth set up.`);
         const error = authResult.error;
 
         if (error.type === "missing") {
-          logger.error("info", `${error.message}`);
+          logger.log.error(`${error.message}`);
           if (model.auth?.type === "env") {
-            logger.error("info", `Hint: do you need to re-source your .bash_profile or .zshrc?`);
+            logger.log.error(`Hint: do you need to re-source your .bash_profile or .zshrc?`);
           }
         } else if (error.type === "command_failed") {
-          logger.error("info", `Command execution failed: ${error.message}`);
+          logger.log.error(`Command execution failed: ${error.message}`);
           if (error.exitCode != null) {
-            logger.error("info", `Exit code: ${error.exitCode}`);
+            logger.log.error(`Exit code: ${error.exitCode}`);
           }
           if (error.stderr) {
-            logger.error("info", `stderr: ${error.stderr}`);
+            logger.log.error(`stderr: ${error.stderr}`);
           }
         } else if (error.type === "invalid") {
-          logger.error("info", `Invalid auth configuration: ${error.message}`);
+          logger.log.error(`Invalid auth configuration: ${error.message}`);
         }
 
         process.exit(1);
@@ -740,10 +721,10 @@ cli
     });
     if (!result.success) {
       if (result.error.type === "auth-error") {
-        logger.error("info", result.error.authError);
+        logger.log.error(result.error.authError);
       } else {
-        logger.error("info", result.error.requestError);
-        logger.error("info", `cURL: ${result.error.curl}`);
+        logger.log.error(result.error.requestError);
+        logger.log.error(`cURL: ${result.error.curl}`);
       }
       process.exit(1);
     }

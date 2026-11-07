@@ -3,7 +3,7 @@ import ignore from "ignore";
 import { usePriorityInput, FILE_SUGGESTIONS_PRIORITY } from "../../hooks/use-priority-input.tsx";
 import { useTransport } from "../../transport-context.ts";
 import { AbortError, findFiles } from "../../libocto/transport.ts";
-import * as logger from "../../logger.ts";
+import { logger } from "../../libocto/logger.ts";
 
 const MAX_SUGGESTIONS = 8;
 const CACHE_TTL = 5000;
@@ -165,7 +165,7 @@ export function useFileSearch(query: string, options: UseFileSearchOptions) {
           !(err instanceof AbortError) &&
           err.name !== "AbortError"
         ) {
-          logger.error("info", "Search failed:", err);
+          logger.log.error("Search failed:", err);
         }
       } finally {
         if (thisRequest === currentRequestId.current && isMounted.current) {

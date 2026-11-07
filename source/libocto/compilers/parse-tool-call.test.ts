@@ -1,6 +1,8 @@
 import { describe, expect, it, jest, mock } from "bun:test";
 import { t } from "structural";
+import { withMock } from "antipattern";
 import { ok } from "../result.ts";
+import { logger } from "../logger.ts";
 import { parseToolCall } from "./parse-tool-call.ts";
 
 const ArgumentsSchema = t.subtype({
@@ -121,7 +123,6 @@ describe("parseToolCall", () => {
       autofixJson,
       abortSignal: new AbortController().signal,
       transport: {} as any,
-      logger: { log: mock(), error: mock() },
     });
 
     expect(autofixJson).toHaveBeenCalledTimes(1);
@@ -168,33 +169,36 @@ describe("parseToolCall", () => {
     }
   });
 
-  it("reports parser exceptions through an injected logger", async () => {
+  it("reports parser exceptions through the registry logger", async () => {
     const thrown = new Error("parser exploded");
     const toolCall = {
       toolCallId: "call-1",
       toolName: "search",
       args: JSON.stringify({ query: "needle" }),
     };
-    const logger = { log: mock(), error: mock() };
+    const log = { verbose: mock(), info: mock(), warn: mock(), error: mock() };
 
-    const parsed = await parseToolCall({
-      toolCall,
-      toolDefs: {
-        search: {
-          ...searchTool(),
-          parse: async () => {
-            throw thrown;
+    await withMock(logger, "log", log, async () => {
+      const parsed = await parseToolCall({
+        toolCall,
+        toolDefs: {
+          search: {
+            ...searchTool(),
+            parse: async () => {
+              throw thrown;
+            },
           },
         },
-      },
-      abortSignal: new AbortController().signal,
-      transport: {} as any,
-      logger,
-    });
+        abortSignal: new AbortController().signal,
+        transport: {} as any,
+      });
 
-    expect(parsed.status).toBe("error");
-    expect(logger.error.mock.calls).toEqual([[thrown], [toolCall]]);
-    expect(logger.log).not.toHaveBeenCalled();
+      expect(parsed.status).toBe("error");
+      expect(log.error.mock.calls).toEqual([[thrown], [toolCall]]);
+      expect(log.verbose).not.toHaveBeenCalled();
+      expect(log.info).not.toHaveBeenCalled();
+      expect(log.warn).not.toHaveBeenCalled();
+    });
   });
 
   it("defaults parser exception logging to console.error", async () => {

@@ -238,7 +238,7 @@ export const runAnthropicAgent: Compiler<AnthropicCompilerModel> = defineCompile
   async <A extends Agent<any, any, any>>(
     params: CompilerImplementationParams<A, AnthropicCompilerModel>,
   ) => {
-    const { model, irs, abortSignal, transport, logger, systemPrompt, autofixJson } = params;
+    const { model, irs, abortSignal, transport, systemPrompt, autofixJson } = params;
     const messages = toModelMessage(irs, model.modalities);
     const sysPrompt = systemPrompt ? await systemPrompt() : "";
 
@@ -493,7 +493,6 @@ export const runAnthropicAgent: Compiler<AnthropicCompilerModel> = defineCompile
               autofixJson,
               abortSignal,
               transport,
-              logger,
             });
 
             if (parseResult.status === "error") {

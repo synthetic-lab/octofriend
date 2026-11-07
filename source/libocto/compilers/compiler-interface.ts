@@ -1,7 +1,6 @@
 import { err, ok, type Result } from "../result.ts";
 import type { Agent, AssistantMessage, LoweredIR } from "../llm-ir.ts";
 import type { LoadedTools, ToolMap } from "../tool-def.ts";
-import type { Logger } from "../logger.ts";
 import { Transport } from "../transport.ts";
 
 export type CompilerIR<A extends Agent<any, any, any>> = LoweredIR<A["tools"]>;
@@ -137,7 +136,6 @@ type CompilerParamsBase<A extends Agent<any, any, any>, Model> = {
   irs: Array<CompilerIR<A>>;
   abortSignal: AbortSignal;
   transport: Transport;
-  logger?: Logger;
   autofixJson?: AutofixJsonFn;
 };
 

@@ -57,7 +57,8 @@ import { loadTools, SKIP_CONFIRMATION_TOOLS } from "./tools/index.ts";
 import { attemptUntrackedRead } from "./tools/common.ts";
 import { estimateTokens } from "./ir/count-ir-tokens.ts";
 import { octoAgent, type OctoIR } from "./ir/octo-ir.ts";
-import * as logger from "./logger.ts";
+import { logger } from "./libocto/logger.ts";
+import { drain } from "./logger.ts";
 
 export const MAX_RETRY_COUNT = 20;
 
@@ -352,7 +353,6 @@ export const useAppStore = create<UiState>((set, get) => {
       runCompiler,
       lowerMessages: lowerOctoToLlmIR,
       transport,
-      logger: logger.liboctoLogger,
       errorCorrection: {
         json: makeAutofixJson(config),
         tools: {
@@ -615,8 +615,8 @@ export const useAppStore = create<UiState>((set, get) => {
           if (control.running) await control.interrupt();
           await instance.run();
         } catch (e) {
-          logger.error("info", e);
-          logger.drain();
+          logger.log.error(e);
+          drain();
           process.exit(1);
         }
       })(),
@@ -755,7 +755,7 @@ export const useAppStore = create<UiState>((set, get) => {
 
       const timer = setTimeout(async () => {
         const result = await runNotifyCommand(config);
-        if (!result.success) logger.error("info", `Notification failed: ${result.error}`);
+        if (!result.success) logger.log.error(`Notification failed: ${result.error}`);
       }, notifyTimeout);
 
       set({ _notifyTimer: timer });
