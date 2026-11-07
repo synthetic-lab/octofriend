@@ -64,7 +64,7 @@
     "json-schema": "^0.4.0",
     "json5": "^2.2.3",
     "marked": "^16.2.0",
-    "openai": "^5.9.0",
+    "openai": "^7.53.0",
     "paintcannon": "0.0.47",
     "paintcannon-react": "0.0.47",
     "react": "^19.2.6",
