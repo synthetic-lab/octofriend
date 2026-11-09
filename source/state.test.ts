@@ -440,7 +440,7 @@ describe("boot and response mirror", () => {
     if (firstLive == null) throw new Error("expected live session");
     const firstTrajectory = firstLive.trajectory.instance;
     const noncesBefore = {
-      clear: useAppStore.getState().clearNonce,
+      inputReset: useAppStore.getState().inputResetNonce,
       hydration: useAppStore.getState().sessionHydrationNonce,
     };
     useAppStore.getState().setModelOverride(agentConfig.models[0]);
@@ -453,7 +453,7 @@ describe("boot and response mirror", () => {
     expect(useAppStore.getState().history).toHaveLength(0);
     expect(useAppStore.getState().query).toBe("");
     expect(useAppStore.getState().modelOverride).toBe(agentModelJson);
-    expect(useAppStore.getState().clearNonce).toBeGreaterThan(noncesBefore.clear);
+    expect(useAppStore.getState().inputResetNonce).toBeGreaterThan(noncesBefore.inputReset);
     expect(useAppStore.getState().sessionHydrationNonce).toBeGreaterThan(noncesBefore.hydration);
 
     await waitForNextTurn(() => respond("again"));
@@ -1004,7 +1004,7 @@ describe("error-mode mirrors", () => {
       ],
     );
 
-    const nonceAfterHydrate = useAppStore.getState().clearNonce;
+    const nonceAfterHydrate = useAppStore.getState().inputResetNonce;
     const compactionError = await waitTrajectoryMode("compaction-error");
     expect(compilerCalls).toHaveLength(0);
 
@@ -1013,7 +1013,7 @@ describe("error-mode mirrors", () => {
     // The rewind trims back past the failed prompt, restores it as the draft query, and leaves
     // the hydrated prefix intact.
     expect(useAppStore.getState().query).toBe("new question");
-    expect(useAppStore.getState().clearNonce).toBeGreaterThan(nonceAfterHydrate);
+    expect(useAppStore.getState().inputResetNonce).toBeGreaterThan(nonceAfterHydrate);
     expect(historyRoles()).toEqual(["user", "assistant"]);
     expect(dbNodeCount(session.metadata.sessionId!)).toBe(2);
 

@@ -279,7 +279,7 @@ function AppContent({
     sessionMode,
     inflightResponse,
     isMenuOpen,
-    clearNonce,
+    inputResetNonce,
     sessionHydrationNonce,
     modelOverride,
     cancelNotifyReadyForInput,
@@ -293,7 +293,7 @@ function AppContent({
       sessionMode: state.sessionMode,
       inflightResponse: state.inflightResponse,
       isMenuOpen: state.isMenuOpen,
-      clearNonce: state.clearNonce,
+      inputResetNonce: state.inputResetNonce,
       sessionHydrationNonce: state.sessionHydrationNonce,
       modelOverride: state.modelOverride,
       cancelNotifyReadyForInput: state.cancelNotifyReadyForInput,
@@ -381,7 +381,7 @@ function AppContent({
   useLayoutEffect(() => {
     scrollTranscriptToBottom();
   }, [
-    clearNonce,
+    inputResetNonce,
     history,
     inflightResponse?.content,
     inflightResponse?.reasoningContent,
@@ -471,7 +471,9 @@ function AppContent({
                             </TerminalFlex>
                             <TranscriptItemRenderer item={{ type: "slogan" }} />
                             <TerminalFlex
-                              key={clearNonce}
+                              // Rewinds only remove a suffix, so retain the virtualizer and its
+                              // measurements. A replacement session gets a fresh transcript.
+                              key={sessionHydrationNonce}
                               style={{
                                 flexDirection: "column",
                               }}
@@ -769,12 +771,12 @@ function useInputMode({
   vimEnabled,
   trajectoryMode,
   permissionUi,
-  clearNonce,
+  inputResetNonce,
 }: {
   vimEnabled: boolean;
   trajectoryMode: TrajectoryMode<typeof octoAgent>;
   permissionUi: PermissionUiState;
-  clearNonce: number;
+  inputResetNonce: number;
 }) {
   const inputAvailable = inputFieldAvailable(trajectoryMode, permissionUi);
   const [vimMode, setVimMode] = useState<VimMode>("INSERT");
@@ -782,7 +784,7 @@ function useInputMode({
   useEffect(() => {
     if (!vimEnabled) return;
     if (inputAvailable) setVimMode("INSERT");
-  }, [clearNonce, inputAvailable, vimEnabled]);
+  }, [inputResetNonce, inputAvailable, vimEnabled]);
 
   const inputMode: InputMode = vimEnabled
     ? { kind: "vim", mode: inputAvailable ? vimMode : "NORMAL" }
@@ -910,7 +912,7 @@ function BottomBarContent({
   const model = useModel();
   const { trajectoryMode, permissionUi } = liveMode;
   const {
-    clearNonce,
+    inputResetNonce,
     openMenu,
     query,
     setQuery,
@@ -920,7 +922,7 @@ function BottomBarContent({
     clearAttachedImages,
   } = useAppStore(
     useShallow(state => ({
-      clearNonce: state.clearNonce,
+      inputResetNonce: state.inputResetNonce,
       openMenu: state.openMenu,
       query: state.query,
       setQuery: state.setQuery,
@@ -935,7 +937,7 @@ function BottomBarContent({
     vimEnabled: !!config.vimEmulation?.enabled,
     trajectoryMode,
     permissionUi,
-    clearNonce,
+    inputResetNonce,
   });
 
   useCtrlC(() => {
