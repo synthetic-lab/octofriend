@@ -687,6 +687,7 @@ function BottomBar({
   }, [tempNotification]);
   const unchained = useUnchained();
   const queuedSteering = useAppStore(state => state.queuedSteering);
+  const isEditingMessage = useAppStore(state => state.pendingRewind != null);
   const showMenuHint = !isWorkingMode(liveMode.trajectoryMode, liveMode.permissionUi);
   const hudCollapsed = isHudCollapsed(liveMode);
   const hudLayout = useHudLayout(syntheticModels);
@@ -723,7 +724,11 @@ function BottomBar({
             justifyContent: "flex-end",
           }}
         >
-          {showMenuHint && <Span style={{ color: "gray" }}>(Ctrl+p to enter the menu)</Span>}
+          {(isEditingMessage || showMenuHint) && (
+            <Span style={{ color: "gray" }}>
+              {isEditingMessage ? "Press ESC to cancel edit." : "(Ctrl+p to enter the menu)"}
+            </Span>
+          )}
         </TerminalFlex>
       </TerminalFlex>
       <BottomBarContent
@@ -1119,7 +1124,6 @@ function BottomBarContent({
           modalities={model.modalities}
         />
       </InputDisabledProvider>
-      {pendingRewind != null && <Span style={{ color: "gray" }}>Press ESC to cancel edit.</Span>}
       <VimModeIndicator inputMode={inputMode} />
     </TerminalFlex>
   );
