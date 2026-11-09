@@ -200,7 +200,7 @@ export function useShortcutMenu<V>({ shortcutItems, actions, onSelect }: KbSelec
   }
 
   useKeyboard(event => {
-    if (event.ctrlKey) return;
+    if (event.defaultPrevented || event.ctrlKey) return;
     for (const item of items) {
       if (item.shortcut.toLowerCase() === event.key.toLowerCase()) {
         event.preventDefault();

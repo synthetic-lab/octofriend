@@ -13,8 +13,9 @@ interface Props {
   inputHistory: InputHistory;
   value: string;
   onChange: (s: string) => any;
+  draftNonce: number;
   attachedImages: ImageInfo[];
-  addAttachedImage: (image: ImageInfo) => void;
+  addAttachedImage: (image: ImageInfo, draftNonce: number) => void;
   removeLastAttachedImage: () => void;
   clearAttachedImages: () => void;
   onSubmit: (text: string, images: ImageInfo[]) => any;
@@ -51,7 +52,7 @@ export const MultimediaInput = (props: Props) => {
         try {
           const image = await loadImageFromPaintFile(file);
           const imageCheck = canDisplayImage(props.modalities, image);
-          if (imageCheck.ok) props.addAttachedImage(image);
+          if (imageCheck.ok) props.addAttachedImage(image, props.draftNonce);
           else setErrorMessages(prev => [...prev, imageCheck.reason]);
         } catch (error) {
           setErrorMessages(prev => [
@@ -63,12 +64,11 @@ export const MultimediaInput = (props: Props) => {
         }
       }
     },
-    [props.modalities, props.addAttachedImage],
+    [props.modalities, props.addAttachedImage, props.draftNonce],
   );
   const handleSubmit = useCallback(() => {
     if (props.value.trim() || props.attachedImages.length > 0) {
       props.onSubmit(props.value, props.attachedImages);
-      props.clearAttachedImages();
       setErrorMessages([]);
     }
   }, [props]);

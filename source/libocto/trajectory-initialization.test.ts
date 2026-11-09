@@ -365,6 +365,30 @@ describe("trajectory initialization", () => {
 });
 
 describe("prestart controls", () => {
+  it("interrupts a restored error after startup and accepts an edited message", async () => {
+    const { trajectory, calls, ready, rewinds } = fixture([user, requestError]);
+    const pending = step(trajectory);
+    const mode = trajectory.mode;
+    if (mode.mode !== "request-error") throw new Error("Expected request error");
+    await mode.control.interrupt();
+    expect(await pending).toBe(true);
+
+    const waiting = step(trajectory);
+    await ready.promise;
+    const current = trajectory.mode;
+    if (current.mode !== "ready-for-request") throw new Error("Expected input after interruption");
+    await current.control.rewindTo(user);
+    expect(rewinds[0]?.removed).toEqual([
+      user,
+      requestError,
+      expect.objectContaining({ role: "interrupted-by-user" }),
+    ]);
+    await current.control.enqueueSteering(text("edited task"));
+    expect(await waiting).toBe(true);
+    expect(trajectory.messages[0]).toEqual({ role: "user", content: text("edited task") });
+    expect(calls.filter(call => call === "compiler")).toHaveLength(1);
+  });
+
   for (const testCase of initialCases.filter(testCase => testCase.mode.endsWith("error"))) {
     it(`retains a prestart retry decision for ${testCase.name}`, async () => {
       const { trajectory, calls, commits } = fixture(testCase.messages());
@@ -447,8 +471,7 @@ describe("prestart controls", () => {
       const saved = JSON.stringify(messages);
       const { trajectory, calls, commits, interruptions } = fixture(messages);
       const mode = trajectory.mode;
-      if (!("control" in mode) || !("interrupt" in mode.control))
-        throw new Error("Expected interrupt");
+      if (!mode.control.running) throw new Error("Expected interrupt");
       await mode.control.enqueueSteering(text("queued"));
       await mode.control.interrupt();
       expect(interruptions).toEqual([{ droppedSteering: [text("queued")] }]);
