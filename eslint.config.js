@@ -219,14 +219,14 @@ export default tseslint.config(
     },
   },
   {
-    files: ["source/transports/**"],
+    files: ["source/transports/**", "source/libocto/transport.ts"],
     rules: {
       "no-restricted-imports": "off",
       "no-restricted-syntax": "off",
     },
   },
   {
-    files: ["source/logger.ts"],
+    files: ["source/logger.ts", "source/libocto/logger.ts"],
     rules: {
       "no-console": "off",
     },

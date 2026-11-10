@@ -1,12 +1,12 @@
 import { t } from "structural";
 import { TOOL, USER_ABORTED_ERROR_MESSAGE } from "../common.ts";
 import { ok, err } from "../../libocto/result.ts";
-import { MAX_SHELL_OUTPUT_MEMORY_LIMIT } from "../../transports/transport-common.ts";
+import { MAX_SHELL_OUTPUT_MEMORY_LIMIT } from "../../libocto/transport.ts";
 import {
   backgroundProcesses,
   type BackgroundProcess,
   type BackgroundProcessStatus,
-} from "../../background-process.ts";
+} from "../../libocto/background-process.ts";
 
 export default TOOL.declare({
   name: "manage-background-process",

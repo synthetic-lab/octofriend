@@ -1,6 +1,6 @@
 import { registry } from "antipattern";
 import type { t } from "structural";
-import type { Transport } from "../transports/transport-common.ts";
+import type { Transport } from "./transport.ts";
 import { err, ok, type Result } from "./result.ts";
 import { combineSignals } from "./signals.ts";
 import type {

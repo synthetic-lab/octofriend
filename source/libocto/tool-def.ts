@@ -1,5 +1,5 @@
 import { t } from "structural";
-import type { Transport } from "../transports/transport-common.ts";
+import type { Transport } from "./transport.ts";
 import { Result, ok } from "./result.ts";
 import type { BuiltinIRRole } from "./ir-roles.ts";
 import type { Content, UserMessage } from "./llm-ir.ts";

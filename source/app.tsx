@@ -90,7 +90,7 @@ import { displayLog } from "./logger.ts";
 import { CenteredBox } from "./components/centered-box.tsx";
 import { Hud, useHudTextOffset, useHudLayout } from "./components/hud.tsx";
 import { EnvironmentProvider } from "./environment.tsx";
-import { Transport } from "./transports/transport-common.ts";
+import { Transport } from "./libocto/transport.ts";
 import { TransportContext } from "./transport-context.ts";
 import { SessionContext } from "./session-context.ts";
 import { markUpdatesSeen } from "./update-notifs/update-notifs.ts";
@@ -101,7 +101,7 @@ import {
 } from "./components/exit-on-double-ctrl-c.tsx";
 import { InputHistory } from "./input-history/index.ts";
 import { MultimediaInput } from "./components/multimedia-input.tsx";
-import { ImageInfo } from "./utils/image-utils.ts";
+import { ImageInfo } from "./libocto/images.ts";
 import { Markdown } from "./markdown/index.tsx";
 import { LINE_SPLIT_REGEX, excerpt } from "./str.ts";
 import { VimModeIndicator } from "./components/vim-mode.tsx";

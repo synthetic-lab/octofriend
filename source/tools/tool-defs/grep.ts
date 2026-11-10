@@ -2,7 +2,7 @@ import { quote } from "shell-quote";
 import { t } from "structural";
 import { TOOL, USER_ABORTED_ERROR_MESSAGE } from "../common.ts";
 import { getModelFromConfig } from "../../config.ts";
-import { AbortError, CommandFailedError } from "../../transports/transport-common.ts";
+import { AbortError, CommandFailedError } from "../../libocto/transport.ts";
 import { estimateTokens } from "../../ir/count-ir-tokens.ts";
 import { ok, err } from "../../libocto/result.ts";
 

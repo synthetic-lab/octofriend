@@ -1,4 +1,4 @@
-import { ImageInfo } from "../utils/image-utils.ts";
+import { ImageInfo } from "../libocto/images.ts";
 import { CanDisplayImageResult } from "../providers.ts";
 import { imageAttachmentPlaceholderText } from "../libocto/compilers/ir-prompts.ts";
 

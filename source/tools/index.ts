@@ -1,6 +1,6 @@
 import toolMap from "./tool-defs/index.ts";
 import { Config } from "../config.ts";
-import { AbortError, Transport } from "../transports/transport-common.ts";
+import { AbortError, Transport } from "../libocto/transport.ts";
 import { err, ok, errorToString, type Result } from "../libocto/result.ts";
 import type { TrajectoryToolLoadError } from "../libocto/trajectory.ts";
 import {

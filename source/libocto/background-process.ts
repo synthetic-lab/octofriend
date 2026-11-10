@@ -1,7 +1,7 @@
-import type { TransportProcess } from "./transports/transport-process.ts";
+import type { TransportProcess } from "./transport.ts";
 import { registry } from "antipattern";
-import { sleep } from "./libocto/sleep.ts";
-import { ShellOutput } from "./transports/transport-common.ts";
+import { sleep } from "./sleep.ts";
+import { ShellOutput } from "./transport.ts";
 
 const KILL_GRACE_MS = 1000;
 

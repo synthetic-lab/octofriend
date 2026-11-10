@@ -2,7 +2,7 @@ import { t } from "structural";
 import { TOOL, USER_ABORTED_ERROR_MESSAGE } from "../common.ts";
 import { getModelFromConfig } from "../../config.ts";
 import { compile } from "html-to-text";
-import { AbortError } from "../../transports/transport-common.ts";
+import { AbortError } from "../../libocto/transport.ts";
 import { ok, err, toErrString } from "../../libocto/result.ts";
 
 const converter = compile({

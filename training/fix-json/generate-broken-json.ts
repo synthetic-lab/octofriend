@@ -3,11 +3,12 @@ import path from "path";
 import fs from "fs/promises";
 import json5 from "json5";
 import { fileURLToPath } from "url";
-import { fixJsonPrompt, JsonFixResponse } from "../../source/prompts/autofix-prompts.ts";
+import { fixJsonPrompt } from "../../source/prompts/autofix-prompts.ts";
+import type { JsonFixResponse } from "../../source/libocto/compilers/compiler-interface.ts";
 import { genDiffs } from "../generate-edits.ts";
 import { cutIndex, insertAt } from "../str.ts";
 import { randomIndex, pickRandom, zeroToN, percentChance, randomLowercase } from "../random.ts";
-import { tryexpr } from "../../source/tryexpr.ts";
+import { attemptSync } from "../../source/libocto/result.ts";
 import {
   parseJson, JSONASTNode, NullNode, NumberNode, StringNode, ArrayNode, ObjectNode, BooleanNode
 } from "./json-parser.ts";
@@ -154,9 +155,9 @@ async function* getSamplesForRepo(dirpath: string): AsyncGenerator<Sample> {
 
   for await(const sourceFile of getSourceFiles(dirpath)) {
     const file = await fs.readFile(sourceFile, "utf8");
-    const [ err, _ ] = tryexpr(() => JSON.parse(file));
+    const parsed = attemptSync("Invalid JSON", () => JSON.parse(file));
 
-    if(err == null) {
+    if(parsed.success) {
       yield randomlyBreak(file);
       continue;
     }
@@ -260,8 +261,7 @@ function breakStr(str: string) {
   const ast = parseJson(str);
 
   function isBroken() {
-    const [ err ] = tryexpr(() => JSON.parse(broken));
-    return err != null;
+    return !attemptSync("Invalid JSON", () => JSON.parse(broken)).success;
   }
 
   while(!isBroken()) {
@@ -485,8 +485,7 @@ function savePush<T>(arr: T[], item: T): T {
 }
 
 function stringBreak<T extends { broken: string }>(t: T): T | null {
-  const [ err ] = tryexpr(() => JSON.parse(t.broken));
-  if(err) return t;
+  if(!attemptSync("Invalid JSON", () => JSON.parse(t.broken)).success) return t;
   return null;
 }
 

@@ -1,8 +1,8 @@
-import { unwrap } from "./libocto/result.ts";
+import { unwrap } from "./result.ts";
 import { describe, expect, it } from "bun:test";
-import { MockTransport, MockTransportProcess } from "./transports/mock.ts";
-import { AbortError } from "./transports/transport-common.ts";
-import { LocalTransport } from "./transports/local.ts";
+import { MockTransport, MockTransportProcess } from "../transports/mock.ts";
+import { AbortError } from "./transport.ts";
+import { LocalTransport } from "../transports/local.ts";
 import { BackgroundProcessManager } from "./background-process.ts";
 import { mkdtemp, realpath, rm } from "fs/promises";
 import { tmpdir } from "os";

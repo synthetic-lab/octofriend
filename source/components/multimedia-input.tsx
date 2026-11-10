@@ -1,7 +1,8 @@
 import React, { useState, useEffect, useCallback } from "react";
 import { InputWithHistory } from "./input-with-history.tsx";
 import { InputHistory } from "../input-history/index.ts";
-import { ImageInfo, loadImageFromPaintFile } from "../utils/image-utils.ts";
+import type { ImageInfo } from "../libocto/images.ts";
+import { loadImageFromPaintFile } from "../utils/paint-image-utils.ts";
 import type { PaintFile } from "paintcannon";
 import { useCtrlC } from "./exit-on-double-ctrl-c.tsx";
 import { DEFAULT_MULTIMODAL_IMAGE_MODEL_EXAMPLE, canDisplayImage } from "../providers.ts";

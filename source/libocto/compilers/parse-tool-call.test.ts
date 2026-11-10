@@ -1,6 +1,8 @@
-import { describe, expect, it, mock } from "bun:test";
+import { describe, expect, it, jest, mock } from "bun:test";
 import { t } from "structural";
+import { withMock } from "antipattern";
 import { ok } from "../result.ts";
+import { logger } from "../logger.ts";
 import { parseToolCall } from "./parse-tool-call.ts";
 
 const ArgumentsSchema = t.subtype({
@@ -69,6 +71,67 @@ describe("parseToolCall", () => {
     }
   });
 
+  it("decodes double-encoded JSON arguments", async () => {
+    const parsed = await parseToolCall({
+      toolCall: {
+        toolCallId: "call-1",
+        toolName: "search",
+        args: JSON.stringify(JSON.stringify({ query: "double-encoded" })),
+      },
+      toolDefs: { search: searchTool() },
+      abortSignal: new AbortController().signal,
+      transport: {} as any,
+    });
+
+    expect(parsed.status).toBe("success");
+    if (parsed.status === "success") {
+      expect(parsed.tool.original).toEqual({ query: "double-encoded" });
+    }
+  });
+
+  it("decodes a double-encoded string returned by autofix", async () => {
+    const parsed = await parseToolCall({
+      toolCall: {
+        toolCallId: "call-1",
+        toolName: "search",
+        args: "{query:",
+      },
+      toolDefs: { search: searchTool() },
+      autofixJson: mock(async () => ({
+        success: true,
+        fixed: JSON.stringify({ query: "fixed-twice" }),
+      })),
+      abortSignal: new AbortController().signal,
+      transport: {} as any,
+    });
+
+    expect(parsed.status).toBe("success");
+    if (parsed.status === "success") {
+      expect(parsed.tool.original).toEqual({ query: "fixed-twice" });
+    }
+  });
+
+  it("retains an autofix string when its second decode fails", async () => {
+    const autofixJson = mock(async () => ({ success: true, fixed: "still not JSON" }));
+    const parsed = await parseToolCall({
+      toolCall: {
+        toolCallId: "call-1",
+        toolName: "search",
+        args: "{query:",
+      },
+      toolDefs: { search: searchTool() },
+      autofixJson,
+      abortSignal: new AbortController().signal,
+      transport: {} as any,
+    });
+
+    expect(autofixJson).toHaveBeenCalledTimes(1);
+    expect(parsed.status).toBe("error");
+    if (parsed.status === "error") {
+      expect(parsed.message).toContain("Failed to parse tool call");
+    }
+  });
+
   it("reports invalid JSON when no autofix function is provided", async () => {
     const parsed = await parseToolCall({
       toolCall: {
@@ -103,6 +166,69 @@ describe("parseToolCall", () => {
     expect(parsed.status).toBe("error");
     if (parsed.status === "error") {
       expect(parsed.message).toContain("Unknown tool missing");
+    }
+  });
+
+  it("reports parser exceptions through the registry logger", async () => {
+    const thrown = new Error("parser exploded");
+    const toolCall = {
+      toolCallId: "call-1",
+      toolName: "search",
+      args: JSON.stringify({ query: "needle" }),
+    };
+    const log = { verbose: mock(), info: mock(), warn: mock(), error: mock() };
+
+    await withMock(logger, "log", log, async () => {
+      const parsed = await parseToolCall({
+        toolCall,
+        toolDefs: {
+          search: {
+            ...searchTool(),
+            parse: async () => {
+              throw thrown;
+            },
+          },
+        },
+        abortSignal: new AbortController().signal,
+        transport: {} as any,
+      });
+
+      expect(parsed.status).toBe("error");
+      expect(log.error.mock.calls).toEqual([[thrown], [toolCall]]);
+      expect(log.verbose).not.toHaveBeenCalled();
+      expect(log.info).not.toHaveBeenCalled();
+      expect(log.warn).not.toHaveBeenCalled();
+    });
+  });
+
+  it("defaults parser exception logging to console.error", async () => {
+    const thrown = new Error("parser exploded");
+    const toolCall = {
+      toolCallId: "call-1",
+      toolName: "search",
+      args: JSON.stringify({ query: "needle" }),
+    };
+    const stderr = jest.spyOn(console, "error").mockImplementation(() => {});
+
+    try {
+      const parsed = await parseToolCall({
+        toolCall,
+        toolDefs: {
+          search: {
+            ...searchTool(),
+            parse: async () => {
+              throw thrown;
+            },
+          },
+        },
+        abortSignal: new AbortController().signal,
+        transport: {} as any,
+      });
+
+      expect(parsed.status).toBe("error");
+      expect(stderr.mock.calls).toEqual([[thrown], [toolCall]]);
+    } finally {
+      stderr.mockRestore();
     }
   });
 });

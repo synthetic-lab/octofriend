@@ -2,7 +2,7 @@ import { describe, expect, it } from "bun:test";
 import { MockTransport } from "../../transports/mock.ts";
 import OpenAI from "openai";
 import { octoAgent } from "../../ir/octo-ir.ts";
-import type { Transport } from "../../transports/transport-common.ts";
+import type { Transport } from "../transport.ts";
 import { runResponsesAgent, toResponseInput } from "./responses.ts";
 import {
   normalizeOpenAIStrictFunctionArguments,

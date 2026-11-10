@@ -9,7 +9,7 @@ import {
   createPollingFileWatcher,
   type FsWatcher,
   type BackgroundShellOptions,
-} from "./transport-common.ts";
+} from "../libocto/transport.ts";
 import { processes } from "../process-manager.ts";
 import { err, errorToString, ok, type Result } from "../libocto/result.ts";
 import {
@@ -18,7 +18,7 @@ import {
   type ProcessSpawnOptions,
   type ProcessExecFileOptions,
   type ProcessExecFileCallback,
-} from "./transport-process.ts";
+} from "../libocto/transport.ts";
 
 const KILL_GRACE_MS = 500;
 

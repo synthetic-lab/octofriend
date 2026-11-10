@@ -15,7 +15,7 @@ import { KbShortcutPanel } from "./kb-select/kb-shortcut-panel.tsx";
 import { Item, Keymap } from "./kb-select/kb-shortcut-select.tsx";
 import { router, Back } from "../router.tsx";
 import { providerForBaseUrl, SYNTHETIC_PROVIDER, CODEX_PROVIDER } from "../providers.ts";
-import * as logger from "../logger.ts";
+import { logger } from "../libocto/logger.ts";
 import { parse } from "shell-quote";
 import { getDefaultOpenaiClient } from "../compilers/openai.ts";
 import {
@@ -1311,7 +1311,7 @@ async function testConnection(
       metadata,
     };
   } catch (e) {
-    if (!signal.aborted) logger.error("verbose", e);
+    if (!signal.aborted) logger.log.verbose(e);
     return {
       valid: false,
     };

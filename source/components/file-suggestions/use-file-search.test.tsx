@@ -5,7 +5,7 @@ import { mock as registryMock } from "antipattern";
 import { keyboardDeps } from "../../hooks/use-keyboard.ts";
 import { TransportContext } from "../../transport-context.ts";
 import { MockTransport } from "../../transports/mock.ts";
-import { AbortError, CommandFailedError } from "../../transports/transport-common.ts";
+import { AbortError, CommandFailedError } from "../../libocto/transport.ts";
 import { ok } from "../../libocto/result.ts";
 import { useFileSearch } from "./use-file-search.ts";
 

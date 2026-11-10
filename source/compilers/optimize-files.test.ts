@@ -1,7 +1,7 @@
 import { describe, expect, it } from "bun:test";
 import type { ToolCall } from "../libocto/tool-def.ts";
 import type toolMap from "../tools/tool-defs/index.ts";
-import { ImageInfo } from "../utils/image-utils.ts";
+import { ImageInfo } from "../libocto/images.ts";
 import { optimizeFiles } from "./optimize-files.ts";
 
 type FileToolCallRequest = Extract<
