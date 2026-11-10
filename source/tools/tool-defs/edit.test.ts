@@ -14,7 +14,8 @@ async function createEditTool(transport: Transport) {
   const tool = await editToolFactory({
     signal: new AbortController().signal,
     transport,
-    data: {} as never,
+    model: { contextWindow: 100_000 },
+    data: {},
   });
   if (!tool) {
     throw new Error("edit tool did not load");
@@ -61,7 +62,8 @@ describe("edit tool", () => {
       signal,
       transport,
       toolCall: editToolCall({ filePath, search: "old", replace: "new" }),
-      data: { yourName: "Test", models: [] },
+      model: { contextWindow: 100_000 },
+      data: {},
     });
     expect(result).toEqual(
       stage === "resolvePath"
@@ -92,8 +94,14 @@ describe("edit tool", () => {
       });
       const result =
         operation === "validate"
-          ? await tool.validate(signal, transport, toolCall, { yourName: "Test", models: [] })
-          : await tool.run({ signal, transport, toolCall, data: { yourName: "Test", models: [] } });
+          ? await tool.validate(signal, transport, toolCall, {})
+          : await tool.run({
+              signal,
+              transport,
+              model: { contextWindow: 100_000 },
+              toolCall,
+              data: {},
+            });
       expect(result).toEqual(
         err("Could not resolve path missing-search.txt: Docker path resolution failed"),
       );
@@ -125,7 +133,8 @@ describe("edit tool", () => {
       signal: controller.signal,
       transport,
       toolCall: editToolCall({ filePath: "cancel-edit.txt", search: "old", replace: "new" }),
-      data: { yourName: "Test", models: [] },
+      model: { contextWindow: 100_000 },
+      data: {},
     });
     await writing;
     controller.abort();
@@ -157,7 +166,8 @@ describe("edit tool", () => {
           search: "two",
           replace: "TWO",
         }),
-        data: {} as never,
+        model: { contextWindow: 100_000 },
+        data: {},
       }),
     );
 
@@ -192,7 +202,8 @@ describe("edit tool", () => {
         search: "missing text",
         replace: "replacement",
       }),
-      data: {} as never,
+      model: { contextWindow: 100_000 },
+      data: {},
     });
 
     expect(freshResult.success).toBe(false);
@@ -211,7 +222,8 @@ describe("edit tool", () => {
         search: "before edit",
         replace: "replacement",
       }),
-      data: {} as never,
+      model: { contextWindow: 100_000 },
+      data: {},
     });
 
     expect(staleResult.success).toBe(false);

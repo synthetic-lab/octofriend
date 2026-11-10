@@ -1,7 +1,7 @@
 import { t } from "structural";
 import { fileTracker } from "./file-tracker.ts";
 import { LspClient } from "../lsp/client.ts";
-import type { Config } from "../config.ts";
+import type { LspToolData } from "./tool-data.ts";
 import type { Transport } from "../libocto/transport.ts";
 import { getLspClientForFile } from "../lsp/detect.ts";
 import { Result, ok, err } from "../libocto/result.ts";
@@ -33,10 +33,10 @@ const NO_LSP_SERVER_MESSAGE =
 export async function bootstrapLspClient(
   abortSignal: AbortSignal,
   transport: Transport,
-  config: Config,
+  data: LspToolData,
   filePath: string,
 ): Promise<Result<LspClient | null, string>> {
-  return getLspClientForFile(abortSignal, transport.cwd, config, filePath, transport);
+  return getLspClientForFile(abortSignal, transport.cwd, data, filePath, transport);
 }
 
 export async function withLspFile<R>(
@@ -57,7 +57,7 @@ export async function withLspFile<R>(
 export async function runLspPositionQuery<R>(
   abortSignal: AbortSignal,
   transport: Transport,
-  config: Config,
+  data: LspToolData,
   args: LspPositionArgs,
   toolName: string,
   queryFn: (
@@ -72,7 +72,7 @@ export async function runLspPositionQuery<R>(
   const resolvedPath = await transport.resolvePath(abortSignal, filePath);
   if (!resolvedPath.success) return resolvedPath;
 
-  const boot = await bootstrapLspClient(abortSignal, transport, config, resolvedPath.data);
+  const boot = await bootstrapLspClient(abortSignal, transport, data, resolvedPath.data);
   if (!boot.success) return boot;
   if (boot.data == null) return ok({ content: NO_LSP_SERVER_MESSAGE });
 
@@ -87,7 +87,7 @@ export async function runLspPositionQuery<R>(
 export async function runLspFileQuery<R>(
   abortSignal: AbortSignal,
   transport: Transport,
-  config: Config,
+  data: LspToolData,
   args: LspFileOnlyArgs,
   toolName: string,
   queryFn: (client: LspClient, filePath: string) => Promise<Result<R, string>>,
@@ -97,7 +97,7 @@ export async function runLspFileQuery<R>(
   const resolvedPath = await transport.resolvePath(abortSignal, filePath);
   if (!resolvedPath.success) return resolvedPath;
 
-  const boot = await bootstrapLspClient(abortSignal, transport, config, resolvedPath.data);
+  const boot = await bootstrapLspClient(abortSignal, transport, data, resolvedPath.data);
   if (!boot.success) return boot;
   if (boot.data == null) return ok({ content: NO_LSP_SERVER_MESSAGE });
 

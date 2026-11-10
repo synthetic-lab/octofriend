@@ -4,7 +4,7 @@ import type { Transport } from "../libocto/transport.ts";
 import { ok, type Result } from "../libocto/result.ts";
 import { RecommendedLspServers } from "./lsp-server-registry.ts";
 import { InstalledLspConfig, LspClient, getOrStartLspClient } from "./client.ts";
-import { Config } from "../config.ts";
+import type { LspToolData } from "../tools/tool-data.ts";
 
 let cachedCustomLspConfig: Record<string, InstalledLspConfig> | null = null;
 
@@ -19,28 +19,27 @@ export async function isCommandExecutable(
   return result.success;
 }
 
-export function isLspGloballyDisabled(config: Config): boolean {
-  return config.lsp === false;
+export function isLspGloballyDisabled(data: LspToolData): boolean {
+  return data.lsp.disabled === true;
 }
 
-export function isLspDisabledByUser(serverName: string, config: Config): boolean {
-  if (isLspGloballyDisabled(config)) return true;
-  if (!config.lsp) return false;
-  const entry = config.lsp[serverName];
+export function isLspDisabledByUser(serverName: string, data: LspToolData): boolean {
+  if (isLspGloballyDisabled(data)) return true;
+  const entry = data.lsp.config[serverName];
   return entry != null && "disabled" in entry;
 }
 
 async function ensureUsableLspsPopulated(
   signal: AbortSignal,
   cwd: string,
-  config: Config,
+  data: LspToolData,
   transport: Transport,
 ): Promise<Record<string, InstalledLspConfig>> {
   if (usableLspsPerExtension != null) return usableLspsPerExtension;
 
   const tempUsableLspsPerExtension: Record<string, InstalledLspConfig> = {};
   if (cachedCustomLspConfig == null) {
-    cachedCustomLspConfig = await loadCustomLspConfig(config);
+    cachedCustomLspConfig = await loadCustomLspConfig(data);
   }
 
   const customServers = Object.values(cachedCustomLspConfig);
@@ -55,7 +54,7 @@ async function ensureUsableLspsPopulated(
   // Custom configured servers override Octo's recommended servers
   const lspServers = [...recommendedServers, ...customServers];
   for (const server of lspServers) {
-    if (await isLspUsableInProject(signal, server, config, transport)) {
+    if (await isLspUsableInProject(signal, server, data, transport)) {
       server.extensions.forEach(extension => {
         tempUsableLspsPerExtension[extension] = server;
       });
@@ -73,11 +72,11 @@ async function ensureUsableLspsPopulated(
 export async function getUsableLspForExtension(
   signal: AbortSignal,
   cwd: string,
-  config: Config,
+  data: LspToolData,
   extension: string,
   transport: Transport,
 ): Promise<InstalledLspConfig | null> {
-  const usableLsps = await ensureUsableLspsPopulated(signal, cwd, config, transport);
+  const usableLsps = await ensureUsableLspsPopulated(signal, cwd, data, transport);
   return usableLsps[extension] ?? null;
 }
 
@@ -87,19 +86,19 @@ export async function getUsableLspForExtension(
 export async function getUsableLspExtensions(
   signal: AbortSignal,
   cwd: string,
-  config: Config,
+  data: LspToolData,
   transport: Transport,
 ): Promise<Set<string>> {
-  const usableLsps = await ensureUsableLspsPopulated(signal, cwd, config, transport);
+  const usableLsps = await ensureUsableLspsPopulated(signal, cwd, data, transport);
   return new Set(Object.keys(usableLsps));
 }
 
 export async function loadCustomLspConfig(
-  appConfig: Config,
+  data: LspToolData,
 ): Promise<Record<string, InstalledLspConfig>> {
   cachedCustomLspConfig = {};
-  if (isLspGloballyDisabled(appConfig) || !appConfig.lsp) return {};
-  for (const [name, entry] of Object.entries(appConfig.lsp)) {
+  if (isLspGloballyDisabled(data)) return {};
+  for (const [name, entry] of Object.entries(data.lsp.config)) {
     if ("disabled" in entry) continue;
     cachedCustomLspConfig[name] = {
       serverName: name,
@@ -120,10 +119,10 @@ export async function detectLspServerForFile(
   signal: AbortSignal,
   cwd: string,
   filePath: string,
-  config: Config,
+  data: LspToolData,
   transport: Transport,
 ): Promise<Result<LspServerResult, string>> {
-  if (isLspGloballyDisabled(config)) {
+  if (isLspGloballyDisabled(data)) {
     return ok({ status: "all-disabled" });
   }
   const extension = path.extname(filePath).toLowerCase();
@@ -131,7 +130,7 @@ export async function detectLspServerForFile(
     return ok({ status: "no-server" });
   }
 
-  const installedLsp = await getUsableLspForExtension(signal, cwd, config, extension, transport);
+  const installedLsp = await getUsableLspForExtension(signal, cwd, data, extension, transport);
 
   if (installedLsp) {
     const rootPath = await findNearestRoot(
@@ -175,26 +174,26 @@ async function findNearestRoot(
 async function isLspUsableInProject(
   signal: AbortSignal,
   server: InstalledLspConfig,
-  config: Config,
+  data: LspToolData,
   transport: Transport,
 ): Promise<boolean> {
-  if (isLspGloballyDisabled(config)) {
+  if (isLspGloballyDisabled(data)) {
     return false;
   }
 
   const executable = server.command[0];
-  const isLspDisabled = isLspDisabledByUser(server.serverName, config);
+  const isLspDisabled = isLspDisabledByUser(server.serverName, data);
   return !isLspDisabled && (await isCommandExecutable(signal, executable, transport));
 }
 
 export async function getLspClientForFile(
   signal: AbortSignal,
   cwd: string,
-  config: Config,
+  data: LspToolData,
   filePath: string,
   transport: Transport,
 ): Promise<Result<LspClient | null, string>> {
-  const lspServerResult = await detectLspServerForFile(signal, cwd, filePath, config, transport);
+  const lspServerResult = await detectLspServerForFile(signal, cwd, filePath, data, transport);
   if (!lspServerResult.success) return lspServerResult;
   if (lspServerResult.data.status === "found") {
     const { lspConfig, rootPath } = lspServerResult.data;

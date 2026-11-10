@@ -174,9 +174,10 @@ function fixture(messages: TestIR[], exit = new AbortController()) {
       calls.push("model");
       return ok({ model: null, contextWindow: 100_000, modalities: null });
     },
-    loadTools: async signal => {
+    loadTools: async (signal, model) => {
+      expect(calls.at(-1)).toBe("model");
       calls.push("loadTools");
-      const work = await workTool({ signal, transport, data: { calls } });
+      const work = await workTool({ signal, transport, model, data: { calls } });
       if (work == null) throw new Error("Could not load test tool");
       return ok({ work });
     },

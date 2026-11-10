@@ -1,8 +1,7 @@
-import type { Config } from "../config.ts";
 import { Transport } from "../libocto/transport.ts";
 import { ImageInfo } from "../libocto/images.ts";
 import { err, Result, ok } from "../libocto/result.ts";
-import { TOOL_BUILDER, ToolCall } from "../libocto/tool-def.ts";
+import { ToolCall } from "../libocto/tool-def.ts";
 
 export const USER_ABORTED_ERROR_MESSAGE = "Aborted by user";
 export const FILE_OUTDATED_ERROR_MESSAGE =
@@ -60,8 +59,6 @@ export type FileMutateIR<T extends ToolCall<any>> = {
   toolCall: T;
   path: string;
 };
-
-export const TOOL = TOOL_BUILDER.withData<Config>();
 
 export function fileReadIR<T extends ToolCall<any> & { parsed: { filePath: string } }>(
   toolCall: T,

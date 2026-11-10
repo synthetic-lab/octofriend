@@ -46,6 +46,7 @@ import { subagentPrompt, userInterruptReason } from "./compilers/ir-prompts.ts";
 import type { LoadedTools, ToolCall, ToolExtensionIR, ToolReturn } from "./tool-def.ts";
 import { combineSignals } from "./signals.ts";
 import { Input } from "./input.ts";
+import type { ExecutionModel } from "./execution.ts";
 import { err, ok, type Result } from "./result.ts";
 import { OwnershipLock, type OwnershipLockRef } from "./ownership-lock.ts";
 import { waitForPermissionDecision, type PermissionGate } from "./permissions.ts";
@@ -380,6 +381,7 @@ export type TrajectoryParams<A extends Agent<any, any, any, any>, Model> = Omit<
   // filters each arc's subset from the merged map as it drives that arc's agent.
   loadTools: (
     signal: AbortSignal,
+    model: ExecutionModel,
   ) => Promise<Result<Partial<AllToolsAcrossTree<A>>, TrajectoryToolLoadError>>;
   // The client's extension pass handles non-trajectory IR from every agent in the tree.
   // Libocto sends contiguous runs to this callback and handles trajectories and recursion
@@ -873,7 +875,7 @@ export class Trajectory<A extends Agent<any, any, any, any>, Model> {
 
   private async runAssistantRequest(
     location: ActiveHistory<A>,
-    { model, tools: allTools, modalities }: RuntimeData<A, Model>,
+    { model, contextWindow, tools: allTools, modalities }: RuntimeData<A, Model>,
   ): Promise<Result<Array<TreeIR<A>>, "quit">> {
     const params = this.params;
     const scope = this.scope(location);
@@ -896,6 +898,7 @@ export class Trajectory<A extends Agent<any, any, any, any>, Model> {
           agent.systemPrompt({
             signal,
             transport: params.transport,
+            model: { contextWindow },
             data: (await params.getData()) as Parameters<B["systemPrompt"]>[0]["data"],
           }),
         transport: params.transport,
@@ -1130,11 +1133,11 @@ export class Trajectory<A extends Agent<any, any, any, any>, Model> {
     location: ActiveHistory<A>,
     signal: AbortSignal,
   ): Promise<Result<RuntimeData<A, Model>, TrajectoryModelError | TrajectoryToolLoadError>> {
-    const [modelResult, toolsResult] = await Promise.all([
-      this.params.model(location.root ? null : location.invocation),
-      this.params.loadTools(signal),
-    ]);
+    const modelResult = await this.params.model(location.root ? null : location.invocation);
     if (!modelResult.success) return modelResult;
+    const toolsResult = await this.params.loadTools(signal, {
+      contextWindow: modelResult.data.contextWindow,
+    });
     if (!toolsResult.success) return toolsResult;
     return ok({ ...modelResult.data, tools: toolsResult.data });
   }
@@ -1345,6 +1348,7 @@ export class Trajectory<A extends Agent<any, any, any, any>, Model> {
     const output: Result<ToolReturn<string, ToolExtensionIR<any>>, string> = await def.run({
       signal,
       transport: this.params.transport,
+      model: { contextWindow },
       toolCall: {
         toolCallId: toolCall.toolCallId,
         original: { name: toolCall.name, arguments: toolCall.original },

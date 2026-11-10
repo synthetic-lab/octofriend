@@ -1,9 +1,9 @@
 import { t } from "structural";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
-import { TOOL, USER_ABORTED_ERROR_MESSAGE } from "../common.ts";
-import { Config } from "../../config.ts";
-import { getModelFromConfig } from "../../config.ts";
+import { USER_ABORTED_ERROR_MESSAGE } from "../common.ts";
+import { TOOL_BUILDER } from "../../libocto/tool-def.ts";
+import type { McpToolData } from "../tool-data.ts";
 import { Result, ok, err } from "../../libocto/result.ts";
 import { logger } from "../../libocto/logger.ts";
 
@@ -50,14 +50,14 @@ const clientCache = new Map<string, Client>();
 
 export async function getMcpClient(
   serverName: string,
-  config: Config,
+  mcpServers: McpToolData["mcpServers"],
 ): Promise<Result<Client, string>> {
   // Check cache first
   if (clientCache.has(serverName)) {
     return ok(clientCache.get(serverName)!);
   }
 
-  const result = await connectMcpServer(serverName, config);
+  const result = await connectMcpServer(serverName, mcpServers);
   if (!result.success) return result;
 
   const client = result.data;
@@ -68,10 +68,10 @@ export async function getMcpClient(
 
 export async function connectMcpServer(
   serverName: string,
-  config: Config,
+  mcpServers: McpToolData["mcpServers"],
   log: boolean = false,
 ): Promise<Result<Client, string>> {
-  const serverConfig = config.mcpServers?.[serverName];
+  const serverConfig = mcpServers?.[serverName];
 
   if (!serverConfig) {
     return err(`MCP server "${serverName}" not found in config. Please add it to mcpServers.`);
@@ -121,135 +121,136 @@ export async function shutdownMcpClients(): Promise<void> {
   }
 }
 
-export default TOOL.declare({
-  name: "mcp",
-  description: `
+export default TOOL_BUILDER.withData<McpToolData>()
+  .declare({
+    name: "mcp",
+    description: `
 Interact with Model Context Protocol (MCP) servers to access external tools and resources.
 
 MCP servers provide specialized tools like filesystem access, database queries, web scraping,
 or integration with external services. Each server runs as a separate process and exposes
 tools that can be called with specific arguments.
 `.trim(),
-  ArgumentsSchema: t.subtype({
-    server: t.str.comment("Name of the MCP server to use"),
-    tool: t.str.comment("Name of the tool to call"),
-    arguments: t.optional(t.dict(t.str)),
-  }),
-}).define(async ({ data }) => {
-  const hasMcp = data.mcpServers != null && Object.keys(data.mcpServers).length > 0;
-  if (!hasMcp) return null;
+    ArgumentsSchema: t.subtype({
+      server: t.str.comment("Name of the MCP server to use"),
+      tool: t.str.comment("Name of the tool to call"),
+      arguments: t.optional(t.dict(t.str)),
+    }),
+  })
+  .define(async ({ data }) => {
+    const hasMcp = data.mcpServers != null && Object.keys(data.mcpServers).length > 0;
+    if (!hasMcp) return null;
 
-  return {
-    async run({ signal, toolCall, data }) {
-      const {
-        server: serverName,
-        tool: toolName,
-        arguments: toolArgs = {},
-      } = toolCall.parsed.arguments;
+    return {
+      async run({ signal, toolCall, model, data }) {
+        const {
+          server: serverName,
+          tool: toolName,
+          arguments: toolArgs = {},
+        } = toolCall.parsed.arguments;
 
-      // Helper to race any promise against the abort signal
-      const withAbort = async <T>(p: Promise<T>): Promise<Result<T, string>> => {
-        if (signal.aborted) return err(USER_ABORTED_ERROR_MESSAGE);
-        try {
-          const value = await new Promise<Result<T, string>>((resolve, reject) => {
-            const onAbort = () => {
-              signal.removeEventListener("abort", onAbort);
-              reject(new Error(USER_ABORTED_ERROR_MESSAGE));
-            };
-            signal.addEventListener("abort", onAbort);
-            p.then(
-              v => {
-                signal.removeEventListener("abort", onAbort);
-                resolve(ok(v));
-              },
-              e => {
-                signal.removeEventListener("abort", onAbort);
-                reject(e);
-              },
-            );
-          });
-          return value;
-        } catch (error) {
+        // Helper to race any promise against the abort signal
+        const withAbort = async <T>(p: Promise<T>): Promise<Result<T, string>> => {
           if (signal.aborted) return err(USER_ABORTED_ERROR_MESSAGE);
-          return err(`MCP error: ${error instanceof Error ? error.message : String(error)}`);
-        }
-      };
+          try {
+            const value = await new Promise<Result<T, string>>((resolve, reject) => {
+              const onAbort = () => {
+                signal.removeEventListener("abort", onAbort);
+                reject(new Error(USER_ABORTED_ERROR_MESSAGE));
+              };
+              signal.addEventListener("abort", onAbort);
+              p.then(
+                v => {
+                  signal.removeEventListener("abort", onAbort);
+                  resolve(ok(v));
+                },
+                e => {
+                  signal.removeEventListener("abort", onAbort);
+                  reject(e);
+                },
+              );
+            });
+            return value;
+          } catch (error) {
+            if (signal.aborted) return err(USER_ABORTED_ERROR_MESSAGE);
+            return err(`MCP error: ${error instanceof Error ? error.message : String(error)}`);
+          }
+        };
 
-      const client = (await withAbort(getMcpClient(serverName, data))).flatten();
-      if (!client.success) return client;
+        const client = (await withAbort(getMcpClient(serverName, data.mcpServers))).flatten();
+        if (!client.success) return client;
 
-      // List available tools to check if the requested tool exists
-      const tools = await withAbort(client.data.listTools());
-      if (!tools.success) return tools;
-      const tool = tools.data.tools.find(t => t.name === toolName);
+        // List available tools to check if the requested tool exists
+        const tools = await withAbort(client.data.listTools());
+        if (!tools.success) return tools;
+        const tool = tools.data.tools.find(t => t.name === toolName);
 
-      if (!tool) {
-        const availableTools = tools.data.tools.map(t => t.name).join(", ");
-        return err(
-          `Tool "${toolName}" not found in MCP server "${serverName}". Available tools: ${availableTools}`,
-        );
-      }
-
-      // Call the tool (cannot truly cancel, but we can ignore result post-abort)
-      const mcpResult = await withAbort(
-        client.data.callTool({
-          name: toolName,
-          arguments: toolArgs,
-        }) as Promise<MCPResult>,
-      );
-      if (!mcpResult.success) return mcpResult;
-
-      // Worst case, the response sizes will be one token per byte. Cap responses to the context
-      // length
-      const model = getModelFromConfig(data, null);
-      const MAX_SIZE = model.context;
-
-      for (const content of mcpResult.data.content) {
-        if (content.type === "text" && content.text.length > MAX_SIZE) {
+        if (!tool) {
+          const availableTools = tools.data.tools.map(t => t.name).join(", ");
           return err(
-            `Text content too large: ${content.text.length} bytes (max: ${MAX_SIZE} bytes)`,
+            `Tool "${toolName}" not found in MCP server "${serverName}". Available tools: ${availableTools}`,
           );
         }
-        if (content.type === "resource") {
-          if ("text" in content.resource && content.resource.text.length > MAX_SIZE) {
+
+        // Call the tool (cannot truly cancel, but we can ignore result post-abort)
+        const mcpResult = await withAbort(
+          client.data.callTool({
+            name: toolName,
+            arguments: toolArgs,
+          }) as Promise<MCPResult>,
+        );
+        if (!mcpResult.success) return mcpResult;
+
+        // Worst case, the response sizes will be one token per byte. Cap responses to the context
+        // length
+        const MAX_SIZE = model.contextWindow;
+
+        for (const content of mcpResult.data.content) {
+          if (content.type === "text" && content.text.length > MAX_SIZE) {
             return err(
-              `Resource text content too large: ${content.resource.text.length} bytes (max: ${MAX_SIZE} bytes)`,
+              `Text content too large: ${content.text.length} bytes (max: ${MAX_SIZE} bytes)`,
             );
           }
-        }
-      }
-
-      // Format the result
-      let output = "";
-      for (const content of mcpResult.data.content) {
-        if (content.type === "text") {
-          output += content.text + "\n";
-        } else if (content.type === "image") {
-          output += `[Image: ${content.mimeType}, ${content.data.length} bytes]\n`;
-        } else if (content.type === "audio") {
-          output += `[Audio: ${content.mimeType}, ${content.data.length} bytes]\n`;
-        } else if (content.type === "resource_link") {
-          output += `[Resource Link: ${content.uri}`;
-          if (content.mimeType) {
-            output += ` (${content.mimeType})`;
-          }
-          output += `]\n`;
-        } else if (content.type === "resource") {
-          const resource = content.resource;
-          if ("text" in resource) {
-            output += `[Resource: ${resource.uri}]\n${resource.text}\n`;
-          } else {
-            // blob variant
-            output += `[Resource: ${resource.uri} (${resource.mimeType || "application/octet-stream"})]\n`;
-            output += `[Binary data: ${resource.blob.length} bytes]\n`;
+          if (content.type === "resource") {
+            if ("text" in content.resource && content.resource.text.length > MAX_SIZE) {
+              return err(
+                `Resource text content too large: ${content.resource.text.length} bytes (max: ${MAX_SIZE} bytes)`,
+              );
+            }
           }
         }
-      }
 
-      return ok({
-        type: "output",
-        content: [{ type: "text", content: output.trim() }],
-      });
-    },
-  };
-});
+        // Format the result
+        let output = "";
+        for (const content of mcpResult.data.content) {
+          if (content.type === "text") {
+            output += content.text + "\n";
+          } else if (content.type === "image") {
+            output += `[Image: ${content.mimeType}, ${content.data.length} bytes]\n`;
+          } else if (content.type === "audio") {
+            output += `[Audio: ${content.mimeType}, ${content.data.length} bytes]\n`;
+          } else if (content.type === "resource_link") {
+            output += `[Resource Link: ${content.uri}`;
+            if (content.mimeType) {
+              output += ` (${content.mimeType})`;
+            }
+            output += `]\n`;
+          } else if (content.type === "resource") {
+            const resource = content.resource;
+            if ("text" in resource) {
+              output += `[Resource: ${resource.uri}]\n${resource.text}\n`;
+            } else {
+              // blob variant
+              output += `[Resource: ${resource.uri} (${resource.mimeType || "application/octet-stream"})]\n`;
+              output += `[Binary data: ${resource.blob.length} bytes]\n`;
+            }
+          }
+        }
+
+        return ok({
+          type: "output",
+          content: [{ type: "text", content: output.trim() }],
+        });
+      },
+    };
+  });

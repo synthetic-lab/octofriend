@@ -4,12 +4,14 @@ import { fileTracker } from "../file-tracker.ts";
 import { err, ok, unwrap } from "../../libocto/result.ts";
 import { MockTransport } from "../../transports/mock.ts";
 
-const config = { yourName: "Test", models: [] };
+const config = {};
+const model = { contextWindow: 100_000 };
 
 async function createRewriteTool(transport: MockTransport) {
   const tool = await rewriteToolFactory({
     signal: new AbortController().signal,
     transport,
+    model,
     data: config,
   });
   if (tool == null) throw new Error("rewrite tool did not load");
@@ -52,6 +54,7 @@ describe("rewrite tool", () => {
     const result = await tool.run({
       signal,
       transport,
+      model,
       toolCall: rewriteToolCall(filePath),
       data: config,
     });
@@ -90,6 +93,7 @@ describe("rewrite tool", () => {
     const result = tool.run({
       signal: controller.signal,
       transport,
+      model,
       toolCall: rewriteToolCall("cancel-rewrite.txt"),
       data: config,
     });
@@ -109,6 +113,7 @@ describe("rewrite tool", () => {
     const result = await tool.run({
       signal,
       transport,
+      model,
       toolCall: rewriteToolCall("rewrite-success.txt"),
       data: config,
     });

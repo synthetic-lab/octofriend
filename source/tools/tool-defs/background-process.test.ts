@@ -8,7 +8,12 @@ import manageBackgroundProcessTool from "./manage-background-process.ts";
 
 async function createTools(controller: AbortController) {
   const transport = new MockTransport({});
-  const context = { signal: controller.signal, transport, data: {} as never };
+  const context = {
+    signal: controller.signal,
+    transport,
+    model: { contextWindow: 100_000 },
+    data: {},
+  };
   const start = await backgroundProcessTool(context);
   const manage = await manageBackgroundProcessTool(context);
   if (!start || !manage) throw new Error("Background process tools did not load");

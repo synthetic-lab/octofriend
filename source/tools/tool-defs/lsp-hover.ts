@@ -1,5 +1,6 @@
 import { t } from "structural";
-import { TOOL } from "../common.ts";
+import { TOOL_BUILDER } from "../../libocto/tool-def.ts";
+import type { LspToolData } from "../tool-data.ts";
 import { ok } from "../../libocto/result.ts";
 import {
   runLspPositionQuery,
@@ -9,37 +10,43 @@ import {
 } from "../lsp-common.ts";
 import { getUsableLspExtensions } from "../../lsp/detect.ts";
 
-export default TOOL.dynamicDefineTool(async function ({ signal, transport, data }) {
+export default TOOL_BUILDER.withData<LspToolData>().dynamicDefineTool(async function ({
+  signal,
+  transport,
+  data,
+}) {
   const extensions = await getUsableLspExtensions(signal, transport.cwd, data, transport);
   if (extensions.size === 0) return null;
 
   const description = `Get type info and documentation for a symbol at the given position. Use this to see type information, function signatures, or documentation. ${getLspExtensionsComment(extensions)}`;
 
-  return TOOL.declare({
-    name: "lsp-hover",
-    description,
-    ArgumentsSchema: t.subtype({
-      filePath: t.str.comment("Path to the file to query"),
-      line: LineSchema,
-      character: CharSchema,
-    }),
-  }).define(async () => ({
-    async run({ signal, toolCall }) {
-      const output = await runLspPositionQuery(
-        signal,
-        transport,
-        data,
-        toolCall.parsed.arguments,
-        "hover",
-        (client, filePath, line, character) => client.getHover(filePath, line, character),
-        (hover, filePath, line, character) =>
-          `Hover info for ${filePath}:${line}:${character}:\n${hover ?? "No hover information available."}`,
-      );
-      if (!output.success) return output;
-      return ok({
-        type: "output",
-        content: [{ type: "text", content: output.data.content }],
-      });
-    },
-  }));
+  return TOOL_BUILDER.withData<LspToolData>()
+    .declare({
+      name: "lsp-hover",
+      description,
+      ArgumentsSchema: t.subtype({
+        filePath: t.str.comment("Path to the file to query"),
+        line: LineSchema,
+        character: CharSchema,
+      }),
+    })
+    .define(async () => ({
+      async run({ signal, toolCall }) {
+        const output = await runLspPositionQuery(
+          signal,
+          transport,
+          data,
+          toolCall.parsed.arguments,
+          "hover",
+          (client, filePath, line, character) => client.getHover(filePath, line, character),
+          (hover, filePath, line, character) =>
+            `Hover info for ${filePath}:${line}:${character}:\n${hover ?? "No hover information available."}`,
+        );
+        if (!output.success) return output;
+        return ok({
+          type: "output",
+          content: [{ type: "text", content: output.data.content }],
+        });
+      },
+    }));
 });
