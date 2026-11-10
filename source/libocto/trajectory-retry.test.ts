@@ -1,3 +1,4 @@
+import { prompt } from "./system-prompt.ts";
 import { describe, expect, it } from "bun:test";
 import { t } from "structural";
 import { compilerUsage } from "./compilers/compiler-interface.ts";
@@ -19,6 +20,8 @@ import {
   transientError,
 } from "./trajectory-retry.ts";
 
+const testPrompt = prompt.declare(async () => "Test prompt");
+
 const reportTool = new ToolBuilder<unknown>()
   .declare({ name: "report", description: "Reports", ArgumentsSchema: t.subtype({}) })
   .withCustomIR({
@@ -31,8 +34,13 @@ const reportTool = new ToolBuilder<unknown>()
   .define(async () => ({
     run: async ({ customIR }) => customIR.result({ error: "report failed" }),
   }));
-const childAgent = definePermissionedAgent({ tools: { report: reportTool }, agents: {} });
+const childAgent = definePermissionedAgent({
+  systemPrompt: testPrompt,
+  tools: { report: reportTool },
+  agents: {},
+});
 const _testAgent = definePermissionedAgent({
+  systemPrompt: testPrompt,
   tools: { report: reportTool },
   agents: { child: childAgent },
 });

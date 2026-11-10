@@ -1,3 +1,4 @@
+import { prompt } from "./system-prompt.ts";
 import { describe, expect, it } from "bun:test";
 import { t } from "structural";
 import { LocalTransport } from "../transports/local.ts";
@@ -65,8 +66,15 @@ const delegateTool = new ToolBuilder<ToolData>()
     },
   }));
 
-const research = definePermissionlessAgent({ tools: { search: searchTool }, agents: {} });
+const testPrompt = prompt.declare(async () => "Test prompt");
+
+const research = definePermissionlessAgent({
+  systemPrompt: testPrompt,
+  tools: { search: searchTool },
+  agents: {},
+});
 const agent = definePermissionlessAgent({
+  systemPrompt: testPrompt,
   tools: { search: searchTool, delegate: delegateTool },
   agents: { research },
 });
@@ -146,7 +154,7 @@ async function fixture(
   if (search == null || delegate == null) throw new Error("Test tools failed to load");
   const queue = [...responses];
   const runCompiler: Compiler<Scope> = async <
-    A extends Agent<any, any, any>,
+    A extends Agent<any, any, any, any>,
     Tools extends Partial<LoadedTools<A["tools"]>> | undefined = undefined,
   >(
     params: CompilerParams<A, Scope, Tools>,
@@ -167,7 +175,7 @@ async function fixture(
     validationRetries: options.validationRetries,
     requestErrorRetries: options.requestErrorRetries,
     abortSignal: controller.signal,
-    toolData: data,
+    getData: async () => data,
     transport,
     runCompiler,
     lowerMessages,
@@ -180,7 +188,6 @@ async function fixture(
       });
     },
     loadTools: async () => ok({ search, delegate }),
-    subagentPrompts: { research: async () => "Research the task." },
     toolContentTooLargeError: async () => "Unexpected oversized test output",
     handler: {
       onMessages: event => {

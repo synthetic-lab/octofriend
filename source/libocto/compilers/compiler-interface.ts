@@ -3,7 +3,7 @@ import type { Agent, AssistantMessage, LoweredIR } from "../llm-ir.ts";
 import type { LoadedTools, ToolMap } from "../tool-def.ts";
 import { Transport } from "../transport.ts";
 
-export type CompilerIR<A extends Agent<any, any, any>> = LoweredIR<A["tools"]>;
+export type CompilerIR<A extends Agent<any, any, any, any>> = LoweredIR<A["tools"]>;
 export type CompilerTokenType<Tools = unknown> = [Tools] extends [undefined]
   ? "reasoning" | "content"
   : "reasoning" | "content" | "tool";
@@ -98,23 +98,25 @@ export type AssistantMessageWithoutToolCalls<T extends ToolMap<any, any>> = Omit
   toolCalls?: never;
 };
 
-type AssistantMessageForTools<A extends Agent<any, any, any>, Tools> = [Tools] extends [undefined]
+type AssistantMessageForTools<A extends Agent<any, any, any, any>, Tools> = [Tools] extends [
+  undefined,
+]
   ? AssistantMessageWithoutToolCalls<A["tools"]>
   : AssistantMessage<A["tools"]>;
 
-export type CompilerResultData<A extends Agent<any, any, any>, Tools> = {
+export type CompilerResultData<A extends Agent<any, any, any, any>, Tools> = {
   output: AssistantMessageForTools<A, Tools>;
   curl: string;
   headers: Headers;
   usage: CompilerUsage;
 };
 
-export type CompilerResult<A extends Agent<any, any, any>, Tools = unknown> = Result<
+export type CompilerResult<A extends Agent<any, any, any, any>, Tools = unknown> = Result<
   CompilerResultData<A, Tools>,
   CompilerError
 >;
 
-export type CompilerResultWithoutToolCalls<A extends Agent<any, any, any>> = CompilerResult<
+export type CompilerResultWithoutToolCalls<A extends Agent<any, any, any, any>> = CompilerResult<
   A,
   undefined
 >;
@@ -123,14 +125,14 @@ export type JsonFixResponse = { success: true; fixed: any } | { success: false }
 
 export type AutofixJsonFn = (badJson: string, signal: AbortSignal) => Promise<JsonFixResponse>;
 
-export type CompilerSuccessData<A extends Agent<any, any, any>> = {
+export type CompilerSuccessData<A extends Agent<any, any, any, any>> = {
   output: AssistantMessage<A["tools"]>;
   curl: string;
   headers: Headers;
   usage: CompilerUsage;
 };
 
-type CompilerParamsBase<A extends Agent<any, any, any>, Model> = {
+type CompilerParamsBase<A extends Agent<any, any, any, any>, Model> = {
   systemPrompt?: () => Promise<string>;
   model: Model;
   irs: Array<CompilerIR<A>>;
@@ -140,7 +142,7 @@ type CompilerParamsBase<A extends Agent<any, any, any>, Model> = {
 };
 
 export type CompilerParams<
-  A extends Agent<any, any, any>,
+  A extends Agent<any, any, any, any>,
   Model,
   Tools extends Partial<LoadedTools<A["tools"]>> | undefined = undefined,
 > = CompilerParamsBase<A, Model> & {
@@ -148,16 +150,16 @@ export type CompilerParams<
   tools?: Tools;
 };
 
-export type CompilerParamsWithoutTools<A extends Agent<any, any, any>, Model> = CompilerParamsBase<
-  A,
-  Model
-> & {
+export type CompilerParamsWithoutTools<
+  A extends Agent<any, any, any, any>,
+  Model,
+> = CompilerParamsBase<A, Model> & {
   onTokens: (t: string, type: CompilerTokenType<undefined>) => Promise<void>;
   tools?: undefined;
 };
 
 export type CompilerParamsWithTools<
-  A extends Agent<any, any, any>,
+  A extends Agent<any, any, any, any>,
   Model,
   Tools extends Partial<LoadedTools<A["tools"]>> = Partial<LoadedTools<A["tools"]>>,
 > = CompilerParamsBase<A, Model> & {
@@ -165,26 +167,26 @@ export type CompilerParamsWithTools<
   tools: Tools;
 };
 
-export type CompilerParamsImplementation<A extends Agent<any, any, any>, Model> =
+export type CompilerParamsImplementation<A extends Agent<any, any, any, any>, Model> =
   | CompilerParamsWithoutTools<A, Model>
   | CompilerParamsWithTools<A, Model>;
 
 const compilerFinished = Symbol("compilerFinished");
-type CompilerFinishedData<A extends Agent<any, any, any>> = CompilerSuccessData<A> & {
+type CompilerFinishedData<A extends Agent<any, any, any, any>> = CompilerSuccessData<A> & {
   readonly [compilerFinished]: true;
 };
-type CompilerImplementationResult<A extends Agent<any, any, any>> = Result<
+type CompilerImplementationResult<A extends Agent<any, any, any, any>> = Result<
   CompilerFinishedData<A>,
   CompilerError
 >;
 
-export function compilerParamsHaveTools<A extends Agent<any, any, any>, Model>(
+export function compilerParamsHaveTools<A extends Agent<any, any, any, any>, Model>(
   params: CompilerParamsImplementation<A, Model>,
 ): params is CompilerParamsWithTools<A, Model> {
   return params.tools !== undefined;
 }
 
-export type CompilerImplementationParams<A extends Agent<any, any, any>, Model> = Omit<
+export type CompilerImplementationParams<A extends Agent<any, any, any, any>, Model> = Omit<
   CompilerParamsImplementation<A, Model>,
   "onTokens"
 > & {
@@ -198,11 +200,11 @@ export type CompilerImplementationParams<A extends Agent<any, any, any>, Model> 
   }) => Promise<CompilerImplementationResult<A>>;
 };
 
-type CompilerImplementation<Model> = <A extends Agent<any, any, any>>(
+type CompilerImplementation<Model> = <A extends Agent<any, any, any, any>>(
   params: CompilerImplementationParams<A, Model>,
 ) => Promise<CompilerImplementationResult<A>>;
 
-function compilerSuccess<A extends Agent<any, any, any>, Model>(
+function compilerSuccess<A extends Agent<any, any, any, any>, Model>(
   params: CompilerParamsImplementation<A, Model>,
   data: CompilerSuccessData<A>,
 ): CompilerResult<A, undefined> | CompilerResult<A> {
@@ -226,7 +228,7 @@ function compilerSuccess<A extends Agent<any, any, any>, Model>(
 }
 
 export type Compiler<Model> = <
-  A extends Agent<any, any, any>,
+  A extends Agent<any, any, any, any>,
   Tools extends Partial<LoadedTools<A["tools"]>> | undefined = undefined,
 >(
   params: CompilerParams<A, Model, Tools>,
@@ -243,13 +245,13 @@ export type Compiler<Model> = <
 export function defineCompiler<Model>(
   implementation: CompilerImplementation<Model>,
 ): Compiler<Model> {
-  async function compiler<A extends Agent<any, any, any>>(
+  async function compiler<A extends Agent<any, any, any, any>>(
     params: CompilerParamsWithoutTools<A, Model>,
   ): Promise<CompilerResult<A, undefined>>;
-  async function compiler<A extends Agent<any, any, any>>(
+  async function compiler<A extends Agent<any, any, any, any>>(
     params: CompilerParamsWithTools<A, Model>,
   ): Promise<CompilerResult<A>>;
-  async function compiler<A extends Agent<any, any, any>>(
+  async function compiler<A extends Agent<any, any, any, any>>(
     params: CompilerParamsImplementation<A, Model>,
   ): Promise<CompilerResult<A, undefined> | CompilerResult<A>> {
     let unexpectedToolCall = false;

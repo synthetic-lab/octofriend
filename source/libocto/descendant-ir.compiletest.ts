@@ -19,7 +19,8 @@ type ReadAgent = PermissionedAgent<
   {},
   {
     read: ToolFactory<unknown, { name: "read"; arguments: { path: string } }, string, never, never>;
-  }
+  },
+  {}
 >;
 type WriteAgent = PermissionedAgent<
   never,
@@ -32,9 +33,10 @@ type WriteAgent = PermissionedAgent<
       never,
       never
     >;
-  }
+  },
+  {}
 >;
-type Root<Agents extends AgentDirectory> = PermissionedAgent<never, Agents, {}>;
+type Root<Agents extends AgentDirectory> = PermissionedAgent<never, Agents, {}, {}>;
 type UnionChild = ReadAgent | WriteAgent;
 type UnionRoot = Root<{ child: UnionChild }>;
 type AbstractRoot = Root<Record<string, UnionChild>>;

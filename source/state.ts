@@ -33,9 +33,6 @@ import type { Compiler } from "./libocto/compilers/compiler-interface.ts";
 import type { MultimodalConfig } from "./libocto/modalities.ts";
 import { lowerOctoToLlmIR } from "./compilers/lower-octo.ts";
 import { autofixEdit, makeAutofixJson } from "./compilers/autofix.ts";
-import { systemPrompt } from "./prompts/system-prompt.ts";
-import { exploreSystemPrompt } from "./prompts/explore-system-prompt.ts";
-import { researcherSystemPrompt } from "./prompts/researcher-system-prompt.ts";
 import { messageText, type UserMessage } from "./libocto/llm-ir.ts";
 import { err, ok, type Result } from "./libocto/result.ts";
 import {
@@ -293,8 +290,6 @@ export const useAppStore = create<UiState>((set, get) => {
       agent: octoAgent,
       messages: toLlmIR([...history]),
       abortSignal: exitController.signal,
-      systemPrompt: signal => systemPrompt({ config: currentConfig(), transport, signal }),
-      subagentPrompts: { explore: exploreSystemPrompt, researcher: researcherSystemPrompt },
       model: async (): Promise<
         Result<
           { model: ModelData; contextWindow: number; modalities: MultimodalConfig | null },
@@ -350,7 +345,7 @@ export const useAppStore = create<UiState>((set, get) => {
           `inspect them; here they are:\n${preview}`
         );
       },
-      toolData: config,
+      getData: async () => currentConfig(),
       runCompiler,
       lowerMessages: lowerOctoToLlmIR,
       transport,

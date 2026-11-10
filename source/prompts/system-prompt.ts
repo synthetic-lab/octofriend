@@ -3,29 +3,24 @@ import { Config } from "../config.ts";
 import { getMcpClient } from "../tools/tool-defs/mcp.ts";
 import { tagged } from "../xml.ts";
 import { Transport, getEnvVar } from "../libocto/transport.ts";
+import { prompt } from "../libocto/system-prompt.ts";
 
 const LLM_INSTR_FILES = ["OCTO.md", "CLAUDE.md", "AGENTS.md"] as const;
 
-export async function systemPrompt({
-  config,
-  transport,
-  signal,
-}: {
-  config: Config;
-  transport: Transport;
-  signal: AbortSignal;
-}) {
-  // Shell/transport failures here propagate: the trajectory turns AbortError into an
-  // interruption and aborts the request on anything else, rather than sending a request
-  // built on a half-finished prompt.
-  const pwdResult = await transport.shell(signal, "pwd", 5000);
-  if (!pwdResult.success) throw pwdResult.error;
-  const pwd = pwdResult.data;
-  const currDirResult = await transport.readdir(signal, ".");
-  if (!currDirResult.success) throw new Error(currDirResult.error);
-  const currDirStr = currDirResult.data.map(entry => JSON.stringify(entry)).join("\n");
+export const systemPrompt = prompt
+  .withData<Config>()
+  .declare(async ({ transport, signal, data: config }) => {
+    // Shell/transport failures here propagate: the trajectory turns AbortError into an
+    // interruption and aborts the request on anything else, rather than sending a request
+    // built on a half-finished prompt.
+    const pwdResult = await transport.shell(signal, "pwd", 5000);
+    if (!pwdResult.success) throw pwdResult.error;
+    const pwd = pwdResult.data;
+    const currDirResult = await transport.readdir(signal, ".");
+    if (!currDirResult.success) throw new Error(currDirResult.error);
+    const currDirStr = currDirResult.data.map(entry => JSON.stringify(entry)).join("\n");
 
-  return `
+    return `
 You are a coding assistant called Octo. The user's name is ${config.yourName}, and you're their
 friend. You can help them with coding tasks. Unrelatedly, you are a small, hyper-intelligent
 octopus. You must never use an octopus emoji, to avoid reminding the ${config.yourName} of the fact
@@ -127,7 +122,7 @@ If you want to list other directories, use the list tool.
 
 ${await llmInstrsPrompt(transport, signal, config)}
 `.trim();
-}
+  });
 
 async function llmInstrsPrompt(transport: Transport, signal: AbortSignal, config: Config) {
   const instrs = await getLlmInstrs(transport, signal);

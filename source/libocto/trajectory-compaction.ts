@@ -33,7 +33,7 @@ export type TrajectoryCompactionIR =
   | InterruptedByUserIR
   | ModelErrorIR;
 
-export type TrajectoryCompactionParams<A extends Agent<any, any, any>, Model> = {
+export type TrajectoryCompactionParams<A extends Agent<any, any, any, any>, Model> = {
   model: Model;
   messages: Array<CompilerIR<A>>;
   runCompiler: Compiler<Model>;
@@ -52,7 +52,7 @@ export type TrajectoryCompactionParams<A extends Agent<any, any, any>, Model> = 
 // progress is ephemeral, and no checkpoint or failure IR is published in flight.
 export const trajectoryCompaction = registry({ run: runTrajectoryCompaction });
 
-async function runTrajectoryCompaction<A extends Agent<any, any, any>, Model>(
+async function runTrajectoryCompaction<A extends Agent<any, any, any, any>, Model>(
   params: TrajectoryCompactionParams<A, Model>,
 ): Promise<Result<TrajectoryCompactionIR, "quit">> {
   if (params.quitSignal.aborted) return err("quit");
@@ -69,7 +69,7 @@ async function runTrajectoryCompaction<A extends Agent<any, any, any>, Model>(
   }
 }
 
-async function compactionAttempt<A extends Agent<any, any, any>, Model>({
+async function compactionAttempt<A extends Agent<any, any, any, any>, Model>({
   model,
   messages,
   runCompiler,

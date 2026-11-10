@@ -1,4 +1,6 @@
-export async function exploreSystemPrompt() {
+import { prompt } from "../libocto/system-prompt.ts";
+
+export const exploreSystemPrompt = prompt.declare(async () => {
   return `
 Explore the filesystem to answer the task assigned by the parent agent. Your purpose is to
 search through files whose relevance may be unclear, identify the relevant material, and
@@ -12,4 +14,4 @@ line references when useful. Select the findings the parent needs rather than re
 everything you discovered. Omit irrelevant files and a narration of your search process.
 Mention unresolved questions only when they affect the task.
 `.trim();
-}
+});

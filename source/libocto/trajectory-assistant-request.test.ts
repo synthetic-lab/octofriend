@@ -1,3 +1,4 @@
+import { prompt } from "./system-prompt.ts";
 import { beforeEach, describe, expect, it } from "bun:test";
 import { t } from "structural";
 import { LocalTransport } from "../transports/local.ts";
@@ -41,7 +42,13 @@ const searchTool = new ToolBuilder<TestData>()
     },
     run: async () => ok({ type: "output" as const, content: [] }),
   }));
-const _testAgent = defineAgent({ tools: { search: searchTool }, agents: {} });
+const testPrompt = prompt.declare(async () => "Test prompt");
+
+const _testAgent = defineAgent({
+  systemPrompt: testPrompt,
+  tools: { search: searchTool },
+  agents: {},
+});
 type TestAgent = typeof _testAgent;
 const transport = new LocalTransport();
 type Emit = (tokens: string, type: "reasoning" | "content") => Promise<void>;
@@ -82,17 +89,17 @@ function requestError(message: string): Extract<CompilerError, { type: "request-
 
 async function runAssistantRequest(opts: {
   response: QueueItem;
-  toolData?: TestData;
+  data?: TestData;
   messages?: Array<LlmIR<TestAgent>>;
   errorCorrection?: ErrorCorrection<TestAgent>;
   abortController?: AbortController;
 }) {
-  const toolData = opts.toolData ?? { marker: "fresh" };
+  const data = opts.data ?? { marker: "fresh" };
   const abortController = opts.abortController ?? new AbortController();
-  const search = await searchTool({ signal: abortController.signal, transport, data: toolData });
+  const search = await searchTool({ signal: abortController.signal, transport, data });
   if (search == null) throw new Error("search tool failed to load");
   const runCompiler: Compiler<null> = async <
-    A extends Agent<any, any, any>,
+    A extends Agent<any, any, any, any>,
     Tools extends Partial<LoadedTools<A["tools"]>> | undefined = undefined,
   >(
     params: CompilerParams<A, null, Tools>,
@@ -122,7 +129,7 @@ async function runAssistantRequest(opts: {
     model: null,
     messages: opts.messages ?? [{ role: "user", content: [{ type: "text", content: "hi" }] }],
     tools: { search },
-    toolData,
+    data,
     runCompiler,
     lowerMessages: msgs => {
       return lower<TestAgent>(msgs.map(original => ({ original, converted: original })));
@@ -147,7 +154,7 @@ describe("trajectoryAssistantRequest", () => {
     const output = assistant({ toolCalls: [searchCall("kittens")] });
     const { messages } = await runAssistantRequest({
       response: result(output),
-      toolData: { marker: "validated" },
+      data: { marker: "validated" },
     });
     expect(messages).toEqual([output]);
     expect(dataSeen).toEqual([{ marker: "validated" }]);

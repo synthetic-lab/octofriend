@@ -19,8 +19,8 @@ import type { LoadedTools, ToolCall } from "../tool-def.ts";
 import { errorToString, err } from "../result.ts";
 import * as irPrompts from "./ir-prompts.ts";
 
-type ToolCallRequest<A extends Agent<any, any, any>> = ToolCall<A["tools"]>;
-type LoadedTool<A extends Agent<any, any, any>> = LoadedTools<A["tools"]>[keyof LoadedTools<
+type ToolCallRequest<A extends Agent<any, any, any, any>> = ToolCall<A["tools"]>;
+type LoadedTool<A extends Agent<any, any, any, any>> = LoadedTools<A["tools"]>[keyof LoadedTools<
   A["tools"]
 >];
 
@@ -69,7 +69,7 @@ function anthropicContentParts(
   return output;
 }
 
-function toModelMessage<A extends Agent<any, any, any>>(
+function toModelMessage<A extends Agent<any, any, any, any>>(
   messages: Array<CompilerIR<A>>,
   modalities?: CompilerModalities,
 ): Array<Anthropic.MessageParam> {
@@ -82,7 +82,7 @@ function toModelMessage<A extends Agent<any, any, any>>(
   return output;
 }
 
-function modelMessageFromIr<A extends Agent<any, any, any>>(
+function modelMessageFromIr<A extends Agent<any, any, any, any>>(
   ir: CompilerIR<A>,
   modalities?: CompilerModalities,
 ): Anthropic.MessageParam {
@@ -235,7 +235,7 @@ JSON`;
 }
 
 export const runAnthropicAgent: Compiler<AnthropicCompilerModel> = defineCompiler(
-  async <A extends Agent<any, any, any>>(
+  async <A extends Agent<any, any, any, any>>(
     params: CompilerImplementationParams<A, AnthropicCompilerModel>,
   ) => {
     const { model, irs, abortSignal, transport, systemPrompt, autofixJson } = params;
