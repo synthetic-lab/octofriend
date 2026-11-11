@@ -1,8 +1,8 @@
 import { describe, expect, it } from "bun:test";
-import { err, ok } from "../../libocto/result.ts";
-import { MockTransport } from "../../transports/mock.ts";
-import { fileTracker } from "../file-tracker.ts";
-import createToolFactory from "./create.ts";
+import { err, ok } from "../../result.ts";
+import { MockTransport } from "../../../transports/mock.ts";
+import { fileTracker } from "../../../tools/file-tracker.ts";
+import createToolFactory from "./index.ts";
 
 const config = {};
 const model = { contextWindow: 100_000 };

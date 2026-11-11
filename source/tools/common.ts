@@ -1,7 +1,5 @@
 import { Transport } from "../libocto/transport.ts";
-import { ImageInfo } from "../libocto/images.ts";
 import { err, Result, ok } from "../libocto/result.ts";
-import { ToolCall } from "../libocto/tools/tool-def.ts";
 
 export const USER_ABORTED_ERROR_MESSAGE = "Aborted by user";
 export const FILE_OUTDATED_ERROR_MESSAGE =
@@ -42,43 +40,5 @@ export async function parseOriginalFile<Arguments extends { filePath: string }>(
       ...original,
       originalFileContents: contents.data,
     },
-  });
-}
-
-export type FileReadIR<T extends ToolCall<any>> = {
-  role: "file-read";
-  content: string;
-  toolCall: T;
-  path: string;
-  image?: ImageInfo;
-};
-
-export type FileMutateIR<T extends ToolCall<any>> = {
-  role: "file-mutate";
-  content: string;
-  toolCall: T;
-  path: string;
-};
-
-export function fileReadIR<T extends ToolCall<any> & { parsed: { filePath: string } }>(
-  toolCall: T,
-) {
-  return (args: { content: string; image?: ImageInfo }): FileReadIR<T> => ({
-    role: "file-read",
-    content: args.content,
-    toolCall,
-    path: toolCall.parsed.filePath,
-    image: args.image,
-  });
-}
-
-export function fileMutateIR<T extends ToolCall<any> & { parsed: { filePath: string } }>(
-  toolCall: T,
-) {
-  return (args: { content: string }): FileMutateIR<T> => ({
-    role: "file-mutate",
-    content: args.content,
-    toolCall,
-    path: toolCall.parsed.filePath,
   });
 }

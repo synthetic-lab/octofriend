@@ -59,8 +59,9 @@ type GrandchildIR = AgentIR<GrandchildAgent>;
 type TestLoweredIR = CompilerReadyIR<TestAgent>;
 const retryBudget = { validation: 0, requestError: 0 };
 
-const convert = downconvert<TestAgent>(messages =>
-  messages.map(original => ({ original, converted: original })),
+const convert = downconvert<TestAgent>(
+  messages => messages.map(original => ({ original, converted: original })),
+  null,
 );
 
 function lowerHistory(messages: TestIR[]): TestLoweredIR[] {
@@ -436,11 +437,13 @@ describe("activeHistory", () => {
     const child = subagentTrajectory([researchUserMessage("go")], searchCall("child"));
     const invocation = subagentInvocation(child.toolCall);
     const history: TestIR[] = [before, invocation, child];
-    const expanded = downconvert<TestAgent>(messages =>
-      messages.flatMap(original => {
-        const pair = { original, converted: original };
-        return original === before ? [pair, pair] : [pair];
-      }),
+    const expanded = downconvert<TestAgent>(
+      messages =>
+        messages.flatMap(original => {
+          const pair = { original, converted: original };
+          return original === before ? [pair, pair] : [pair];
+        }),
+      null,
     )(history);
     expect(expanded).toHaveLength(4);
     const location = activeHistory(_testAgent, history, expanded);
@@ -602,7 +605,7 @@ describe("downconvert", () => {
         if (original === before) output.push({ original, converted: original });
       }
       return output;
-    });
+    }, null);
 
     const result = convert([before, dropped, child, empty, after]);
     expect(runs.map(run => run.map(ir => ir.role))).toEqual([
@@ -645,7 +648,7 @@ describe("downconvert", () => {
         );
       }
       return pairs;
-    });
+    }, null);
 
     const recursive = convert([dropped, expanded]);
     const ready = lower<TestAgent>(recursive);
@@ -746,7 +749,7 @@ describe("downconvert", () => {
         }
       }
       return pairs;
-    });
+    }, null);
 
     const pair = convert(raw)[1];
     const { converted } = pair;

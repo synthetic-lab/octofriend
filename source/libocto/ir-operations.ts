@@ -25,6 +25,10 @@ import type {
   UserMessage,
 } from "./llm-ir.ts";
 import type { ScopeHop, ScopeRoot, ScopeSubagent } from "./trajectory.ts";
+import type { MultimodalConfig } from "./modalities.ts";
+import { lowerFileExtras, type FileReadIR, type FileMutateIR } from "./tools/file-ir.ts";
+import type { IRConversion } from "./llm-ir.ts";
+import type { ToolCall } from "./tools/tool-def.ts";
 import { err, ok, type Result } from "./result.ts";
 import {
   retryable,
@@ -166,17 +170,41 @@ function walkHistory<A extends Agent<any, any, any, any>>(
   return { location, converted: inspected };
 }
 
+// The standard client pass when no application-specific IR conversion is needed.
+export function lowerMessages<IR extends { role: string }>(
+  messages: IR[],
+): Array<IRConversion<IR, IR>> {
+  return messages.map(original => ({ original, converted: original }));
+}
+
+// Clients lower their own extensions, but may pass through file extras declared by this tree.
+// Only downconvert's intermediate input permits these extras; its output remains fully lowered.
+export type ClientLowerOutputIR<A extends Agent<any, any, any, any>> = IRConversion<
+  LowerInputIR<A>,
+  | LowerOutputIR<A>["converted"]
+  | Extract<LowerInputIR<A>, FileReadIR<ToolCall<any>> | FileMutateIR<ToolCall<any>>>
+>;
+
 // Clients receive only contiguous non-trajectory runs. Libocto alone constructs trajectory
 // pairs, retaining the live original while recursively converting a separate inspection view.
 export function downconvert<A extends Agent<any, any, any, any>>(
-  lowerExtras: (messages: Array<LowerInputIR<A>>) => Array<LowerOutputIR<A>>,
+  lowerExtras: (
+    messages: Array<LowerInputIR<A>>,
+    modalities: MultimodalConfig | null,
+  ) => Array<ClientLowerOutputIR<A>>,
+  modalities: MultimodalConfig | null,
 ): (messages: Array<TreeIR<A>>) => Array<RecursiveLowered<A>> {
   const convert = (messages: Array<TreeIR<A>>): Array<RecursiveLowered<A>> => {
     const output: Array<RecursiveLowered<A>> = [];
     let pending: Array<LowerInputIR<A>> = [];
     const flush = () => {
       if (pending.length === 0) return;
-      output.push(...lowerExtras(pending));
+      output.push(
+        ...lowerFileExtras<LowerInputIR<A>, LowerOutputIR<A>["converted"], TreeToolCall<A>>(
+          lowerExtras(pending, modalities),
+          modalities,
+        ),
+      );
       pending = [];
     };
 

@@ -470,8 +470,8 @@ export type CheckpointedIRWithTrajectories<A extends Agent<any, any, any, any>> 
  * that not all clients might use, e.g. file IO types which may have prompt optimizations.
  */
 type ToolExtra<T> = T extends ToolFactoryRequirements<any, infer Extra> ? Extra : never;
-// The extension IRs an agent's tools can produce: the extra-IR leg of LlmIR, which client
-// lowering passes convert and libocto never interprets.
+// The extension IRs an agent's tools can produce: the extra-IR leg of LlmIR. Client lowering
+// handles application-specific extras; downconvert handles libocto's tool-owned extras.
 export type AgentExtra<A extends Agent<any, any, any, any>> = ToolExtra<
   A["tools"][keyof A["tools"]]
 >;

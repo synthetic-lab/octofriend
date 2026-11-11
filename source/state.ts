@@ -31,7 +31,7 @@ import { Transport } from "./libocto/transport.ts";
 import { run, type ModelData } from "./compilers/run.ts";
 import type { Compiler } from "./libocto/compilers/compiler-interface.ts";
 import type { MultimodalConfig } from "./libocto/modalities.ts";
-import { lowerOctoToLlmIR } from "./compilers/lower-octo.ts";
+import { lowerMessages } from "./libocto/ir-operations.ts";
 import { autofixEdit, makeAutofixJson } from "./compilers/autofix.ts";
 import { messageText, type UserMessage } from "./libocto/llm-ir.ts";
 import { err, ok, type Result } from "./libocto/result.ts";
@@ -347,7 +347,7 @@ export const useAppStore = create<UiState>((set, get) => {
       },
       getData: async () => getOctoExecutionData(currentConfig()),
       runCompiler,
-      lowerMessages: lowerOctoToLlmIR,
+      lowerMessages,
       transport,
       errorCorrection: {
         json: (...args) => makeAutofixJson(currentConfig())(...args),
