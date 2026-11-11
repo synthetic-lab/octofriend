@@ -1,11 +1,8 @@
 import { readSearchConfig, type Config } from "./config.ts";
-import type {
-  LspToolData,
-  McpToolData,
-  ResolvedSearchConfig,
-  SkillToolData,
-  WebSearchData,
-} from "./tools/tool-data.ts";
+import type { LspToolData } from "./tools/tool-data.ts";
+import type { McpToolData } from "./libocto/tools/mcp/index.ts";
+import type { SkillToolData } from "./libocto/tools/skill/index.ts";
+import type { ResolvedSearchConfig, WebSearchData } from "./libocto/tools/web-search/index.ts";
 
 export type OctoExecutionData = Omit<Config, "lsp" | "skills"> &
   WebSearchData &

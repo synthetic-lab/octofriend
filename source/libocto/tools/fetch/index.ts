@@ -1,9 +1,9 @@
 import { t } from "structural";
-import { USER_ABORTED_ERROR_MESSAGE } from "../../libocto/tools/common.ts";
-import { TOOL_BUILDER } from "../../libocto/tools/tool-def.ts";
+import { USER_ABORTED_ERROR_MESSAGE } from "../common.ts";
+import { TOOL_BUILDER } from "../tool-def.ts";
 import { compile } from "html-to-text";
-import { AbortError } from "../../libocto/transport.ts";
-import { ok, err, toErrString } from "../../libocto/result.ts";
+import { AbortError } from "../../transport.ts";
+import { ok, err, toErrString } from "../../result.ts";
 
 const converter = compile({
   wordwrap: 130,

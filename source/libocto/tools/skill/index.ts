@@ -1,9 +1,12 @@
 import { t } from "structural";
 import { unionAll } from "../../types.ts";
-import { TOOL_BUILDER } from "../../libocto/tools/tool-def.ts";
-import type { SkillToolData } from "../tool-data.ts";
-import { discoverSkills } from "../../skills/skills.ts";
-import { ok } from "../../libocto/result.ts";
+import { TOOL_BUILDER } from "../tool-def.ts";
+import { discoverSkills } from "./skills.ts";
+import { ok } from "../../result.ts";
+
+export type SkillToolData = {
+  skillPaths?: readonly string[];
+};
 
 export default TOOL_BUILDER.withData<SkillToolData>().dynamicDefineTool(async function ({
   signal,

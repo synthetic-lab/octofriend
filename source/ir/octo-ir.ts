@@ -1,7 +1,7 @@
 import toolMap from "../tools/tool-defs/index.ts";
 import read from "../libocto/tools/read/index.ts";
-import partialRead from "../tools/tool-defs/partial-read.ts";
-import list from "../tools/tool-defs/list.ts";
+import partialRead from "../libocto/tools/partial-read/index.ts";
+import list from "../libocto/tools/list/index.ts";
 import grep from "../tools/tool-defs/grep.ts";
 import glob from "../tools/tool-defs/glob.ts";
 import { definePermissionedAgent } from "../libocto/llm-ir.ts";

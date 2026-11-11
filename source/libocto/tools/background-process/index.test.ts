@@ -1,10 +1,10 @@
 import { describe, expect, it, spyOn } from "bun:test";
 import { withMock } from "antipattern";
-import { BackgroundProcessManager, backgroundProcesses } from "../../libocto/background-process.ts";
-import { MockTransport } from "../../transports/mock.ts";
-import { unwrap } from "../../libocto/result.ts";
-import backgroundProcessTool from "./background-process.ts";
-import manageBackgroundProcessTool from "./manage-background-process.ts";
+import { BackgroundProcessManager, backgroundProcesses } from "../../background-process.ts";
+import { MockTransport } from "../../../transports/mock.ts";
+import { unwrap } from "../../result.ts";
+import backgroundProcessTool from "./index.ts";
+import manageBackgroundProcessTool from "../manage-background-process/index.ts";
 
 async function createTools(controller: AbortController) {
   const transport = new MockTransport({});

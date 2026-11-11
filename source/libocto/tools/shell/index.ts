@@ -1,8 +1,8 @@
 import { t } from "structural";
-import { USER_ABORTED_ERROR_MESSAGE } from "../../libocto/tools/common.ts";
-import { TOOL_BUILDER } from "../../libocto/tools/tool-def.ts";
-import { AbortError } from "../../libocto/transport.ts";
-import { ok, err } from "../../libocto/result.ts";
+import { USER_ABORTED_ERROR_MESSAGE } from "../common.ts";
+import { TOOL_BUILDER } from "../tool-def.ts";
+import { AbortError } from "../../transport.ts";
+import { ok, err } from "../../result.ts";
 
 export default TOOL_BUILDER.withData<{}>()
   .declare({

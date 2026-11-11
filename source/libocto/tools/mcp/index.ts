@@ -1,11 +1,21 @@
 import { t } from "structural";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
-import { USER_ABORTED_ERROR_MESSAGE } from "../../libocto/tools/common.ts";
-import { TOOL_BUILDER } from "../../libocto/tools/tool-def.ts";
-import type { McpToolData } from "../tool-data.ts";
-import { Result, ok, err } from "../../libocto/result.ts";
-import { logger } from "../../libocto/logger.ts";
+import { USER_ABORTED_ERROR_MESSAGE } from "../common.ts";
+import { TOOL_BUILDER } from "../tool-def.ts";
+import { Result, ok, err } from "../../result.ts";
+import { logger } from "../../logger.ts";
+
+export type McpServerSpec = {
+  command: string;
+  args?: string[];
+  env?: Record<string, string>;
+  log?: boolean;
+};
+
+export type McpToolData = {
+  mcpServers?: Record<string, McpServerSpec>;
+};
 
 // Types ported from:
 // https://github.com/modelcontextprotocol/typescript-sdk/blob/main/src/types.ts
