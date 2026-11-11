@@ -2,7 +2,7 @@ import { describe, expect, it } from "bun:test";
 import { chmod, mkdtemp, rm, writeFile } from "fs/promises";
 import { tmpdir } from "os";
 import path from "path";
-import { LocalTransport } from "../transports/local.ts";
+import { LocalTransport } from "../../transports/local.ts";
 import { isCommandExecutable } from "./detect.ts";
 
 describe("isCommandExecutable", () => {

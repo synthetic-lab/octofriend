@@ -1,5 +1,5 @@
 import { readSearchConfig, type Config } from "./config.ts";
-import type { LspToolData } from "./tools/tool-data.ts";
+import type { LspToolData } from "./libocto/lsp/detect.ts";
 import type { McpToolData } from "./libocto/tools/mcp/index.ts";
 import type { SkillToolData } from "./libocto/tools/skill/index.ts";
 import type { ResolvedSearchConfig, WebSearchData } from "./libocto/tools/web-search/index.ts";

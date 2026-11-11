@@ -1,10 +1,24 @@
 import path from "path";
 import { quote } from "shell-quote";
-import type { Transport } from "../libocto/transport.ts";
-import { ok, type Result } from "../libocto/result.ts";
+import type { Transport } from "../transport.ts";
+import { ok, type Result } from "../result.ts";
 import { RecommendedLspServers } from "./lsp-server-registry.ts";
 import { InstalledLspConfig, LspClient, getOrStartLspClient } from "./client.ts";
-import type { LspToolData } from "../tools/tool-data.ts";
+
+export type LspToolData = {
+  lsp: {
+    disabled?: boolean;
+    config: Record<
+      string,
+      | { disabled: true }
+      | {
+          command: string[];
+          extensions: string[];
+          rootCandidates: string[];
+        }
+    >;
+  };
+};
 
 let cachedCustomLspConfig: Record<string, InstalledLspConfig> | null = null;
 

@@ -1,8 +1,8 @@
 import { type Writable } from "node:stream";
 import path from "path";
 import { t } from "structural";
-import { err, errorToString, ok, type Result } from "../libocto/result.ts";
-import { logger } from "../libocto/logger.ts";
+import { err, errorToString, ok, type Result } from "../result.ts";
+import { logger } from "../logger.ts";
 import type {
   CallHierarchyIncomingCall,
   CallHierarchyOutgoingCall,
@@ -14,8 +14,8 @@ import type {
   Range,
 } from "vscode-languageserver-types";
 import { DiagnosticSeverity, SymbolKind } from "vscode-languageserver-types";
-import { type TransportProcess } from "../libocto/transport.ts";
-import type { Transport } from "../libocto/transport.ts";
+import { type TransportProcess } from "../transport.ts";
+import type { Transport } from "../transport.ts";
 
 // https://microsoft.github.io/language-server-protocol/specifications/lsp/3.17/specification/#headerPart
 const HEADER_DELIMITER_STRING = "\r\n\r\n";

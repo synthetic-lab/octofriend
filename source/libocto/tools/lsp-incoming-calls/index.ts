@@ -1,9 +1,14 @@
 import { t } from "structural";
-import { TOOL_BUILDER } from "../../libocto/tools/tool-def.ts";
-import type { LspToolData } from "../tool-data.ts";
-import { ok } from "../../libocto/result.ts";
-import { formatDocumentSymbols } from "../../lsp/client.ts";
-import { runLspFileQuery, getLspExtensionsComment } from "../lsp-common.ts";
+import { TOOL_BUILDER } from "../tool-def.ts";
+import type { LspToolData } from "../../lsp/detect.ts";
+import { ok } from "../../result.ts";
+import { formatCallHierarchy } from "../../lsp/client.ts";
+import {
+  runLspPositionQuery,
+  getLspExtensionsComment,
+  LineSchema,
+  CharSchema,
+} from "../../lsp/lsp-common.ts";
 import { getUsableLspExtensions } from "../../lsp/detect.ts";
 
 export default TOOL_BUILDER.withData<LspToolData>().dynamicDefineTool(async function ({
@@ -14,26 +19,29 @@ export default TOOL_BUILDER.withData<LspToolData>().dynamicDefineTool(async func
   const extensions = await getUsableLspExtensions(signal, transport.cwd, data, transport);
   if (extensions.size === 0) return null;
 
-  const description = `List all symbols (functions, classes, variables, etc.) in a file. ${getLspExtensionsComment(extensions)}`;
+  const description = `Find all callers of a symbol at the given position. ${getLspExtensionsComment(extensions)}`;
 
   return TOOL_BUILDER.withData<LspToolData>()
     .declare({
-      name: "lsp-document-symbol",
+      name: "lsp-incoming-calls",
       description,
       ArgumentsSchema: t.subtype({
         filePath: t.str.comment("Path to the file to query"),
+        line: LineSchema,
+        character: CharSchema,
       }),
     })
     .define(async () => ({
       async run({ signal, toolCall }) {
-        const output = await runLspFileQuery(
+        const output = await runLspPositionQuery(
           signal,
           transport,
           data,
           toolCall.parsed.arguments,
-          "document symbol",
-          (client, filePath) => client.getDocumentSymbols(filePath),
-          (symbols, filePath) => `Symbols in ${filePath}:\n${formatDocumentSymbols(symbols)}`,
+          "incoming calls",
+          (client, filePath, line, character) => client.getIncomingCalls(filePath, line, character),
+          (calls, filePath, line, character) =>
+            `Incoming calls to symbol at ${filePath}:${line}:${character}:\n${formatCallHierarchy(calls, "incoming")}`,
         );
         if (!output.success) return output;
         return ok({

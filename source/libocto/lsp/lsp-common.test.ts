@@ -1,7 +1,7 @@
 import { describe, expect, it, mock } from "bun:test";
-import { LspClient } from "../lsp/client.ts";
-import { err, ok } from "../libocto/result.ts";
-import { MockTransport } from "../transports/mock.ts";
+import { LspClient } from "./client.ts";
+import { err, ok } from "../result.ts";
+import { MockTransport } from "../../transports/mock.ts";
 import { withLspFile } from "./lsp-common.ts";
 
 function createClient(transport: MockTransport) {
