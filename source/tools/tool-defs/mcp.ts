@@ -1,7 +1,7 @@
 import { t } from "structural";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
-import { USER_ABORTED_ERROR_MESSAGE } from "../common.ts";
+import { USER_ABORTED_ERROR_MESSAGE } from "../../libocto/tools/common.ts";
 import { TOOL_BUILDER } from "../../libocto/tools/tool-def.ts";
 import type { McpToolData } from "../tool-data.ts";
 import { Result, ok, err } from "../../libocto/result.ts";

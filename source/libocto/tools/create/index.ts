@@ -1,5 +1,5 @@
 import { t } from "structural";
-import { fileTracker } from "../../../tools/file-tracker.ts";
+import { fileTracker } from "../file-tracker.ts";
 import { fileMutateIR } from "../file-ir.ts";
 import { TOOL_BUILDER } from "../tool-def.ts";
 

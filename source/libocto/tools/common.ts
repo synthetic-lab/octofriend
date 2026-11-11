@@ -1,5 +1,5 @@
-import { Transport } from "../libocto/transport.ts";
-import { err, Result, ok } from "../libocto/result.ts";
+import { Transport } from "../transport.ts";
+import { err, Result, ok } from "../result.ts";
 
 export const USER_ABORTED_ERROR_MESSAGE = "Aborted by user";
 export const FILE_OUTDATED_ERROR_MESSAGE =

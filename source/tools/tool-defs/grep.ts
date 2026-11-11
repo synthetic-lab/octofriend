@@ -1,6 +1,6 @@
 import { quote } from "shell-quote";
 import { t } from "structural";
-import { USER_ABORTED_ERROR_MESSAGE } from "../common.ts";
+import { USER_ABORTED_ERROR_MESSAGE } from "../../libocto/tools/common.ts";
 import { TOOL_BUILDER } from "../../libocto/tools/tool-def.ts";
 import { AbortError, CommandFailedError } from "../../libocto/transport.ts";
 import { estimateTokens } from "../../ir/count-ir-tokens.ts";

@@ -2,7 +2,7 @@ import { describe, expect, it } from "bun:test";
 import { toJSONSchema } from "structural";
 import readToolFactory from "../../libocto/tools/read/index.ts";
 import partialReadToolFactory from "./partial-read.ts";
-import { fileTracker } from "../file-tracker.ts";
+import { fileTracker } from "../../libocto/tools/file-tracker.ts";
 import { err, ok, unwrap } from "../../libocto/result.ts";
 import { MockTransport } from "../../transports/mock.ts";
 import type { Transport } from "../../libocto/transport.ts";

@@ -51,7 +51,7 @@ import {
 import { parseQuotaJson, QuotaData } from "./utils/quota.ts";
 import { throttledBuffer } from "./throttled-buffer.ts";
 import { SKIP_CONFIRMATION_TOOLS } from "./tools/index.ts";
-import { attemptUntrackedRead } from "./tools/common.ts";
+import { attemptUntrackedRead } from "./libocto/tools/common.ts";
 import { estimateTokens } from "./ir/count-ir-tokens.ts";
 import { octoAgent, type OctoIR } from "./ir/octo-ir.ts";
 import { logger } from "./libocto/logger.ts";

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "bun:test";
-import { err, ok, unwrap } from "../libocto/result.ts";
-import { MockTransport } from "../transports/mock.ts";
+import { err, ok, unwrap } from "../result.ts";
+import { MockTransport } from "../../transports/mock.ts";
 import { FileTracker } from "./file-tracker.ts";
 
 describe("FileTracker", () => {

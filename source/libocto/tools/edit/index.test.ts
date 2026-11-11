@@ -1,7 +1,7 @@
 import { describe, expect, it } from "bun:test";
 import editToolFactory from "./index.ts";
-import { FILE_OUTDATED_ERROR_MESSAGE } from "../../../tools/common.ts";
-import { fileTracker } from "../../../tools/file-tracker.ts";
+import { FILE_OUTDATED_ERROR_MESSAGE } from "../common.ts";
+import { fileTracker } from "../file-tracker.ts";
 import { err, ok, unwrap } from "../../result.ts";
 import { MockTransport } from "../../../transports/mock.ts";
 import { type Transport } from "../../transport.ts";

@@ -1,10 +1,6 @@
 import { t } from "structural";
-import { fileTracker } from "../../../tools/file-tracker.ts";
-import {
-  attemptUntrackedRead,
-  FILE_OUTDATED_ERROR_MESSAGE,
-  parseOriginalFile,
-} from "../../../tools/common.ts";
+import { fileTracker } from "../file-tracker.ts";
+import { attemptUntrackedRead, FILE_OUTDATED_ERROR_MESSAGE, parseOriginalFile } from "../common.ts";
 import { fileMutateIR } from "../file-ir.ts";
 import { TOOL_BUILDER } from "../tool-def.ts";
 import { Transport } from "../../transport.ts";

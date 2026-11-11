@@ -1,6 +1,6 @@
 import { describe, expect, it } from "bun:test";
 import rewriteToolFactory from "./index.ts";
-import { fileTracker } from "../../../tools/file-tracker.ts";
+import { fileTracker } from "../file-tracker.ts";
 import { err, ok, unwrap } from "../../result.ts";
 import { MockTransport } from "../../../transports/mock.ts";
 
