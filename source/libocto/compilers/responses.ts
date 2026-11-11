@@ -23,7 +23,7 @@ import type {
   Content as IRContent,
   MalformedToolRequest,
 } from "../llm-ir.ts";
-import type { LoadedTools, ToolCall } from "../tool-def.ts";
+import type { LoadedTools, ToolCall } from "../tools/tool-def.ts";
 import { errorToString, err } from "../result.ts";
 import * as irPrompts from "./ir-prompts.ts";
 import type { OpenAICompilerModel } from "./openai-shared.ts";

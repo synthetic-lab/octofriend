@@ -10,7 +10,7 @@ import {
   type RequestErrorIR,
   type RetryBudget,
 } from "./llm-ir.ts";
-import { ToolBuilder, type ToolCall } from "./tool-def.ts";
+import { ToolBuilder, type ToolCall } from "./tools/tool-def.ts";
 import { requestSnapshot } from "./request-snapshot.ts";
 import {
   countTransientErrors,

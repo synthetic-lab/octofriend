@@ -2,7 +2,7 @@ import { describe, expect, it } from "bun:test";
 import { lowerOctoToLlmIR } from "./lower-octo.ts";
 import type { LowerInputIR, LowerOutputIR } from "../libocto/llm-ir.ts";
 import { compilerUsage } from "../libocto/compilers/compiler-interface.ts";
-import type { ToolCall } from "../libocto/tool-def.ts";
+import type { ToolCall } from "../libocto/tools/tool-def.ts";
 import type toolMap from "../tools/tool-defs/index.ts";
 import type { octoAgent } from "../ir/octo-ir.ts";
 import type { ImageInfo } from "../libocto/images.ts";

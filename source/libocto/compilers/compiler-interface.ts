@@ -1,6 +1,6 @@
 import { err, ok, type Result } from "../result.ts";
 import type { Agent, AssistantMessage, LoweredIR } from "../llm-ir.ts";
-import type { LoadedTools, ToolMap } from "../tool-def.ts";
+import type { LoadedTools, ToolMap } from "../tools/tool-def.ts";
 import { Transport } from "../transport.ts";
 
 export type CompilerIR<A extends Agent<any, any, any, any>> = LoweredIR<A["tools"]>;

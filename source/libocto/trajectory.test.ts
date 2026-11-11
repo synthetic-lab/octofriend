@@ -7,7 +7,7 @@ import type { ExecutionModel } from "./execution.ts";
 import type { ImageInfo } from "./images.ts";
 import type { MultimodalConfig } from "./modalities.ts";
 import { err, ok, type Result } from "./result.ts";
-import { ToolBuilder, type LoadedTools, type ToolCall, type ToolReturn } from "./tool-def.ts";
+import { ToolBuilder, type LoadedTools, type ToolCall, type ToolReturn } from "./tools/tool-def.ts";
 import {
   definePermissionedAgent,
   definePermissionlessAgent,
@@ -41,13 +41,14 @@ import {
   type TrajectoryEvents,
   type TrajectoryLoopController,
   type TrajectoryMode,
-  type TrajectoryToolLoadError,
 } from "./trajectory.ts";
 
 type TestData = { marker: string };
 type RunResult = Result<ToolReturn<"research", never>, string>;
 
 let runImpl: (query: string) => Promise<RunResult>;
+const factoryDataSeen: TestData[] = [];
+const factoryModelSeen: ExecutionModel[] = [];
 const runDataSeen: TestData[] = [];
 const runModelSeen: ExecutionModel[] = [];
 
@@ -58,17 +59,21 @@ const searchTool = new ToolBuilder<TestData>()
     ArgumentsSchema: t.subtype({ query: t.str }),
     subagents: ["research"] as const,
   })
-  .define(async () => ({
-    validate: async (_signal: AbortSignal, _transport: Transport, toolCall: any) => {
-      if (toolCall.parsed.arguments.query === "invalid") return err("invalid query");
-      return ok(null);
-    },
-    run: async ({ toolCall, model, data }) => {
-      runDataSeen.push(data);
-      runModelSeen.push(model);
-      return runImpl(toolCall.parsed.arguments.query);
-    },
-  }));
+  .define(async ({ model, data }) => {
+    factoryModelSeen.push(model);
+    factoryDataSeen.push(data);
+    return {
+      validate: async (_signal: AbortSignal, _transport: Transport, toolCall: any) => {
+        if (toolCall.parsed.arguments.query === "invalid") return err("invalid query");
+        return ok(null);
+      },
+      run: async ({ toolCall, model, data }) => {
+        runDataSeen.push(data);
+        runModelSeen.push(model);
+        return runImpl(toolCall.parsed.arguments.query);
+      },
+    };
+  });
 
 const shellTool = new ToolBuilder<TestData>()
   .declare({
@@ -241,6 +246,7 @@ function makeRunCompiler(queue: CompilerQueueItem[]) {
 }
 
 function makeTrajectory(opts?: {
+  agent?: TestAgent;
   getData?: () => Promise<TestData>;
   permission?: (toolCall: ToolCall<TestAgent["tools"]>) => Promise<PermissionDecision>;
   contextWindow?: number;
@@ -255,10 +261,6 @@ function makeTrajectory(opts?: {
   messages?: Array<AgentIR<TestAgent>>;
   onMessages?: (event: TrajectoryEvents<TestAgent>["onMessages"]) => void | Promise<void>;
   modelAuthError?: (invocation: TestInvocation | null) => string | undefined;
-  loadTools?: (
-    signal: AbortSignal,
-    model: ExecutionModel,
-  ) => Promise<Result<Partial<LoadedTools<TestAgent["tools"]>>, TrajectoryToolLoadError>>;
 }) {
   const rec = {
     modes: [] as Array<TrajectoryMode<TestAgent>["mode"]>,
@@ -282,31 +284,14 @@ function makeTrajectory(opts?: {
     },
     modelCalls: 0,
     modelInvocations: [] as Array<TestInvocation | null>,
-    loadToolsCalls: 0,
   };
   const exit = new AbortController();
   exitControllers.push(exit);
 
   const build = async (queue: CompilerQueueItem[]) => {
-    const model = { contextWindow: 10_000 };
-    const [searchDef, shellDef] = await Promise.all([
-      searchTool({
-        signal: new AbortController().signal,
-        transport,
-        model,
-        data: { marker: "fresh" },
-      }),
-      shellTool({
-        signal: new AbortController().signal,
-        transport,
-        model,
-        data: { marker: "fresh" },
-      }),
-    ]);
-    if (searchDef == null || shellDef == null) throw new Error("tools failed to load");
     const { runCompiler, calls } = makeRunCompiler(queue);
     const traj = new Trajectory({
-      agent: _testAgent,
+      agent: opts?.agent ?? _testAgent,
       model: async invocation => {
         rec.modelCalls++;
         rec.modelInvocations.push(invocation);
@@ -317,11 +302,6 @@ function makeTrajectory(opts?: {
           contextWindow: opts?.contextWindow ?? 10_000,
           modalities: opts?.modalities ?? null,
         });
-      },
-      loadTools: async (signal, model) => {
-        rec.loadToolsCalls++;
-        if (opts?.loadTools != null) return opts.loadTools(signal, model);
-        return ok({ search: searchDef, shell: shellDef });
       },
       maxToolOutput: opts?.maxToolOutput,
       countTokens: opts?.countTokens,
@@ -452,6 +432,8 @@ function retryControl(traj: Trajectory<any, null>): RetryControl & Partial<Clear
 
 beforeEach(() => {
   runImpl = async query => ok({ type: "output", content: text(`results: ${query}`) });
+  factoryDataSeen.length = 0;
+  factoryModelSeen.length = 0;
   runDataSeen.length = 0;
   runModelSeen.length = 0;
 });
@@ -565,21 +547,38 @@ describe("trajectory", () => {
     expect(runDataSeen).toEqual([{ marker: "first" }, { marker: "second" }]);
   });
 
+  it("resolves fresh data for every tool factory load", async () => {
+    let marker = "first";
+    const { build } = makeTrajectory({ getData: async () => ({ marker }) });
+    const { traj } = await build([
+      () => okResult(assistantMessage({ toolCalls: [searchCall("cats", "c1")] })),
+      plainOk,
+    ]);
+
+    inputControl(traj).enqueueSteering(text("search"));
+    expect(await traj.step()).toBe(true);
+    marker = "second";
+    expect(await traj.step()).toBe(true);
+    expect(factoryDataSeen).toEqual([{ marker: "first" }, { marker: "second" }]);
+  });
+
   it("reloads tools for a batch and reuses that runtime data for its response", async () => {
     let generation = 0;
-    const { build, rec } = makeTrajectory({
-      loadTools: async (signal, model) => {
+    const generationSearchTool = new ToolBuilder<TestData>()
+      .declare({
+        name: "search",
+        description: "Searches the web",
+        ArgumentsSchema: t.subtype({ query: t.str }),
+        subagents: ["research"] as const,
+      })
+      .define(async () => {
         const loadedGeneration = ++generation;
-        const search = await searchTool({ signal, transport, model, data: { marker: "fresh" } });
-        if (search == null) throw new Error("search tool failed to load");
-        return ok({
-          search: {
-            ...search,
-            run: async () =>
-              ok({ type: "output", content: text(`generation ${loadedGeneration}`) }),
-          },
-        });
-      },
+        return {
+          run: async () => ok({ type: "output", content: text(`generation ${loadedGeneration}`) }),
+        };
+      });
+    const { build, rec } = makeTrajectory({
+      agent: { ..._testAgent, tools: { search: generationSearchTool, shell: shellTool } },
     });
     const { traj } = await build([
       () => okResult(assistantMessage({ toolCalls: [searchCall("cats", "c1")] })),
@@ -589,14 +588,14 @@ describe("trajectory", () => {
     inputControl(traj).enqueueSteering(text("run"));
     expect(await traj.step()).toBe(true);
     expect(rec.modelCalls).toBe(1);
-    expect(rec.loadToolsCalls).toBe(1);
+    expect(generation).toBe(1);
     expect(await traj.step()).toBe(true);
 
     const result = traj.messages[4];
     if (result.role !== "tool-output") throw new Error("impossible");
     expect(result.content).toEqual(text("generation 2"));
     expect(rec.modelCalls).toBe(2);
-    expect(rec.loadToolsCalls).toBe(2);
+    expect(generation).toBe(2);
   });
 
   it("uses freshly resolved context and modalities for the whole batch and response", async () => {
@@ -632,7 +631,7 @@ describe("trajectory", () => {
       ...assistantSnapshot,
     ]);
     expect(rec.modelCalls).toBe(2);
-    expect(rec.loadToolsCalls).toBe(2);
+    expect(factoryModelSeen).toHaveLength(2);
     // Pending-call scans use null; two size-check lowerings and both request lowerings use vision.
     expect(rec.loweringModalities.filter(modalities => modalities === vision)).toHaveLength(4);
     expect(rec.loweringModalities).toContain(null);
@@ -960,7 +959,7 @@ describe("trajectory", () => {
     expect(await traj.step()).toBe(true);
     expect(await traj.step()).toBe(true);
     expect(compilerCalls).toHaveLength(1);
-    expect(rec.loadToolsCalls).toBe(2);
+    expect(factoryModelSeen).toHaveLength(2);
     const invocation = traj.messages[4];
     const child = traj.messages[5];
     if (invocation.role !== "tool-invoke-subagent" || child.role !== "subagent-trajectory") {
@@ -1039,7 +1038,6 @@ describe("trajectory", () => {
       let marker = "data-0";
       const promptDataSeen: string[] = [];
       const promptModelSeen: number[] = [];
-      const factoryModelSeen: number[] = [];
       const dataPrompt = (name: string) =>
         prompt.withData<{ marker: string }>().declare(async args => {
           expect(args.transport).toBe(transport);
@@ -1120,17 +1118,6 @@ describe("trajectory", () => {
                   : 10_000,
             modalities: null,
           });
-        },
-        loadTools: async (signal, model) => {
-          factoryModelSeen.push(model.contextWindow);
-          const search = await searchTool({
-            signal,
-            transport,
-            model,
-            data: { marker: "fresh" },
-          });
-          if (search == null) throw new Error("search tool failed to load");
-          return ok({ search });
         },
         toolContentTooLargeError: async () => "OUTPUT TOO LARGE",
         messages: [],
@@ -1222,7 +1209,9 @@ describe("trajectory", () => {
         "default-model",
       ]);
       const leafContextWindow = leafModel == null ? 10_000 : 30_000;
-      expect(factoryModelSeen).toEqual([10_000, 10_000, 20_000, 20_000, 10_000]);
+      expect(factoryModelSeen.map(model => model.contextWindow)).toEqual([
+        10_000, 10_000, 20_000, 20_000, 10_000,
+      ]);
       expect(promptModelSeen).toEqual([10_000, 20_000, leafContextWindow, 20_000, 10_000]);
       expect(runModelSeen.map(model => model.contextWindow)).toEqual([
         10_000, 20_000, 20_000, 10_000,
@@ -2007,7 +1996,7 @@ describe("trajectory", () => {
 
     expect(compilerCalls.length).toBe(2);
     expect(rec.modelCalls).toBe(2);
-    expect(rec.loadToolsCalls).toBe(2);
+    expect(factoryModelSeen).toHaveLength(2);
     expect(rec.modes).toEqual(["responding", "request-error", "responding", "ready-for-request"]);
   });
 
@@ -2180,7 +2169,7 @@ describe("trajectory", () => {
       ]);
       expect(compilerCalls.length).toBe(2);
       expect(rec.modelCalls).toBe(3);
-      expect(rec.loadToolsCalls).toBe(2);
+      expect(factoryModelSeen).toHaveLength(2);
     },
   );
 
@@ -3359,7 +3348,6 @@ describe("trajectory", () => {
     const traj = new Trajectory({
       agent: _plainAgent,
       model: async () => ok({ model: null, contextWindow: 10_000, modalities: null }),
-      loadTools: async () => ok({ search: searchDef }),
       toolContentTooLargeError: async () => "OUTPUT TOO LARGE",
       messages: [],
       getData: async () => ({ marker: "fresh" }),

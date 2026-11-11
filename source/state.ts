@@ -50,7 +50,7 @@ import {
 } from "./octo-permissions.ts";
 import { parseQuotaJson, QuotaData } from "./utils/quota.ts";
 import { throttledBuffer } from "./throttled-buffer.ts";
-import { loadTools, SKIP_CONFIRMATION_TOOLS } from "./tools/index.ts";
+import { SKIP_CONFIRMATION_TOOLS } from "./tools/index.ts";
 import { attemptUntrackedRead } from "./tools/common.ts";
 import { estimateTokens } from "./ir/count-ir-tokens.ts";
 import { octoAgent, type OctoIR } from "./ir/octo-ir.ts";
@@ -318,9 +318,6 @@ export const useAppStore = create<UiState>((set, get) => {
           contextWindow: model.context,
           modalities: model.modalities ?? null,
         });
-      },
-      loadTools: async (signal, model) => {
-        return loadTools(transport, signal, model, await getOctoExecutionData(currentConfig()));
       },
       countTokens: irs => irs.reduce((tokens, ir) => tokens + estimateTokens(messageText(ir)), 0),
       toolContentTooLargeError: async ir => {

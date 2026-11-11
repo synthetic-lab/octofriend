@@ -10,7 +10,7 @@ import type {
   ShallowLoweredIR,
   TreeIR,
 } from "./llm-ir.ts";
-import type { ToolFactory } from "./tool-def.ts";
+import type { ToolFactory } from "./tools/tool-def.ts";
 
 // The optimized traversal must project directory entries, not individual members of a
 // union-valued entry. Nor may an any entry swallow its typed siblings before projection.

@@ -23,7 +23,7 @@ import {
   type TreeIR,
 } from "./llm-ir.ts";
 import { err, ok, type Result } from "./result.ts";
-import { ToolBuilder, type LoadedTools, type ToolCall } from "./tool-def.ts";
+import { ToolBuilder, type LoadedTools, type ToolCall } from "./tools/tool-def.ts";
 import { Trajectory, type TrajectoryParams } from "./trajectory.ts";
 
 type ToolData = { executed: string[] };
@@ -148,15 +148,6 @@ async function fixture(
   const compilerCalls: Array<{ scope: Scope; irs: Array<LoweredIR<TestAgent["tools"]>> }> = [];
   const controller = new AbortController();
   const data: ToolData = { executed };
-  const loadParams = {
-    signal: controller.signal,
-    transport,
-    model: { contextWindow: 100_000 },
-    data,
-  };
-  const search = await searchTool(loadParams);
-  const delegate = await delegateTool(loadParams);
-  if (search == null || delegate == null) throw new Error("Test tools failed to load");
   const queue = [...responses];
   const runCompiler: Compiler<Scope> = async <
     A extends Agent<any, any, any, any>,
@@ -192,7 +183,6 @@ async function fixture(
         modalities: null,
       });
     },
-    loadTools: async () => ok({ search, delegate }),
     toolContentTooLargeError: async () => "Unexpected oversized test output",
     handler: {
       onMessages: event => {

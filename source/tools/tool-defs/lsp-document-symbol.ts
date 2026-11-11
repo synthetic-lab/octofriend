@@ -1,5 +1,5 @@
 import { t } from "structural";
-import { TOOL_BUILDER } from "../../libocto/tool-def.ts";
+import { TOOL_BUILDER } from "../../libocto/tools/tool-def.ts";
 import type { LspToolData } from "../tool-data.ts";
 import { ok } from "../../libocto/result.ts";
 import { formatDocumentSymbols } from "../../lsp/client.ts";

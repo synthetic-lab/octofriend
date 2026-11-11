@@ -1,6 +1,6 @@
 import { t } from "structural";
 import { unionAll } from "../../types.ts";
-import { TOOL_BUILDER } from "../../libocto/tool-def.ts";
+import { TOOL_BUILDER } from "../../libocto/tools/tool-def.ts";
 import type { SkillToolData } from "../tool-data.ts";
 import { discoverSkills } from "../../skills/skills.ts";
 import { ok } from "../../libocto/result.ts";
