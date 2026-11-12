@@ -1,10 +1,8 @@
 import { t } from "structural";
-import { USER_ABORTED_ERROR_MESSAGE } from "../../libocto/tools/common.ts";
-import { TOOL_BUILDER } from "../../libocto/tools/tool-def.ts";
-import { AbortError } from "../../libocto/transport.ts";
-import { findFiles } from "../../libocto/transport.ts";
-import { estimateTokens } from "../../ir/count-ir-tokens.ts";
-import { ok, err } from "../../libocto/result.ts";
+import { USER_ABORTED_ERROR_MESSAGE } from "../common.ts";
+import { TOOL_BUILDER } from "../tool-def.ts";
+import { AbortError, findFiles } from "../../transport.ts";
+import { ok, err } from "../../result.ts";
 
 export default TOOL_BUILDER.withData<{}>()
   .declare({
@@ -58,13 +56,26 @@ terms scoped and specific.
         return err(files.error.message);
       }
       const text = files.data.join("\n");
-      const tok = estimateTokens(text);
+      const content = [{ type: "text" as const, content: text }];
+      const tok = await model.countTokens([
+        {
+          role: "tool-output",
+          toolCall: {
+            type: "tool-call",
+            name: toolCall.parsed.name,
+            toolCallId: toolCall.toolCallId,
+            original: toolCall.original.arguments,
+            parsed: toolCall.parsed.arguments,
+          },
+          content,
+        },
+      ]);
       if (tok > model.contextWindow) {
         return err(`Find content was too large: approx ${tok} tokens returned`);
       }
       return ok({
         type: "output",
-        content: [{ type: "text", content: text }],
+        content,
       });
     },
   }));
