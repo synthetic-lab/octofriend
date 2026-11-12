@@ -56,6 +56,7 @@ import { err, ok, type Result } from "./result.ts";
 import { OwnershipLock, type OwnershipLockRef } from "./ownership-lock.ts";
 import { waitForPermissionDecision, type PermissionGate } from "./permissions.ts";
 import { approximateIRTokens, shouldAutoCompactHistory } from "./compilers/autocompact.ts";
+import { defaultCountTokens, type ExecutionModel } from "./execution.ts";
 import { trajectoryCompaction, type TrajectoryCompactionEvents } from "./trajectory-compaction.ts";
 import {
   trajectoryAssistantRequest,
@@ -319,10 +320,17 @@ export type TrajectoryHandler<A extends Agent<any, any, any, any>> = Partial<{
 // as an auth error without burning a doomed provider request.
 export type TrajectoryModelError = { type: "auth-error"; authError: string };
 
-type RuntimeData<A extends Agent<any, any, any, any>, Model> = {
-  model: Model;
-  contextWindow: number;
-  modalities: MultimodalConfig | null;
+export type TrajectoryModelResult<Provider> = Result<
+  Omit<ExecutionModel<Provider>, "countTokens"> & {
+    // Token counting is model-specific. If the client doesn't supply a counter for this model,
+    // Trajectory uses its default counter rather than admitting it through this resolver API.
+    countTokens?: ExecutionModel<Provider>["countTokens"];
+  },
+  TrajectoryModelError
+>;
+
+type RuntimeData<A extends Agent<any, any, any, any>, Provider> = {
+  model: ExecutionModel<Provider>;
   tools: Partial<AllToolsAcrossTree<A>>;
 };
 
@@ -343,8 +351,8 @@ export type RequestErrorRetriesConfig = {
   maxBackoffMs?: number;
 };
 
-export type TrajectoryParams<A extends Agent<any, any, any, any>, Model> = Omit<
-  TrajectoryAssistantRequestParams<A, Model>,
+export type TrajectoryParams<A extends Agent<any, any, any, any>, Provider> = Omit<
+  TrajectoryAssistantRequestParams<A, Provider>,
   | "handler"
   | "abortSignal"
   | "quitSignal"
@@ -369,12 +377,7 @@ export type TrajectoryParams<A extends Agent<any, any, any, any>, Model> = Omit<
   // resolution error lands in the same mode as the equivalent compiler finish.
   model: (
     invocation: Extract<TreeIR<A>, { role: "tool-invoke-subagent" }> | null,
-  ) => Promise<
-    Result<
-      { model: Model; contextWindow: number; modalities: MultimodalConfig | null },
-      TrajectoryModelError
-    >
-  >;
+  ) => Promise<TrajectoryModelResult<Provider>>;
   // The client's extension pass handles non-trajectory IR from every agent in the tree.
   // Libocto sends contiguous runs to this callback and handles trajectories and recursion
   // itself and lowers file-tool extras passed through by the client. Neither callback inputs
@@ -388,14 +391,13 @@ export type TrajectoryParams<A extends Agent<any, any, any, any>, Model> = Omit<
   // Caps any single tool output, counted after lowering; defaults to 20% of the context window
   // so one huge result can't push history past autocompaction's reach.
   maxToolOutput?: number;
-  // Counts the tokens in a lowered message sequence from any agent in the tree: maxToolOutput
-  // measures the delta a tool output adds to history, since exact tokenizers aren't summable
-  // and can't necessarily count an unpaired tool output in isolation. The default estimates
-  // ~4 chars/token over text; clients with a real tokenizer can inject exact counts.
-  countTokens?: (irs: Array<CompilerReadyIR<A>["converted"]>) => number;
   // Builds the error for a tool output from any agent in the tree rejected by maxToolOutput,
   // which ends up in the model's context: only the client knows which recovery advice fits its tools.
-  toolContentTooLargeError: (ir: TreeIR<A>) => Promise<string>;
+  toolContentTooLargeError: (
+    ir: TreeIR<A>,
+    tokenCount: number,
+    model: ExecutionModel<Provider>,
+  ) => Promise<string>;
   // Drives stepping: the default runs steps in a loop until one reports the trajectory ended,
   // but clients can supply their own driver (e.g. one backed by a durable queue that serializes
   // state between steps).
@@ -464,14 +466,6 @@ export async function defaultLoopController(step: () => Promise<boolean>): Promi
 
 export const DEFAULT_MAX_TOOL_OUTPUT_FRACTION = 0.2;
 
-// ~4 characters per token for English text:
-// https://help.openai.com/en/articles/4936856-what-are-tokens-and-how-to-count-them
-function defaultCountTokens(irs: Array<LoweredIR<any>>): number {
-  let text = "";
-  for (const ir of irs) text += messageText(ir);
-  return Math.ceil(text.length / 4);
-}
-
 // LlmIR's extension-IR leg is an unresolved indexed type for a generic A, which defeats TS's
 // discriminated narrowing on role; an explicit predicate still narrows.
 function isUserMessage(ir: LlmIR<any>): ir is UserMessage {
@@ -530,7 +524,7 @@ function arcTools<A extends Agent<any, any, any, any>>(
   return tools;
 }
 
-export class Trajectory<A extends Agent<any, any, any, any>, Model> {
+export class Trajectory<A extends Agent<any, any, any, any>, Provider> {
   private readonly history: Array<AgentIR<A>>;
   private _mode: TrajectoryMode<A>;
   private turnController = new AbortController();
@@ -553,7 +547,7 @@ export class Trajectory<A extends Agent<any, any, any, any>, Model> {
     modalities: MultimodalConfig | null,
   ) => Array<CompilerReadyIR<A>>;
 
-  constructor(private readonly params: TrajectoryParams<A, Model>) {
+  constructor(private readonly params: TrajectoryParams<A, Provider>) {
     this.history = [...params.messages];
     this.lower = (messages, modalities) =>
       lower<A>(downconvert<A>(params.lowerMessages, modalities)(messages));
@@ -580,17 +574,20 @@ export class Trajectory<A extends Agent<any, any, any, any>, Model> {
     return [...this.history];
   }
 
-  // Approximate token length of the root history: the last assistant message's real usage
-  // plus an estimate of everything after it. Powers the HUD's context gauge; compaction
-  // checks use the same estimator with the resolved model's modalities.
-  approximateContextLength(): number {
+  // Approximate token length of the full history: the last assistant message's real usage
+  // plus a model-aware count of everything after it. Powers the HUD's context gauge.
+  async approximateContextLength(): Promise<number> {
     const messages = this.lower(this.history, null).map(pair => pair.converted);
-    return approximateIRTokens(messages as Array<LoweredIR<A["tools"]>>);
+    const location = this.inspect().location;
+    return this.countApproximateHistoryTokens(
+      messages as Array<LoweredIR<A["tools"]>>,
+      location.root ? null : location.invocation,
+    );
   }
 
   // Same estimator, excluding in-flight subagent trajectories: completed subagents occupy
   // the primary context, but a running subagent consumes its own.
-  primaryAgentApproximateContext(): number {
+  async primaryAgentApproximateContext(): Promise<number> {
     const messages = this.lower(
       this.history.filter(ir => {
         if (ir.role !== "subagent-trajectory") return true;
@@ -602,7 +599,20 @@ export class Trajectory<A extends Agent<any, any, any, any>, Model> {
       }),
       null,
     ).map(pair => pair.converted);
-    return approximateIRTokens(messages as Array<LoweredIR<A["tools"]>>);
+    return this.countApproximateHistoryTokens(messages as Array<LoweredIR<A["tools"]>>, null);
+  }
+
+  private async countApproximateHistoryTokens(
+    messages: Array<LoweredIR<A["tools"]>>,
+    invocation: Extract<TreeIR<A>, { role: "tool-invoke-subagent" }> | null,
+  ): Promise<number> {
+    const resolved = await this.params.model(invocation);
+    if (!resolved.success) return approximateIRTokens(messages, defaultCountTokens);
+    const executionModel: ExecutionModel<Provider> = {
+      ...resolved.data,
+      countTokens: resolved.data.countTokens ?? defaultCountTokens,
+    };
+    return approximateIRTokens(messages, executionModel.countTokens);
   }
 
   get hasCompactableHistory(): boolean {
@@ -866,18 +876,18 @@ export class Trajectory<A extends Agent<any, any, any, any>, Model> {
 
   private async runAssistantRequest(
     location: ActiveHistory<A>,
-    { model, contextWindow, tools: allTools, modalities }: RuntimeData<A, Model>,
+    { model, tools: allTools }: RuntimeData<A, Provider>,
   ): Promise<Result<Array<TreeIR<A>>, "quit">> {
     const params = this.params;
     const scope = this.scope(location);
-    const lowerMessages = this.lowerForLocation(location, modalities);
+    const lowerMessages = this.lowerForLocation(location, model.modalities);
     const data = await params.getData();
     let receivedTokens = false;
 
     // The selected agent B is in A's tree. Narrow the shared catalogues to B at this boundary;
     // the request still uses B's history and tools, never with a child retyped as the root.
     const run = <B extends Agent<any, any, any, any>>(agent: B, history: Array<AgentIR<B>>) =>
-      trajectoryAssistantRequest.run<B, Model>({
+      trajectoryAssistantRequest.run<B, Provider>({
         model,
         tools: arcTools<A>(agent, allTools) as Partial<LoadedTools<B["tools"]>>,
         messages: history,
@@ -889,7 +899,7 @@ export class Trajectory<A extends Agent<any, any, any, any>, Model> {
           agent.systemPrompt({
             signal,
             transport: params.transport,
-            model: { contextWindow },
+            model,
             data: (await params.getData()) as Parameters<B["systemPrompt"]>[0]["data"],
           }),
         transport: params.transport,
@@ -1101,12 +1111,15 @@ export class Trajectory<A extends Agent<any, any, any, any>, Model> {
           });
           return true;
         }
-        runtime = { ...runtime, ...model.data };
+        runtime = {
+          ...runtime,
+          model: { ...model.data, countTokens: model.data.countTokens ?? defaultCountTokens },
+        };
       }
     }
     await this.applySteering(inspection.location);
     if (this.params.abortSignal.aborted) return false;
-    if (this.needsCompaction(inspection.location, runtime)) {
+    if (await this.needsCompaction(inspection.location, runtime)) {
       await this.autocompact(inspection.location, runtime);
     } else {
       await this.respond(inspection.location, runtime);
@@ -1123,17 +1136,21 @@ export class Trajectory<A extends Agent<any, any, any, any>, Model> {
   private async loadRuntimeData(
     location: ActiveHistory<A>,
     signal: AbortSignal,
-  ): Promise<Result<RuntimeData<A, Model>, TrajectoryModelError | TrajectoryToolLoadError>> {
+  ): Promise<Result<RuntimeData<A, Provider>, TrajectoryModelError | TrajectoryToolLoadError>> {
     const modelResult = await this.params.model(location.root ? null : location.invocation);
     if (!modelResult.success) return modelResult;
+    const model: ExecutionModel<Provider> = {
+      ...modelResult.data,
+      countTokens: modelResult.data.countTokens ?? defaultCountTokens,
+    };
     const toolsResult = await loadAgentTools(this.params.agent, {
       signal,
       transport: this.params.transport,
-      model: { contextWindow: modelResult.data.contextWindow },
+      model,
       data: await this.params.getData(),
     });
     if (!toolsResult.success) return toolsResult;
-    return ok({ ...modelResult.data, tools: toolsResult.data });
+    return ok({ model, tools: toolsResult.data });
   }
 
   private async applySteering(location: ActiveHistory<A>): Promise<void> {
@@ -1147,27 +1164,30 @@ export class Trajectory<A extends Agent<any, any, any, any>, Model> {
     });
   }
 
-  private needsCompaction(location: ActiveHistory<A>, runtime: RuntimeData<A, Model>): boolean {
+  private async needsCompaction(
+    location: ActiveHistory<A>,
+    runtime: RuntimeData<A, Provider>,
+  ): Promise<boolean> {
     if (location.root && this.manualCompactionPending) return true;
     const messages = this.lowerForLocation(
       location,
-      runtime.modalities,
+      runtime.model.modalities,
     )(location.history).map(pair => pair.converted);
-    return shouldAutoCompactHistory(runtime.contextWindow, messages);
+    return shouldAutoCompactHistory(runtime.model, messages);
   }
 
   private async autocompact(
     location: ActiveHistory<A>,
-    runtime: RuntimeData<A, Model>,
+    runtime: RuntimeData<A, Provider>,
   ): Promise<void> {
     const owner = this.ownership.lease();
     const retryBudget = this.retryBudget;
     const scope = this.scope(location);
-    const result = await trajectoryCompaction.run<A, Model>({
+    const result = await trajectoryCompaction.run<A, Provider>({
       model: runtime.model,
       messages: this.lowerForLocation(
         location,
-        runtime.modalities,
+        runtime.model.modalities,
       )(location.history).map(pair => pair.converted),
       runCompiler: this.params.runCompiler,
       transport: this.params.transport,
@@ -1226,7 +1246,7 @@ export class Trajectory<A extends Agent<any, any, any, any>, Model> {
 
   private async respond(
     location: ActiveHistory<A>,
-    runtimeData: RuntimeData<A, Model>,
+    runtimeData: RuntimeData<A, Provider>,
   ): Promise<void> {
     const owner = this.ownership.lease();
     const retryBudget = this.retryBudget;
@@ -1328,8 +1348,7 @@ export class Trajectory<A extends Agent<any, any, any, any>, Model> {
     inspection: Extract<HistoryInspection<A>, { action: "run-tools" }>,
     signal: AbortSignal,
     tools: Partial<AllToolsAcrossTree<A>>,
-    contextWindow: number,
-    modalities: MultimodalConfig | null,
+    model: ExecutionModel<Provider>,
   ): Promise<TreeIR<A>> {
     const toolCall = inspection.pendingCalls[0];
     const defs = Object.values<AllToolsAcrossTree<A>[keyof AllToolsAcrossTree<A>] | undefined>(
@@ -1342,7 +1361,7 @@ export class Trajectory<A extends Agent<any, any, any, any>, Model> {
     const output: Result<ToolReturn<string, ToolExtensionIR<any>>, string> = await def.run({
       signal,
       transport: this.params.transport,
-      model: { contextWindow },
+      model,
       toolCall: {
         toolCallId: toolCall.toolCallId,
         original: { name: toolCall.name, arguments: toolCall.original },
@@ -1374,19 +1393,19 @@ export class Trajectory<A extends Agent<any, any, any, any>, Model> {
     // Token counts and lowering aren't summable, and exact tokenizers can't necessarily count
     // an unpaired tool output in isolation, so measure the delta the output adds to the full
     // lowered history.
-    const countTokens = this.params.countTokens ?? defaultCountTokens;
     const maxToolOutput =
-      this.params.maxToolOutput ?? Math.floor(contextWindow * DEFAULT_MAX_TOOL_OUTPUT_FRACTION);
+      this.params.maxToolOutput ??
+      Math.floor(model.contextWindow * DEFAULT_MAX_TOOL_OUTPUT_FRACTION);
     const history = inspection.location.history;
-    const lowerMessages = this.lowerForLocation(inspection.location, modalities);
+    const lowerMessages = this.lowerForLocation(inspection.location, model.modalities);
     const tokens =
-      countTokens(lowerMessages([...history, ir]).map(({ converted }) => converted)) -
-      countTokens(lowerMessages(history).map(({ converted }) => converted));
+      (await model.countTokens(lowerMessages([...history, ir]).map(({ converted }) => converted))) -
+      (await model.countTokens(lowerMessages(history).map(({ converted }) => converted)));
     if (tokens >= maxToolOutput) {
       return {
         role: "tool-runtime-error",
         toolCall,
-        error: await this.params.toolContentTooLargeError(ir),
+        error: await this.params.toolContentTooLargeError(ir, tokens, model),
       };
     }
     return ir;
@@ -1394,7 +1413,7 @@ export class Trajectory<A extends Agent<any, any, any, any>, Model> {
 
   private async runToolBatch(
     inspection: Extract<HistoryInspection<A>, { action: "run-tools" }>,
-    runtimeData: RuntimeData<A, Model>,
+    runtimeData: RuntimeData<A, Provider>,
   ): Promise<Result<null, "aborted">> {
     const { location } = inspection;
     const tools = arcTools<A>(location.agent, runtimeData.tools);
@@ -1458,13 +1477,7 @@ export class Trajectory<A extends Agent<any, any, any, any>, Model> {
           toolCall,
           control: this.runningControl(),
         });
-        const result = await this.runTool(
-          current,
-          signal,
-          tools,
-          runtimeData.contextWindow,
-          runtimeData.modalities,
-        );
+        const result = await this.runTool(current, signal, tools, runtimeData.model);
         await owner.ifOwner(async () => {
           await this.appendIr(location, result);
         });

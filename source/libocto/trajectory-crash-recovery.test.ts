@@ -157,7 +157,7 @@ async function fixture(
   ): Promise<CompilerResult<A, Tools>> => {
     // The fixture only emits calls from this tree, as in trajectory.test.ts's compiler queue.
     compilerCalls.push({
-      scope: params.model,
+      scope: params.backend,
       irs: JSON.parse(JSON.stringify(params.irs)),
     });
     const next = queue.shift();
@@ -178,6 +178,7 @@ async function fixture(
     model: async invocation => {
       const scope = invocation == null ? "root" : "research";
       return ok({
+        provider: scope,
         model: scope,
         contextWindow: options.contextWindow?.(scope) ?? 100_000,
         modalities: null,

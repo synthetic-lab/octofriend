@@ -13,6 +13,7 @@ import { compilerUsage } from "./compiler-interface.ts";
 import { runAgent, toLlmMessages } from "./standard.ts";
 import type { LoweredIR, MalformedToolRequest } from "../llm-ir.ts";
 import type { ToolCall } from "../tools/tool-def.ts";
+import { defaultCountTokens } from "../execution.ts";
 
 type Ir = LoweredIR<typeof octoAgent.tools>;
 type ShellToolCall = Extract<ToolCall<typeof octoAgent.tools>, { name: "shell" }>;
@@ -33,7 +34,13 @@ describe("standard mixed stream chunks", () => {
       const loaded = await search({
         signal: controller.signal,
         transport,
-        model: { contextWindow: 100_000 },
+        model: {
+          provider: null,
+          model: "test-model",
+          contextWindow: 100_000,
+          modalities: null,
+          countTokens: defaultCountTokens,
+        },
         data: undefined,
       });
       if (loaded == null) throw new Error("Search tool failed to load");
@@ -70,7 +77,13 @@ describe("standard mixed stream chunks", () => {
       });
       const tokens: Array<{ text: string; type: string }> = [];
       const result = await runAgent({
-        model: { client, model: "test-model" },
+        model: {
+          provider: null,
+          model: "test-model",
+          contextWindow: 100_000,
+          modalities: null,
+        },
+        backend: { client },
         irs: [],
         tools: { search: loaded },
         abortSignal: controller.signal,

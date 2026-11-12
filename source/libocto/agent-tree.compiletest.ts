@@ -268,7 +268,7 @@ const resolveModel: TrajectoryParams<Root, null>["model"] = async invocation => 
       invocation.toolCall.parsed.q;
     }
   }
-  return ok({ model: null, contextWindow: 1000, modalities: null });
+  return ok({ provider: null, model: "test-model", contextWindow: 1000, modalities: null });
 };
 void resolveModel(null);
 // @ts-expect-error The argument is required, even for root model resolution.

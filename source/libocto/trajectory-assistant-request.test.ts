@@ -25,11 +25,13 @@ import {
   type ErrorCorrection,
   type TrajectoryAssistantRequestEvents,
 } from "./trajectory-assistant-request.ts";
+import { defaultCountTokens } from "./execution.ts";
 
 type TestData = { marker: string };
 const dataSeen: TestData[] = [];
 let validateImpl: (query: string) => Result<null, string> = () => ok(null);
-const searchTool = new ToolBuilder<TestData>()
+const searchTool = new ToolBuilder()
+  .withData<TestData>()
   .declare({
     name: "search",
     description: "Searches the web",
@@ -99,7 +101,13 @@ async function runAssistantRequest(opts: {
   const search = await searchTool({
     signal: abortController.signal,
     transport,
-    model: { contextWindow: 100_000 },
+    model: {
+      provider: null,
+      model: "test-model",
+      contextWindow: 100_000,
+      modalities: null,
+      countTokens: defaultCountTokens,
+    },
     data,
   });
   if (search == null) throw new Error("search tool failed to load");
@@ -131,7 +139,13 @@ async function runAssistantRequest(opts: {
     onResponseHeaders: async () => {},
   };
   const outcome = await trajectoryAssistantRequest.run<TestAgent, null>({
-    model: null,
+    model: {
+      provider: null,
+      model: "test-model",
+      contextWindow: 100_000,
+      modalities: null,
+      countTokens: defaultCountTokens,
+    },
     messages: opts.messages ?? [{ role: "user", content: [{ type: "text", content: "hi" }] }],
     tools: { search },
     data,

@@ -8,12 +8,7 @@ import type {
   ResponseOutputItem,
   ResponseReasoningItem,
 } from "openai/resources/responses/responses";
-import type {
-  Compiler,
-  CompilerImplementationParams,
-  CompilerIR,
-  CompilerModalities,
-} from "./compiler-interface.ts";
+import type { Compiler, CompilerImplementationParams, CompilerIR } from "./compiler-interface.ts";
 import { compilerUsage, defineCompiler } from "./compiler-interface.ts";
 import { parseToolCall } from "./parse-tool-call.ts";
 import { answeredToolCallId } from "../llm-ir.ts";
@@ -26,8 +21,9 @@ import type {
 import type { LoadedTools, ToolCall } from "../tools/tool-def.ts";
 import { errorToString, err } from "../result.ts";
 import * as irPrompts from "./ir-prompts.ts";
-import type { OpenAICompilerModel } from "./openai-shared.ts";
+import type { OpenAIBackend } from "./openai-shared.ts";
 import { openAIRequestError } from "./openai-shared.ts";
+import type { MultimodalConfig } from "../modalities.ts";
 
 type ToolCallRequest<A extends Agent<any, any, any, any>> = ToolCall<A["tools"]>;
 type LoadedTool<A extends Agent<any, any, any, any>> = LoadedTools<A["tools"]>[keyof LoadedTools<
@@ -77,7 +73,7 @@ function imagePlaceholderContent(): string {
 
 function responseContentParts(
   content: IRContent["content"],
-  modalities?: CompilerModalities,
+  modalities?: MultimodalConfig | null,
 ): ResponseInputContent[] {
   const output: ResponseInputContent[] = [];
   for (const part of content) {
@@ -85,7 +81,7 @@ function responseContentParts(
       output.push({ type: "input_text", text: part.content });
       continue;
     }
-    if (modalities?.includes("vision")) {
+    if (modalities?.image?.enabled) {
       output.push({
         type: "input_image",
         detail: "auto",
@@ -101,7 +97,7 @@ function responseContentParts(
 function responseToolOutput(
   toolCallId: string,
   content: IRContent["content"],
-  modalities?: CompilerModalities,
+  modalities?: MultimodalConfig | null,
 ): ResponseInput {
   /*
    * The Responses API only allows plain-string function call outputs, unlike chat completions
@@ -117,7 +113,7 @@ function responseToolOutput(
       textParts.push(part.content);
       continue;
     }
-    if (modalities?.includes("vision")) {
+    if (modalities?.image?.enabled) {
       imageParts.push({
         type: "input_image",
         detail: "auto",
@@ -148,7 +144,7 @@ function responseToolOutput(
 
 export async function toResponseInput<A extends Agent<any, any, any, any>>(
   messages: Array<CompilerIR<A>>,
-  modalities?: CompilerModalities,
+  modalities?: MultimodalConfig | null,
 ): Promise<ResponseInput> {
   /*
    * The OpenAI Responses API mandates that all function calls *must* have function call outputs
@@ -215,7 +211,7 @@ export async function toResponseInput<A extends Agent<any, any, any, any>>(
 
 function responseInputFromIr<A extends Agent<any, any, any, any>>(
   ir: CompilerIR<A>,
-  modalities?: CompilerModalities,
+  modalities?: MultimodalConfig | null,
 ): ResponseInput {
   if (ir.role === "assistant") {
     const output: ResponseInput = [];
@@ -337,11 +333,11 @@ function reasoningTextFromItem(item: ResponseReasoningItem): string {
   return [...content, ...summary].join("\n");
 }
 
-export const runResponsesAgent: Compiler<OpenAICompilerModel> = defineCompiler(
+export const runResponsesAgent: Compiler<OpenAIBackend> = defineCompiler(
   async <A extends Agent<any, any, any, any>>(
-    params: CompilerImplementationParams<A, OpenAICompilerModel>,
+    params: CompilerImplementationParams<A, OpenAIBackend>,
   ) => {
-    const { model, irs, abortSignal, transport, systemPrompt, autofixJson } = params;
+    const { model, backend, irs, abortSignal, transport, systemPrompt, autofixJson } = params;
     const input = await toResponseInput(irs, model.modalities);
     const instructions = systemPrompt ? await systemPrompt() : undefined;
 
@@ -361,10 +357,10 @@ export const runResponsesAgent: Compiler<OpenAICompilerModel> = defineCompiler(
     });
     const toolParams = toolDefinitions.length === 0 ? {} : { tools: toolDefinitions };
 
-    const reasoningConfig = model.reasoningEffort
+    const reasoningConfig = backend.reasoningEffort
       ? {
           reasoning: {
-            effort: model.reasoningEffort as "low" | "medium" | "high",
+            effort: backend.reasoningEffort as "low" | "medium" | "high",
             summary: "auto" as const,
           },
         }
@@ -382,7 +378,7 @@ export const runResponsesAgent: Compiler<OpenAICompilerModel> = defineCompiler(
     } satisfies ResponseCreateParamsStreaming;
 
     const curl = generateCurlFrom({
-      baseURL: model.client.baseURL,
+      baseURL: backend.client.baseURL,
       model: model.model,
       input,
       instructions,
@@ -390,7 +386,7 @@ export const runResponsesAgent: Compiler<OpenAICompilerModel> = defineCompiler(
     });
 
     try {
-      const { data: stream, response } = await model.client.responses
+      const { data: stream, response } = await backend.client.responses
         .create(request, { signal: abortSignal })
         .withResponse();
 

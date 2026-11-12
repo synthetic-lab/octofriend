@@ -3,7 +3,7 @@ import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import { t } from "structural";
 import { LocalTransport } from "../transports/local.ts";
 import type { Transport } from "./transport.ts";
-import type { ExecutionModel } from "./execution.ts";
+import { defaultCountTokens, type ExecutionModel } from "./execution.ts";
 import type { ImageInfo } from "./images.ts";
 import type { MultimodalConfig } from "./modalities.ts";
 import { err, ok, type Result } from "./result.ts";
@@ -48,9 +48,9 @@ type RunResult = Result<ToolReturn<"research", never>, string>;
 
 let runImpl: (query: string) => Promise<RunResult>;
 const factoryDataSeen: TestData[] = [];
-const factoryModelSeen: ExecutionModel[] = [];
+const factoryModelSeen: Array<ExecutionModel<unknown>> = [];
 const runDataSeen: TestData[] = [];
-const runModelSeen: ExecutionModel[] = [];
+const runModelSeen: Array<ExecutionModel<unknown>> = [];
 
 const searchTool = new ToolBuilder<TestData>()
   .declare({
@@ -252,7 +252,7 @@ function makeTrajectory(opts?: {
   contextWindow?: number;
   modalities?: MultimodalConfig | null;
   maxToolOutput?: number;
-  countTokens?: (irs: Array<LoweredIR<TestAgent["tools"]>>) => number;
+  countTokens?: (irs: Array<LoweredIR<TestAgent["tools"]>>) => Promise<number>;
   toolContentTooLargeError?: (ir: unknown) => Promise<string>;
   requestErrorRetries?: { maxRetryCount?: number; backoffMs: number; maxBackoffMs?: number };
   validationRetries?: number;
@@ -298,13 +298,14 @@ function makeTrajectory(opts?: {
         const authError = opts?.modelAuthError?.(invocation);
         if (authError != null) return err({ type: "auth-error", authError });
         return ok({
-          model: null,
+          provider: null,
+          model: "test-model",
           contextWindow: opts?.contextWindow ?? 10_000,
           modalities: opts?.modalities ?? null,
+          countTokens: opts?.countTokens,
         });
       },
       maxToolOutput: opts?.maxToolOutput,
-      countTokens: opts?.countTokens,
       toolContentTooLargeError:
         opts?.toolContentTooLargeError ??
         (async ir => {
@@ -1098,9 +1099,14 @@ describe("trajectory", () => {
         { role: "tool-invoke-subagent" }
       > | null> = [];
       const models: string[] = [];
-      const compiler: Compiler<string> = async params => {
-        models.push(params.model);
-        const result = await runCompiler({ ...params, model: null });
+      const compiler: Compiler<string> = async <
+        A extends Agent<any, any, any, any>,
+        Tools extends Partial<LoadedTools<A["tools"]>> | undefined = undefined,
+      >(
+        params: CompilerParams<A, string, Tools>,
+      ): Promise<CompilerResult<A, Tools>> => {
+        models.push(params.backend);
+        const result = await runCompiler({ ...params, backend: null });
         marker = `data-${calls.length}`;
         return result;
       };
@@ -1109,6 +1115,7 @@ describe("trajectory", () => {
         model: async invocation => {
           resolutions.push(invocation);
           return ok({
+            provider: invocation?.model ?? "default-model",
             model: invocation?.model ?? "default-model",
             contextWindow:
               invocation?.model === "middle-model"
@@ -3063,7 +3070,7 @@ describe("trajectory", () => {
         },
         child,
       ],
-      countTokens: irs => {
+      countTokens: async irs => {
         counted.push(irs);
         return irs.length;
       },
@@ -3284,7 +3291,7 @@ describe("trajectory", () => {
       const countsSeen: number[] = [];
       const { build, rec } = makeTrajectory({
         maxToolOutput: 10,
-        countTokens: irs => {
+        countTokens: async irs => {
           countsSeen.push(irs.length);
           return 0;
         },
@@ -3333,7 +3340,13 @@ describe("trajectory", () => {
     const searchDef = await searchTool({
       signal: new AbortController().signal,
       transport,
-      model: { contextWindow: 10_000 },
+      model: {
+        provider: null,
+        model: "test-model",
+        contextWindow: 10_000,
+        modalities: null,
+        countTokens: defaultCountTokens,
+      },
       data: { marker: "fresh" },
     });
     if (searchDef == null) throw new Error("search tool failed to load");
@@ -3347,7 +3360,8 @@ describe("trajectory", () => {
     exitControllers.push(exit);
     const traj = new Trajectory({
       agent: _plainAgent,
-      model: async () => ok({ model: null, contextWindow: 10_000, modalities: null }),
+      model: async () =>
+        ok({ provider: null, model: "test-model", contextWindow: 10_000, modalities: null }),
       toolContentTooLargeError: async () => "OUTPUT TOO LARGE",
       messages: [],
       getData: async () => ({ marker: "fresh" }),

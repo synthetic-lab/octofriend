@@ -1,5 +1,5 @@
 import { runAnthropicAgent } from "../libocto/compilers/anthropic.ts";
-import type { AnthropicCompilerModel } from "../libocto/compilers/anthropic.ts";
+import type { AnthropicBackend } from "../libocto/compilers/anthropic.ts";
 import { runResponsesAgent } from "../libocto/compilers/responses.ts";
 import { runAgent } from "../libocto/compilers/standard.ts";
 import Anthropic from "@anthropic-ai/sdk";
@@ -11,54 +11,53 @@ import type {
   OAuthLoadedAuth,
 } from "../config.ts";
 import type { Agent } from "../libocto/llm-ir.ts";
-import type { CompilerModalities } from "../libocto/compilers/compiler-interface.ts";
 import type {
   Compiler,
   CompilerResult,
   CompilerUsage,
 } from "../libocto/compilers/compiler-interface.ts";
 import { compilerUsageHasTokens } from "../libocto/compilers/compiler-interface.ts";
-import type { OpenAICompilerModel } from "../libocto/compilers/openai-shared.ts";
+import type { OpenAIBackend } from "../libocto/compilers/openai-shared.ts";
 import { getCodexOpenaiClient, getDefaultOpenaiClient } from "./openai.ts";
 import { trackTokens } from "../token-tracker.ts";
 
-export type ModelData =
+export type Backend =
   | { type: "api"; auth: ApiKeyAuth; model: ApiKeyModelConfig }
   | { type: "codex"; auth: OAuthLoadedAuth; model: CodexModelConfig };
 
-export const run: Compiler<ModelData> = async params => {
+export const run: Compiler<Backend> = async params => {
   const result = await (async () => {
-    const modelData = params.model;
+    const backend = params.backend;
 
-    if (modelData.type === "codex") {
+    if (backend.type === "codex") {
       return runResponsesAgent({
         ...params,
-        model: codexCompilerModel(modelData.model, modelData.auth),
+        backend: codexBackend(backend.model, backend.auth),
       });
     }
 
-    if (modelData.model.type == null || modelData.model.type === "standard") {
+    if (backend.model.type == null || backend.model.type === "standard") {
       return runAgent({
         ...params,
-        model: standardOpenAICompilerModel(modelData.model, modelData.auth.apiKey),
+        backend: standardOpenAIBackend(backend.model, backend.auth.apiKey),
       });
     }
 
-    if (modelData.model.type === "openai-responses") {
+    if (backend.model.type === "openai-responses") {
       return runResponsesAgent({
         ...params,
-        model: responsesOpenAICompilerModel(modelData.model, modelData.auth.apiKey),
+        backend: responsesOpenAIBackend(backend.model, backend.auth.apiKey),
       });
     }
 
-    const _: "anthropic" = modelData.model.type;
+    const _: "anthropic" = backend.model.type;
     return runAnthropicAgent({
       ...params,
-      model: anthropicCompilerModel(modelData.model, modelData.auth.apiKey),
+      backend: anthropicBackend(backend.model, backend.auth.apiKey),
     });
   })();
 
-  trackCompilerResultUsage(params.model.model.model, result);
+  trackCompilerResultUsage(params.model.model, result);
   return result;
 };
 
@@ -80,47 +79,31 @@ function compilerResultUsage<A extends Agent<any, any, any, any>, Tools>(
   return undefined;
 }
 
-function compilerModalities(model: ModelConfig): CompilerModalities {
-  return ["text", ...(model.modalities?.image?.enabled ? (["vision"] as const) : [])];
-}
-
-function standardOpenAICompilerModel(
-  model: ApiKeyModelConfig,
-  apiKey: string,
-): OpenAICompilerModel {
+function standardOpenAIBackend(model: ApiKeyModelConfig, apiKey: string): OpenAIBackend {
   return {
     client: getDefaultOpenaiClient({ baseUrl: model.baseUrl, apiKey }),
-    model: model.model,
     reasoningEffort: model.reasoning,
-    modalities: compilerModalities(model),
   };
 }
 
-function responsesOpenAICompilerModel(
-  model: ApiKeyModelConfig,
-  apiKey: string,
-): OpenAICompilerModel {
+function responsesOpenAIBackend(model: ApiKeyModelConfig, apiKey: string): OpenAIBackend {
   return {
     client: getDefaultOpenaiClient({ baseUrl: model.baseUrl, apiKey }),
-    model: model.model,
     reasoningEffort: model.reasoning,
-    modalities: compilerModalities(model),
   };
 }
 
-function codexCompilerModel(model: CodexModelConfig, auth: OAuthLoadedAuth): OpenAICompilerModel {
+function codexBackend(model: CodexModelConfig, auth: OAuthLoadedAuth): OpenAIBackend {
   return {
     client: getCodexOpenaiClient({
       oauthToken: auth.oauthToken,
       accountId: auth.accountId,
     }),
-    model: model.model,
     reasoningEffort: model.reasoning,
-    modalities: compilerModalities(model),
   };
 }
 
-function anthropicCompilerModel(model: ApiKeyModelConfig, apiKey: string): AnthropicCompilerModel {
+function anthropicBackend(model: ApiKeyModelConfig, apiKey: string): AnthropicBackend {
   const reasoningConfig = anthropicReasoningConfig(model.model, model.reasoning);
   const thinkingBudget =
     reasoningConfig.thinking?.type === "enabled" ? reasoningConfig.thinking.budget_tokens : 0;
@@ -134,17 +117,15 @@ function anthropicCompilerModel(model: ApiKeyModelConfig, apiKey: string): Anthr
         "User-Agent": `octofriend/${APP_METADATA.version}`,
       },
     }),
-    model: model.model,
     maxTokens,
     ...reasoningConfig,
-    modalities: compilerModalities(model),
   };
 }
 
 export function anthropicReasoningConfig(
   model: string,
   reasoning: ModelConfig["reasoning"],
-): Pick<AnthropicCompilerModel, "thinking" | "outputConfig"> {
+): Pick<AnthropicBackend, "thinking" | "outputConfig"> {
   if (reasoning == null) return {};
 
   const majorVersion = Number.parseInt(model.match(/\d+/)?.[0] ?? "", 10);
@@ -160,7 +141,7 @@ export function anthropicReasoningConfig(
 
 function legacyAnthropicThinking(
   reasoning: NonNullable<ModelConfig["reasoning"]>,
-): AnthropicCompilerModel["thinking"] {
+): AnthropicBackend["thinking"] {
   if (reasoning === "xhigh") return { type: "enabled", budget_tokens: 16384 };
   if (reasoning === "high") return { type: "enabled", budget_tokens: 8192 };
   if (reasoning === "medium") return { type: "enabled", budget_tokens: 4096 };

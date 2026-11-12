@@ -176,7 +176,7 @@ function fixture(messages: TestIR[], exit = new AbortController()) {
     getData: async () => ({ calls }),
     model: async () => {
       calls.push("model");
-      return ok({ model: null, contextWindow: 100_000, modalities: null });
+      return ok({ provider: null, model: "test-model", contextWindow: 100_000, modalities: null });
     },
     runCompiler,
     lowerMessages: irs => irs.map(original => ({ original, converted: original })),

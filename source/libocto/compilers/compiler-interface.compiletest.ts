@@ -7,16 +7,17 @@ import type {
   CompilerResultWithoutToolCalls,
 } from "./compiler-interface.ts";
 import { compilerUsage, defineCompiler } from "./compiler-interface.ts";
+import type { ExecutionModel } from "../execution.ts";
 
-type ScratchModel = {
+type ScratchBackend = {
   model: string;
 };
 
 type ScratchAgent = Agent<never, {}, {}, {}>;
 
-const scratchCompiler: Compiler<ScratchModel> = defineCompiler(
+const scratchCompiler: Compiler<ScratchBackend> = defineCompiler(
   async <A extends Agent<any, any, any, any>>(
-    params: CompilerImplementationParams<A, ScratchModel>,
+    params: CompilerImplementationParams<A, ScratchBackend>,
   ) => {
     await params.onTokens("hello", "content");
     await params.onTokens("{}", "tool");
@@ -41,10 +42,12 @@ const scratchCompiler: Compiler<ScratchModel> = defineCompiler(
 
 declare const abortSignal: AbortSignal;
 declare const transport: Transport;
-declare const model: ScratchModel;
+declare const model: Omit<ExecutionModel<unknown>, "countTokens">;
+declare const backend: ScratchBackend;
 
 const withoutTools = scratchCompiler<ScratchAgent>({
   model,
+  backend,
   irs: [],
   abortSignal,
   transport,

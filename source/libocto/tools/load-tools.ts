@@ -12,7 +12,9 @@ type UnionToIntersection<Union> = (Union extends Union ? (value: Union) => void 
   ? Intersection
   : never;
 type ToolDataFor<Def> =
-  Def extends ToolDef<infer Data, infer _N, infer _A, infer _P, infer _S, infer _E> ? Data : never;
+  Def extends ToolDef<infer Data, any, infer _N, infer _A, infer _P, infer _S, infer _E>
+    ? Data
+    : never;
 export type TreeToolData<A extends Agent<any, any, any, any>> = UnionToIntersection<
   ToolDataFor<AllToolsAcrossTree<A>[keyof AllToolsAcrossTree<A>]>
 >;
@@ -27,9 +29,9 @@ function allTools<A extends AnyAgent>(agent: A): TreeToolMap<A> {
   return tools as TreeToolMap<A>;
 }
 
-export async function loadAgentTools<A extends AnyAgent>(
+export async function loadAgentTools<A extends AnyAgent, Provider>(
   agent: A,
-  args: ExecutionArgs<TreeToolData<A>>,
+  args: ExecutionArgs<TreeToolData<A>, Provider>,
 ): Promise<Result<Partial<AllToolsAcrossTree<A>>, TrajectoryToolLoadError>> {
   if (args.signal.aborted) return err({ type: "quit" });
   const toolMap = allTools(agent);

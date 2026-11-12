@@ -6,6 +6,15 @@ import { fileTracker } from "../file-tracker.ts";
 import { err, ok, unwrap } from "../../result.ts";
 import { MockTransport } from "../../../transports/mock.ts";
 import type { Transport } from "../../transport.ts";
+import { defaultCountTokens } from "../../execution.ts";
+
+const model = {
+  provider: null,
+  model: "test-model",
+  contextWindow: 100_000,
+  modalities: null,
+  countTokens: defaultCountTokens,
+};
 
 function createTransport(files: Record<string, string>): Transport {
   return new MockTransport({ cwd: "/repo", files });
@@ -15,7 +24,7 @@ async function createReadTool(transport: Transport) {
   const tool = await readToolFactory({
     signal: new AbortController().signal,
     transport,
-    model: { contextWindow: 100_000 },
+    model,
     data: {},
   });
   if (!tool) throw new Error("read tool did not load");
@@ -26,7 +35,7 @@ async function createPartialReadTool(transport: Transport) {
   const tool = await partialReadToolFactory({
     signal: new AbortController().signal,
     transport,
-    model: { contextWindow: 100_000 },
+    model,
     data: {},
   });
   if (!tool) throw new Error("partial-read tool did not load");
@@ -70,7 +79,7 @@ describe("partial-read tool", () => {
         await tool.run({
           signal: new AbortController().signal,
           transport,
-          model: { contextWindow: 100_000 },
+          model,
           toolCall: partialReadToolCall({ filePath: "partial-error.txt", offset: 1, limit: 1 }),
           data: {},
         }),
@@ -108,7 +117,7 @@ describe("partial-read tool", () => {
       await tool.run({
         signal,
         transport,
-        model: { contextWindow: 100_000 },
+        model,
         toolCall: partialReadToolCall({ filePath: "notes.txt", offset: 2, limit: 2 }),
         data: {},
       }),
@@ -142,7 +151,7 @@ describe("partial-read tool", () => {
           offset: 1,
           limit: 1,
         }),
-        model: { contextWindow: 100_000 },
+        model,
         data: {},
       }),
     );
@@ -164,7 +173,7 @@ describe("partial-read tool", () => {
       await readTool.run({
         signal,
         transport,
-        model: { contextWindow: 100_000 },
+        model,
         toolCall: readToolCall({ filePath: "already-full.txt" }),
         data: {},
       }),
@@ -174,7 +183,7 @@ describe("partial-read tool", () => {
       await partialReadTool.run({
         signal,
         transport,
-        model: { contextWindow: 100_000 },
+        model,
         toolCall: partialReadToolCall({ filePath: "already-full.txt", offset: 2, limit: 1 }),
         data: {},
       }),

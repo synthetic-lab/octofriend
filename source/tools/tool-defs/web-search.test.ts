@@ -2,12 +2,19 @@ import { describe, expect, it } from "bun:test";
 import { MockTransport } from "../../transports/mock.ts";
 import webSearchTool from "../../libocto/tools/web-search/index.ts";
 import webResearchTool from "./web-research.ts";
+import { defaultCountTokens } from "../../libocto/execution.ts";
 
 function args(searchConfig: { url: string; key: string } | null) {
   return {
     signal: new AbortController().signal,
     transport: new MockTransport({}),
-    model: { contextWindow: 100_000 },
+    model: {
+      provider: null,
+      model: "test-model",
+      contextWindow: 100_000,
+      modalities: null,
+      countTokens: defaultCountTokens,
+    },
     data: { searchConfig },
   };
 }

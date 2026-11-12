@@ -5,6 +5,15 @@ import { fileTracker } from "../file-tracker.ts";
 import { err, ok, unwrap } from "../../result.ts";
 import { MockTransport } from "../../../transports/mock.ts";
 import { type Transport } from "../../transport.ts";
+import { defaultCountTokens } from "../../execution.ts";
+
+const model = {
+  provider: null,
+  model: "test-model",
+  contextWindow: 100_000,
+  modalities: null,
+  countTokens: defaultCountTokens,
+};
 
 function createTransport(files: Record<string, string>): Transport {
   return new MockTransport({ cwd: "/repo", files });
@@ -14,7 +23,7 @@ async function createEditTool(transport: Transport) {
   const tool = await editToolFactory({
     signal: new AbortController().signal,
     transport,
-    model: { contextWindow: 100_000 },
+    model,
     data: {},
   });
   if (!tool) {
@@ -62,7 +71,7 @@ describe("edit tool", () => {
       signal,
       transport,
       toolCall: editToolCall({ filePath, search: "old", replace: "new" }),
-      model: { contextWindow: 100_000 },
+      model,
       data: {},
     });
     expect(result).toEqual(
@@ -98,7 +107,7 @@ describe("edit tool", () => {
           : await tool.run({
               signal,
               transport,
-              model: { contextWindow: 100_000 },
+              model,
               toolCall,
               data: {},
             });
@@ -133,7 +142,7 @@ describe("edit tool", () => {
       signal: controller.signal,
       transport,
       toolCall: editToolCall({ filePath: "cancel-edit.txt", search: "old", replace: "new" }),
-      model: { contextWindow: 100_000 },
+      model,
       data: {},
     });
     await writing;
@@ -166,7 +175,7 @@ describe("edit tool", () => {
           search: "two",
           replace: "TWO",
         }),
-        model: { contextWindow: 100_000 },
+        model,
         data: {},
       }),
     );
@@ -202,7 +211,7 @@ describe("edit tool", () => {
         search: "missing text",
         replace: "replacement",
       }),
-      model: { contextWindow: 100_000 },
+      model,
       data: {},
     });
 
@@ -222,7 +231,7 @@ describe("edit tool", () => {
         search: "before edit",
         replace: "replacement",
       }),
-      model: { contextWindow: 100_000 },
+      model,
       data: {},
     });
 

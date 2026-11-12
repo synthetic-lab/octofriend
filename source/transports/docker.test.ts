@@ -11,6 +11,7 @@ import { ProcessManager, processes } from "../process-manager.ts";
 import backgroundProcessTool from "../libocto/tools/background-process/index.ts";
 import manageBackgroundProcessTool from "../libocto/tools/manage-background-process/index.ts";
 import type { ProcessExecFileCallback } from "../libocto/transport.ts";
+import { defaultCountTokens } from "../libocto/execution.ts";
 
 class FakeChild extends EventEmitter {
   stdin = new PassThrough();
@@ -162,7 +163,13 @@ describe("DockerTransport", () => {
     const context = {
       signal: controller.signal,
       transport,
-      model: { contextWindow: 100_000 },
+      model: {
+        provider: null,
+        model: "test-model",
+        contextWindow: 100_000,
+        modalities: null,
+        countTokens: defaultCountTokens,
+      },
       data: {},
     };
     expect(await backgroundProcessTool(context)).not.toBeNull();

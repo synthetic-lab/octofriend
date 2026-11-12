@@ -3,9 +3,16 @@ import { err, ok } from "../../result.ts";
 import { MockTransport } from "../../../transports/mock.ts";
 import { fileTracker } from "../file-tracker.ts";
 import createToolFactory from "./index.ts";
+import { defaultCountTokens } from "../../execution.ts";
 
 const config = {};
-const model = { contextWindow: 100_000 };
+const model = {
+  provider: null,
+  model: "test-model",
+  contextWindow: 100_000,
+  modalities: null,
+  countTokens: defaultCountTokens,
+};
 
 async function createTool(transport: MockTransport) {
   const tool = await createToolFactory({

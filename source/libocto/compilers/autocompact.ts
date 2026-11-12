@@ -1,4 +1,5 @@
-import { messageText, type Agent, type Content, type LoweredIR } from "../llm-ir.ts";
+import type { Agent, Content, LoweredIR } from "../llm-ir.ts";
+import { defaultCountTokens, type ExecutionModel } from "../execution.ts";
 import type { ToolMap } from "../tools/tool-def.ts";
 import type {
   CompilerError,
@@ -38,12 +39,12 @@ The individual messages from earlier in this conversation are no longer availabl
 
 Resume your work now.`;
 
-export function shouldAutoCompactHistory<T extends ToolMap<any, any>>(
-  maxContextWindow: number,
+export async function shouldAutoCompactHistory<T extends ToolMap<any, any>>(
+  model: ExecutionModel<unknown>,
   messages: Array<LoweredIR<T>>,
-): boolean {
-  const maxAllowedTokens = Math.floor(maxContextWindow * AUTOCOMPACT_THRESHOLD);
-  const currentTokens = approximateIRTokens(messages);
+): Promise<boolean> {
+  const maxAllowedTokens = Math.floor(model.contextWindow * AUTOCOMPACT_THRESHOLD);
+  const currentTokens = await approximateIRTokens(messages, model.countTokens);
 
   return currentTokens >= maxAllowedTokens;
 }
@@ -111,7 +112,10 @@ export function processCompactedHistory<A extends Agent<any, any, any, any>>(
   return undefined;
 }
 
-export function approximateIRTokens<T extends ToolMap<any, any>>(ir: Array<LoweredIR<T>>): number {
+export async function approximateIRTokens<T extends ToolMap<any, any>>(
+  ir: Array<LoweredIR<T>>,
+  countTokens: ExecutionModel<unknown>["countTokens"],
+): Promise<number> {
   let mostRecentAssistantIndex = -1;
   for (let i = ir.length - 1; i >= 0; i--) {
     if (ir[i].role === "assistant") {
@@ -131,14 +135,14 @@ export function approximateIRTokens<T extends ToolMap<any, any>>(ir: Array<Lower
 
   let trailingTokenCount = 0;
   for (let i = mostRecentAssistantIndex + 1; i < ir.length; i++) {
-    trailingTokenCount += estimateTokens(messageText(ir[i]));
+    try {
+      trailingTokenCount += await countTokens([ir[i]]);
+    } catch {
+      trailingTokenCount += await defaultCountTokens([ir[i]]);
+    }
   }
 
   return checkpointTokenCount + trailingTokenCount;
-}
-
-function estimateTokens(text: string): number {
-  return Math.ceil(text.length / 4);
 }
 
 function compactPrompt() {

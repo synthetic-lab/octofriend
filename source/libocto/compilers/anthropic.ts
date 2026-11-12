@@ -1,11 +1,6 @@
 import type Anthropic from "@anthropic-ai/sdk";
 import { t, toJSONSchema } from "structural";
-import type {
-  Compiler,
-  CompilerImplementationParams,
-  CompilerIR,
-  CompilerModalities,
-} from "./compiler-interface.ts";
+import type { Compiler, CompilerImplementationParams, CompilerIR } from "./compiler-interface.ts";
 import { compilerUsage, defineCompiler } from "./compiler-interface.ts";
 import { parseToolCall } from "./parse-tool-call.ts";
 import type {
@@ -18,17 +13,16 @@ import type {
 import type { LoadedTools, ToolCall } from "../tools/tool-def.ts";
 import { errorToString, err } from "../result.ts";
 import * as irPrompts from "./ir-prompts.ts";
+import type { MultimodalConfig } from "../modalities.ts";
 
 type ToolCallRequest<A extends Agent<any, any, any, any>> = ToolCall<A["tools"]>;
 type LoadedTool<A extends Agent<any, any, any, any>> = LoadedTools<A["tools"]>[keyof LoadedTools<
   A["tools"]
 >];
 
-export type AnthropicCompilerModel = {
+export type AnthropicBackend = {
   client: Anthropic;
-  model: string;
   maxTokens: number;
-  modalities?: CompilerModalities;
   thinking?: Anthropic.ThinkingConfigParam;
   outputConfig?: Anthropic.OutputConfig;
 };
@@ -45,7 +39,7 @@ function imagePlaceholderContent(): string {
 
 function anthropicContentParts(
   content: IRContent["content"],
-  modalities?: CompilerModalities,
+  modalities?: MultimodalConfig | null,
 ): Array<Anthropic.TextBlockParam | Anthropic.ImageBlockParam> {
   const output: Array<Anthropic.TextBlockParam | Anthropic.ImageBlockParam> = [];
   for (const part of content) {
@@ -53,7 +47,7 @@ function anthropicContentParts(
       output.push({ type: "text", text: part.content });
       continue;
     }
-    if (modalities?.includes("vision")) {
+    if (modalities?.image?.enabled) {
       output.push({
         type: "image",
         source: {
@@ -71,7 +65,7 @@ function anthropicContentParts(
 
 function toModelMessage<A extends Agent<any, any, any, any>>(
   messages: Array<CompilerIR<A>>,
-  modalities?: CompilerModalities,
+  modalities?: MultimodalConfig | null,
 ): Array<Anthropic.MessageParam> {
   const output: Anthropic.MessageParam[] = [];
 
@@ -84,7 +78,7 @@ function toModelMessage<A extends Agent<any, any, any, any>>(
 
 function modelMessageFromIr<A extends Agent<any, any, any, any>>(
   ir: CompilerIR<A>,
-  modalities?: CompilerModalities,
+  modalities?: MultimodalConfig | null,
 ): Anthropic.MessageParam {
   if (ir.role === "assistant") {
     const thinkingBlocks = ir.anthropic?.thinkingBlocks || [];
@@ -234,11 +228,11 @@ ${JSON.stringify(requestBody)}
 JSON`;
 }
 
-export const runAnthropicAgent: Compiler<AnthropicCompilerModel> = defineCompiler(
+export const runAnthropicAgent: Compiler<AnthropicBackend> = defineCompiler(
   async <A extends Agent<any, any, any, any>>(
-    params: CompilerImplementationParams<A, AnthropicCompilerModel>,
+    params: CompilerImplementationParams<A, AnthropicBackend>,
   ) => {
-    const { model, irs, abortSignal, transport, systemPrompt, autofixJson } = params;
+    const { model, backend, irs, abortSignal, transport, systemPrompt, autofixJson } = params;
     const messages = toModelMessage(irs, model.modalities);
     const sysPrompt = systemPrompt ? await systemPrompt() : "";
 
@@ -268,24 +262,24 @@ export const runAnthropicAgent: Compiler<AnthropicCompilerModel> = defineCompile
           };
 
     const modelOptions = {
-      ...(model.thinking ? { thinking: model.thinking } : {}),
-      ...(model.outputConfig ? { output_config: model.outputConfig } : {}),
+      ...(backend.thinking ? { thinking: backend.thinking } : {}),
+      ...(backend.outputConfig ? { output_config: backend.outputConfig } : {}),
     };
 
     const curl = generateCurlFrom({
-      baseURL: model.client.baseURL,
+      baseURL: backend.client.baseURL,
       model: model.model,
       system: sysPrompt,
       messages,
       ...toolParams,
-      maxTokens: model.maxTokens,
-      thinking: model.thinking,
-      outputConfig: model.outputConfig,
+      maxTokens: backend.maxTokens,
+      thinking: backend.thinking,
+      outputConfig: backend.outputConfig,
     });
 
     try {
       const system = sysPrompt == null ? {} : { system: sysPrompt };
-      const { data: stream, response } = await model.client.messages
+      const { data: stream, response } = await backend.client.messages
         .create(
           {
             ...system,
@@ -296,7 +290,7 @@ export const runAnthropicAgent: Compiler<AnthropicCompilerModel> = defineCompile
               type: "auto",
               disable_parallel_tool_use: false,
             },
-            max_tokens: model.maxTokens,
+            max_tokens: backend.maxTokens,
             ...modelOptions,
             stream: true,
           },

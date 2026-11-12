@@ -27,13 +27,13 @@ function fixture(provider: Provider, transport: MockTransport) {
   const runCompiler: Compiler<null> = params => {
     switch (provider) {
       case "standard":
-        return runAgent({ ...params, model: { client: openai, model: "test" } });
+        return runAgent({ ...params, backend: { client: openai } });
       case "responses":
-        return runResponsesAgent({ ...params, model: { client: openai, model: "test" } });
+        return runResponsesAgent({ ...params, backend: { client: openai } });
       case "anthropic":
         return runAnthropicAgent({
           ...params,
-          model: { client: anthropic, model: "test", maxTokens: 100 },
+          backend: { client: anthropic, maxTokens: 100 },
         });
     }
   };
@@ -45,7 +45,8 @@ function fixture(provider: Provider, transport: MockTransport) {
   const trajectory = new Trajectory({
     agent,
     messages,
-    model: async () => ok({ model: null, contextWindow: 100_000, modalities: null }),
+    model: async () =>
+      ok({ provider: null, model: "test-model", contextWindow: 100_000, modalities: null }),
     getData: async () => ({ yourName: "Test", models: [], lsp: { config: {} } }),
     toolContentTooLargeError: async () => "Unexpected oversized output",
     runCompiler,

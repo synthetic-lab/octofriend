@@ -1,12 +1,10 @@
 import { t } from "structural";
 import type OpenAI from "openai";
-import type { CompilerError, CompilerModalities } from "./compiler-interface.ts";
+import type { CompilerError } from "./compiler-interface.ts";
 import { errorToString } from "../result.ts";
 
-export type OpenAICompilerModel = {
+export type OpenAIBackend = {
   client: OpenAI;
-  model: string;
-  modalities?: CompilerModalities;
   reasoningEffort?: "low" | "medium" | "high" | "xhigh";
 };
 

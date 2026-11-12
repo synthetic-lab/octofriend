@@ -158,9 +158,12 @@ describe("runResponsesAgent", () => {
 
     const result = await runResponsesAgent<typeof octoAgent>({
       model: {
-        client,
+        provider: null,
         model: "test-model",
+        contextWindow: 100_000,
+        modalities: null,
       },
+      backend: { client },
       irs: [
         {
           role: "user",
