@@ -3072,7 +3072,7 @@ describe("trajectory", () => {
       ],
       countTokens: async irs => {
         counted.push(irs);
-        return irs.length;
+        return defaultCountTokens(irs);
       },
     });
     const firstRequest = assistantMessage({ toolCalls: [shellCall("pwd", "first")] });
@@ -3093,7 +3093,11 @@ describe("trajectory", () => {
       expect(compilerCalls).toHaveLength(attempt);
     }
     expect(compilerCalls).toHaveLength(6);
-    expect(counted).toHaveLength(4);
+    // Six autocompaction calls count isolated trailing IRs; the other four are the two
+    // full-history-with/history-without pairs for the two tool outputs.
+    expect(counted).toHaveLength(10);
+    const wholeHistoryCounts = counted.filter(irs => irs.length > 1);
+    expect(wholeHistoryCounts).toHaveLength(4);
     const checkpoints = child.ir.filter(ir => ir.role === "checkpoint");
     expect(checkpoints).toHaveLength(4);
     expect(checkpoints[0]).toBe(originalCheckpoint);
@@ -3110,8 +3114,8 @@ describe("trajectory", () => {
       if (request.role !== "lowered-checkpoint") throw new Error("Expected checkpoint");
       expect(request.content).toEqual(renderedContent(checkpoints[index]));
     }
-    for (let index = 0; index < counted.length; index++) {
-      const checkpoint = counted[index][0];
+    for (let index = 0; index < wholeHistoryCounts.length; index++) {
+      const checkpoint = wholeHistoryCounts[index][0];
       if (checkpoint.role !== "lowered-checkpoint") throw new Error("Expected checkpoint");
       expect(checkpoint.content).toEqual(renderedContent(checkpoints[Math.floor(index / 2) + 1]));
     }
@@ -3119,6 +3123,55 @@ describe("trajectory", () => {
     expect(compilerCalls[2].irs[0]).toEqual(compilerCalls[1].irs[0]);
     expect(compilerCalls[4].irs[0]).toEqual(compilerCalls[3].irs[0]);
   });
+
+  it("approximates the active child context separately from the primary agent's context", async () => {
+    const rootRequest = assistantMessage({ toolCalls: [searchCall("delegate", "c1")] });
+    rootRequest.usage = compilerUsage(10, 5);
+    const invocation: TestInvocation = {
+      role: "tool-invoke-subagent",
+      subagent: "research",
+      toolCall: searchCall("delegate", "c1"),
+      message: text("Inspect the workspace"),
+    };
+    const { build, rec } = makeTrajectory({
+      messages: [
+        rootRequest,
+        invocation,
+        {
+          role: "subagent-trajectory",
+          subagent: "research",
+          task: text("Inspect the workspace"),
+          toolCall: invocation.toolCall,
+          ir: [{ role: "user", content: text("12345678") }],
+        },
+      ],
+    });
+    const { traj } = await build([]);
+
+    expect(await traj.approximateContextLength()).toBe(2);
+    expect(await traj.primaryAgentApproximateContext()).toBe(15);
+    expect(rec.modelInvocations).toEqual([invocation, null]);
+  });
+
+  it.each(["resolution", "counter"] as const)(
+    "falls back to default approximation after %s failure",
+    async failure => {
+      const { build } = makeTrajectory({
+        messages: [{ role: "user", content: text("12345678") }],
+        modelAuthError: () => (failure === "resolution" ? "No model available" : undefined),
+        countTokens:
+          failure === "counter"
+            ? async () => {
+                throw new Error("Counter unavailable");
+              }
+            : undefined,
+      });
+      const { traj } = await build([]);
+
+      expect(await traj.approximateContextLength()).toBe(2);
+      expect(await traj.primaryAgentApproximateContext()).toBe(2);
+    },
+  );
 
   it("rectifies a compaction error and recovers on retry", async () => {
     const { build, rec } = makeTrajectory({
@@ -3314,8 +3367,10 @@ describe("trajectory", () => {
           ? { role: "tool-runtime-error", toolCall: searchCall("huge", "c1"), error: content }
           : { role: "tool-output", toolCall: searchCall("huge", "c1"), content: text(content) },
       );
-      expect(countsSeen.length).toBe(2);
-      expect(countsSeen[0]).toBe(countsSeen[1] + 1);
+      // The first and last calls are autocompaction's isolated user/output counts.
+      // The middle two are the full histories with and without the tool output.
+      expect(countsSeen).toEqual([1, 3, 2, 1]);
+      expect(countsSeen[1]).toBe(countsSeen[2] + 1);
     },
   );
 
