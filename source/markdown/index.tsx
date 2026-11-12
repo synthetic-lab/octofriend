@@ -428,7 +428,7 @@ function TableRenderer({ token }: { token: Tokens.Table }) {
     <TerminalFlex
       style={{
         display: "grid",
-        gridTemplateColumns: token.header.map(() => "auto").join(" "),
+        gridTemplateColumns: token.header.map(() => "minmax(0, max-content)").join(" "),
         gridAutoRows: "max-content",
         justifyContent: "flex-start",
         width: "100%",
