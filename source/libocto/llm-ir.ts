@@ -765,13 +765,16 @@ export type TreeIR<A extends Agent<any, any, any, any>> =
   | AgentIR<A>
   | DescendantOriginals<A["agents"]>;
 
+// As with tree IR, project tool calls after traversing the directory. Recursing through
+// ToolCall and its inspection intersection makes generic assignability expand both at every level.
+type AgentToolCalls<Node> = Node extends [infer A extends Agent<any, any, any, any>]
+  ? ToolCall<A["tools"]>
+  : never;
+
 // Runnable calls from any level, without widening an individual agent's tool map.
 export type TreeToolCall<A extends Agent<any, any, any, any>> =
   | ToolCall<A["tools"]>
-  | ((string extends keyof A["agents"]
-      ? ToolCall<A["agents"][string]["tools"]>
-      : { [K in keyof A["agents"]]: TreeToolCall<A["agents"][K]> }[keyof A["agents"]]) &
-      ToolCall<InspectionTools>);
+  | (AgentToolCalls<DescendantAgentNodes<A["agents"]>> & ToolCall<InspectionTools>);
 
 export type CompilerReadyIR<A extends Agent<any, any, any, any>> = IRConversion<
   TreeIR<A>,
