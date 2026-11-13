@@ -5,13 +5,13 @@ import { fileReadIR } from "./file-ir.ts";
 import { ok } from "../result.ts";
 import type { ImageInfo } from "../images.ts";
 import type { MultimodalConfig } from "../modalities.ts";
-import { definePermissionlessAgent, type TreeIR } from "../llm-ir.ts";
+import { agent as agentBuilder, type TreeIR } from "../llm-ir.ts";
 import { downconvert, lowerMessages } from "../ir-operations.ts";
 import { prompt } from "../system-prompt.ts";
 import read from "./read/index.ts";
 import rewrite from "./rewrite/index.ts";
 
-const agent = definePermissionlessAgent({
+const agent = agentBuilder.definePermissionless({
   systemPrompt: prompt.declare(async () => "Test prompt"),
   tools: { read, rewrite },
   agents: {},
@@ -118,7 +118,7 @@ describe("automatic file IR lowering", () => {
   });
 
   it("keeps read optimization local to contiguous runs and nested histories", () => {
-    const _root = definePermissionlessAgent({ ...agent, agents: { child: agent } });
+    const _root = agentBuilder.definePermissionless({ ...agent, agents: { child: agent } });
     const before = fileReadIR(toolCall("before"))({ content: "before child" });
     const after = fileReadIR(toolCall("after"))({ content: "after child" });
     const oldChild = fileReadIR(toolCall("child-old"))({ content: "old child contents" });
@@ -162,7 +162,7 @@ describe("automatic file IR lowering", () => {
         }),
       })
       .define(async () => ({ run: async () => ok({ type: "output", content: [] }) }));
-    const _mixed = definePermissionlessAgent({ ...agent, tools: { ...agent.tools, note } });
+    const _mixed = agentBuilder.definePermissionless({ ...agent, tools: { ...agent.tools, note } });
     const noteCall: ToolCall<{ note: typeof note }> = {
       type: "tool-call",
       name: "note",

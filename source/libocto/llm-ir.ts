@@ -54,11 +54,11 @@ export type AgentDirectory = {
  * never produces rejects, so its IR universe excludes them and exhaustive switches over IR roles
  * never need a reject case.
  *
- * The capability is tracked via a unique-symbol brand assigned by definePermissionedAgent, and is
- * uniform across a tree (see ValidateAgentSubagents): every subagent of a permissioned agent is
- * permissioned, and no subagent of a permissionless agent is. The two constructor functions make
- * the choice obvious at the definition site and in review, and the tree holds no mixes, so the
- * runner never needs a runtime probe to know which way it goes.
+ * The capability is tracked via a unique-symbol brand assigned by agent.definePermissioned, and
+ * is uniform across a tree: every subagent of a permissioned agent is permissioned, and no
+ * subagent of a permissionless agent is. The builder's final definition method applies its choice
+ * throughout the composed tree, so the tree holds no mixes and the runner never needs a runtime
+ * probe to know which way it goes.
  */
 declare const permissionedAgentBrand: unique symbol;
 
@@ -84,30 +84,143 @@ export type PermissionlessAgent<
   PromptData,
 > = Agent<Extra, SubagentDirectory, Tools, PromptData>;
 
-// Helper functions to define agents with compile-time safety guarantees. They're identity functions
-// that run compile-time validation on the passed-in agent and assign the correct type + branding.
-export function definePermissionedAgent<
-  A extends {
-    systemPrompt: SystemPrompt<any, any>;
-    tools: ToolMap<any, any>;
-    agents: AgentDirectory;
-  },
->(a: A & ValidateAgentSubagents<A, true>): A & PermissionedBrand {
-  return a as unknown as A & PermissionedBrand;
+type AgentDefinition = {
+  systemPrompt: SystemPrompt<any, any>;
+  tools: ToolMap<any, any>;
+  agents: AgentDirectory;
+};
+
+// A partial top-level agent directory. Child agents remain complete definitions; composition only
+// shallow-merges each node's own tool and child directories and never combines child trees.
+export type AgentFragment = {
+  tools?: ToolMap<any, any>;
+  agents?: AgentDirectory;
+};
+
+type FragmentTools<Fragment extends AgentFragment> = NonNullable<Fragment["tools"]>;
+type FragmentAgents<Fragment extends AgentFragment> = NonNullable<Fragment["agents"]>;
+
+type MergeAgentDefinition<Definition extends AgentDefinition, Tools, Agents> = Omit<
+  Definition,
+  "tools" | "agents"
+> & {
+  tools: Tools & Definition["tools"];
+  agents: Agents & Definition["agents"];
+};
+
+type WithTreePermission<AgentType extends AgentDefinition, Permissioned extends boolean> = {
+  [K in Exclude<Extract<keyof AgentType, string>, "agents">]: AgentType[K];
+} & (Permissioned extends true ? PermissionedBrand : unknown) & {
+    agents: {
+      [K in keyof AgentType["agents"]]: WithTreePermission<AgentType["agents"][K], Permissioned>;
+    };
+  };
+
+// Validate the fully merged tree without requiring accumulated children in the final definition too.
+type ValidateComposedAgent<AgentType, Permissioned extends boolean> =
+  AgentType extends ValidateAgentSubagents<AgentType, Permissioned>
+    ? unknown
+    : ValidateAgentSubagents<AgentType, Permissioned>;
+
+declare const conflictingUseTools: unique symbol;
+declare const conflictingUseAgents: unique symbol;
+
+type RejectUseConflicts<Tools, Agents, Incoming extends AgentFragment> = [
+  Extract<keyof Tools, keyof FragmentTools<Incoming>>,
+] extends [never]
+  ? [Extract<keyof Agents, keyof FragmentAgents<Incoming>>] extends [never]
+    ? unknown
+    : {
+        readonly [conflictingUseAgents]: Extract<keyof Agents, keyof FragmentAgents<Incoming>>;
+      }
+  : {
+      readonly [conflictingUseTools]: Extract<keyof Tools, keyof FragmentTools<Incoming>>;
+    };
+
+type AgentComposer<Tools, Agents> = {
+  use<const Fragment extends AgentFragment>(
+    fragment: Fragment & RejectUseConflicts<Tools, Agents, Fragment>,
+  ): AgentComposer<Tools & FragmentTools<Fragment>, Agents & FragmentAgents<Fragment>>;
+
+  definePermissioned<const Definition extends AgentDefinition>(
+    definition: Definition &
+      RejectUseConflicts<Tools, Agents, Definition> &
+      ValidateComposedAgent<
+        WithTreePermission<MergeAgentDefinition<Definition, Tools, Agents>, true>,
+        true
+      >,
+  ): WithTreePermission<MergeAgentDefinition<Definition, Tools, Agents>, true>;
+
+  definePermissionless<const Definition extends AgentDefinition>(
+    definition: Definition &
+      RejectUseConflicts<Tools, Agents, Definition> &
+      ValidateComposedAgent<
+        WithTreePermission<MergeAgentDefinition<Definition, Tools, Agents>, false>,
+        false
+      >,
+  ): WithTreePermission<MergeAgentDefinition<Definition, Tools, Agents>, false>;
+};
+
+function mergeRecords<Left extends object, Right extends object>(
+  kind: string,
+  left: Left,
+  right: Right,
+): Left & Right {
+  for (const name of Object.keys(right)) {
+    if (left.hasOwnProperty(name)) {
+      throw new Error(`Cannot use fragment: ${kind} "${name}" is already defined`);
+    }
+  }
+  return { ...left, ...right };
 }
 
-export function definePermissionlessAgent<
-  A extends {
-    systemPrompt: SystemPrompt<any, any>;
-    tools: ToolMap<any, any>;
-    agents: AgentDirectory;
-  },
->(a: A & ValidateAgentSubagents<A, false>): A {
-  return a;
+function createAgentComposer<Tools extends ToolMap<any, any>, Agents extends AgentDirectory>(
+  tools: Tools,
+  agents: Agents,
+): AgentComposer<Tools, Agents> {
+  function use<const Fragment extends AgentFragment>(
+    fragment: Fragment & RejectUseConflicts<Tools, Agents, Fragment>,
+  ): AgentComposer<Tools & FragmentTools<Fragment>, Agents & FragmentAgents<Fragment>> {
+    return createAgentComposer(
+      mergeRecords("tool", tools, fragment.tools ?? {}),
+      mergeRecords("subagent", agents, fragment.agents ?? {}),
+    );
+  }
+
+  function definePermissioned<const Definition extends AgentDefinition>(
+    definition: Definition &
+      RejectUseConflicts<Tools, Agents, Definition> &
+      ValidateComposedAgent<
+        WithTreePermission<MergeAgentDefinition<Definition, Tools, Agents>, true>,
+        true
+      >,
+  ): WithTreePermission<MergeAgentDefinition<Definition, Tools, Agents>, true> {
+    return {
+      ...definition,
+      tools: mergeRecords("tool", tools, definition.tools),
+      agents: mergeRecords("subagent", agents, definition.agents),
+    } as unknown as WithTreePermission<MergeAgentDefinition<Definition, Tools, Agents>, true>;
+  }
+
+  function definePermissionless<const Definition extends AgentDefinition>(
+    definition: Definition &
+      RejectUseConflicts<Tools, Agents, Definition> &
+      ValidateComposedAgent<
+        WithTreePermission<MergeAgentDefinition<Definition, Tools, Agents>, false>,
+        false
+      >,
+  ): WithTreePermission<MergeAgentDefinition<Definition, Tools, Agents>, false> {
+    return {
+      ...definition,
+      tools: mergeRecords("tool", tools, definition.tools),
+      agents: mergeRecords("subagent", agents, definition.agents),
+    };
+  }
+
+  return { use, definePermissioned, definePermissionless };
 }
 
-// Back-compat alias. Defines a permissionless agent; prefer the explicit name in new code.
-export const defineAgent = definePermissionlessAgent;
+export const agent = createAgentComposer({}, {});
 
 // An IR that defines sub-agent trajectories
 export type AgentTrajectory<
@@ -357,7 +470,7 @@ export type ToolSkipOutputMessage<T extends ToolMap<any, any>> = {
 /*
  * A tool call that was rejected by the harness (e.g. a user denied a permission prompt).
  *
- * Rejects only exist for permissioned agents (see definePermissionedAgent): an agent loop that
+ * Rejects only exist for permissioned agents (see agent.definePermissioned): an agent loop that
  * runs a permission gate is the only thing that can produce one. They are permissioned-only
  * history IRs — never compiler-facing — because lower(...) converts every tool-reject to a
  * tool-skip-output before any compiler can see it. This mirrors Checkpoint, which similarly

@@ -5,7 +5,7 @@
  * with it, and answeredToolCallId relies on that to switch exhaustively over built-in roles.
  *
  * "tool-reject" is permissioned-only: it exists in history only for agents defined via
- * definePermissionedAgent, and is converted to a tool-skip-output by lower(...) before any
+ * agent.definePermissioned, and is converted to a tool-skip-output by lower(...) before any
  * compiler can see it. It can therefore never appear in LoweredIR.
  */
 export const BUILTIN_IR_ROLES = {

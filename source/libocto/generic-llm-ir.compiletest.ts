@@ -1,6 +1,6 @@
 import { prompt } from "./system-prompt.ts";
 import { t } from "structural";
-import { defineAgent, LlmIR, trajectoryCond } from "./llm-ir.ts";
+import { agent, LlmIR, trajectoryCond } from "./llm-ir.ts";
 import { TOOL_BUILDER, ToolBuilder, ToolCall } from "./tools/tool-def.ts";
 import { ok, err } from "./result.ts";
 
@@ -169,15 +169,15 @@ const reviewTools = {
 
 const testPrompt = prompt.declare(async () => "Test prompt");
 
-const viewAgent = defineAgent({ systemPrompt: testPrompt, tools: {}, agents: {} });
-const dynamicSuccessAgent = defineAgent({
+const viewAgent = agent.definePermissionless({ systemPrompt: testPrompt, tools: {}, agents: {} });
+const dynamicSuccessAgent = agent.definePermissionless({
   systemPrompt: testPrompt,
   tools: dynamicTools,
   agents: {
     view: viewAgent,
   },
 });
-const successAgent = defineAgent({
+const successAgent = agent.definePermissionless({
   systemPrompt: testPrompt,
   tools: allTools,
 
@@ -297,7 +297,7 @@ if (a.role === "subagent-trajectory") {
 
 // We expect an error here because the main agent doesn't define a view subagent
 // @ts-expect-error
-const missingSubagent = defineAgent({
+const missingSubagent = agent.definePermissionless({
   systemPrompt: testPrompt,
   tools: allTools,
 
@@ -320,7 +320,7 @@ const missingSubagent = defineAgent({
   },
 });
 
-const _missingNestedSubagent = defineAgent({
+const _missingNestedSubagent = agent.definePermissionless({
   systemPrompt: testPrompt,
   tools: allTools,
 
@@ -347,7 +347,7 @@ const _missingNestedSubagent = defineAgent({
 
 // We expect an error here because the dynamic tool requires a view subagent
 // @ts-expect-error
-const _missingDynamicSubagent = defineAgent({
+const _missingDynamicSubagent = agent.definePermissionless({
   systemPrompt: testPrompt,
   tools: dynamicTools,
   agents: {},

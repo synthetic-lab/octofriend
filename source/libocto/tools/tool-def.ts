@@ -343,8 +343,8 @@ export class ToolBuilder<Data = unknown> {
       return runSelectedTool?.(args) ?? null;
     };
 
-    // The brand has no runtime representation; it only makes defineAgent reject tools whose custom
-    // IR output is not included in the target IR universe.
+    // The brand has no runtime representation; it only makes agent definitions reject tools whose
+    // custom IR output is not included in the target IR universe.
     return wrapped as unknown as ((
       args: ExecutionArgs<Data, unknown>,
     ) => DynamicToolFactoryReturn<T>) &
@@ -472,8 +472,8 @@ export class DeclaredTool<
       };
     };
 
-    // The brand has no runtime representation; it only makes defineAgent reject tools whose custom
-    // IR output is not included in the target IR universe.
+    // The brand has no runtime representation; it only makes agent definitions reject tools whose
+    // custom IR output is not included in the target IR universe.
     return wrapped as unknown as ToolFactory<
       Data,
       Provider,

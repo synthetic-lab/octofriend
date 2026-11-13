@@ -12,7 +12,7 @@ import {
 } from "./compilers/compiler-interface.ts";
 import { downconvert, inspectHistory } from "./ir-operations.ts";
 import {
-  definePermissionlessAgent,
+  agent as agentBuilder,
   type Agent,
   type AgentIR,
   type AssistantMessage,
@@ -68,12 +68,12 @@ const delegateTool = new ToolBuilder<ToolData>()
 
 const testPrompt = prompt.declare(async () => "Test prompt");
 
-const research = definePermissionlessAgent({
+const research = agentBuilder.definePermissionless({
   systemPrompt: testPrompt,
   tools: { search: searchTool },
   agents: {},
 });
-const agent = definePermissionlessAgent({
+const agent = agentBuilder.definePermissionless({
   systemPrompt: testPrompt,
   tools: { search: searchTool, delegate: delegateTool },
   agents: { research },

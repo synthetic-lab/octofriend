@@ -9,8 +9,7 @@ import type { MultimodalConfig } from "./modalities.ts";
 import { err, ok, type Result } from "./result.ts";
 import { ToolBuilder, type LoadedTools, type ToolCall, type ToolReturn } from "./tools/tool-def.ts";
 import {
-  definePermissionedAgent,
-  definePermissionlessAgent,
+  agent,
   type Agent,
   type AgentIR,
   type AssistantMessage,
@@ -96,18 +95,18 @@ const shellTool = new ToolBuilder<TestData>()
 // permissioned test agent and the plain agent each own their own research subagent.
 const testPrompt = prompt.declare(async () => "Test prompt");
 
-const researchAgent = definePermissionedAgent({
+const researchAgent = agent.definePermissioned({
   systemPrompt: prompt.declare(async () => "You are the research subagent."),
   tools: { shell: shellTool },
   agents: {},
 });
-const plainResearchAgent = definePermissionlessAgent({
+const plainResearchAgent = agent.definePermissionless({
   systemPrompt: testPrompt,
   tools: {},
   agents: {},
 });
 
-const _testAgent = definePermissionedAgent({
+const _testAgent = agent.definePermissioned({
   systemPrompt: testPrompt,
   tools: { search: searchTool, shell: shellTool },
   agents: { research: researchAgent },
@@ -115,7 +114,7 @@ const _testAgent = definePermissionedAgent({
 type TestAgent = typeof _testAgent;
 type TestInvocation = Extract<TreeIR<TestAgent>, { role: "tool-invoke-subagent" }>;
 
-const _plainAgent = definePermissionlessAgent({
+const _plainAgent = agent.definePermissionless({
   systemPrompt: testPrompt,
   tools: { search: searchTool },
   agents: { research: plainResearchAgent },
@@ -1047,17 +1046,17 @@ describe("trajectory", () => {
           promptModelSeen.push(args.model.contextWindow);
           return `${name} prompt`;
         });
-      const leaf = definePermissionlessAgent({
+      const leaf = agent.definePermissionless({
         systemPrompt: dataPrompt("leaf"),
         tools: {},
         agents: {},
       });
-      const middle = definePermissionlessAgent({
+      const middle = agent.definePermissionless({
         systemPrompt: dataPrompt("middle"),
         tools: { search: searchTool },
         agents: { research: leaf },
       });
-      const root = definePermissionlessAgent({
+      const root = agent.definePermissionless({
         systemPrompt: dataPrompt("root"),
         tools: { search: searchTool },
         agents: { research: middle },

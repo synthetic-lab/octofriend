@@ -1,6 +1,6 @@
 import { describe, expect, it } from "bun:test";
 import { downconvert, lowerMessages, pendingToolCalls } from "../../ir-operations.ts";
-import { definePermissionlessAgent, type TreeIR, type RecursiveLowered } from "../../llm-ir.ts";
+import { agent, type TreeIR, type RecursiveLowered } from "../../llm-ir.ts";
 import { compilerUsage } from "../../compilers/compiler-interface.ts";
 import type { ToolCall } from "../tool-def.ts";
 import type { ImageInfo } from "../../images.ts";
@@ -8,7 +8,7 @@ import type { MultimodalConfig } from "../../modalities.ts";
 import { prompt } from "../../system-prompt.ts";
 import read from "./index.ts";
 
-const _agent = definePermissionlessAgent({
+const _agent = agent.definePermissionless({
   systemPrompt: prompt.declare(async () => "Test prompt"),
   tools: { read },
   agents: {},
