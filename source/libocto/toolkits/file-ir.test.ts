@@ -1,6 +1,6 @@
 import { describe, expect, it } from "bun:test";
 import { t } from "structural";
-import { ToolBuilder, type ToolCall } from "./tool-def.ts";
+import { ToolBuilder, type ToolCallFromToolMap } from "./tool-def.ts";
 import { fileReadIR } from "./file-ir.ts";
 import { ok } from "../result.ts";
 import type { ImageInfo } from "../images.ts";
@@ -17,7 +17,7 @@ const agent = agentBuilder.definePermissionless({
   agents: {},
 });
 
-type FileToolCallRequest = ToolCall<typeof agent.tools>;
+type FileToolCallRequest = ToolCallFromToolMap<typeof agent.tools>;
 
 function convertFiles(messages: Array<TreeIR<typeof agent>>, modalities: MultimodalConfig | null) {
   return downconvert<typeof agent>(lowerMessages, modalities)(messages);
@@ -163,7 +163,7 @@ describe("automatic file IR lowering", () => {
       })
       .define(async () => ({ run: async () => ok({ type: "output", content: [] }) }));
     const _mixed = agentBuilder.definePermissionless({ ...agent, tools: { ...agent.tools, note } });
-    const noteCall: ToolCall<{ note: typeof note }> = {
+    const noteCall: ToolCallFromToolMap<{ note: typeof note }> = {
       type: "tool-call",
       name: "note",
       toolCallId: "note",

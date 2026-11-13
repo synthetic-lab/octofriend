@@ -4,7 +4,7 @@ import type { BuiltinIRRole } from "./ir-roles.ts";
 import type { CompilerUsage } from "./compilers/compiler-interface.ts";
 import type { SystemPrompt, SystemPromptData } from "./system-prompt.ts";
 import type {
-  ToolCall as ToolCallForTools,
+  ToolCallFromToolMap,
   ToolExtensionIR,
   ToolFactory,
   ToolFactoryRequirements,
@@ -217,7 +217,7 @@ export type AgentTrajectory<
   task: UserMessage["content"];
   ir: Array<AgentIR<Agents[Name]>>;
   // The parent tool call that delegated to the subagent.
-  toolCall: ToolCallForTools<Tools>;
+  toolCall: ToolCallFromToolMap<Tools>;
 };
 
 // The trajectory leg of a full IR universe: one member per subagent, so subagent can be used as a
@@ -412,7 +412,7 @@ export type AssistantMessage<T extends ToolMap<any, any>> = {
     reasoningId?: string;
   };
   anthropic?: AnthropicAssistantData;
-  toolCalls?: Array<ToolCallForTools<T> | MalformedToolRequest>;
+  toolCalls?: Array<ToolCallFromToolMap<T> | MalformedToolRequest>;
   usage: CompilerUsage;
 };
 
@@ -422,18 +422,18 @@ export type UserMessage = Content & {
 
 export type ToolOutputMessage<T extends ToolMap<any, any>> = Content & {
   role: "tool-output";
-  toolCall: ToolCallForTools<T>;
+  toolCall: ToolCallFromToolMap<T>;
 };
 
 export type ToolRuntimeErrorMessage<T extends ToolMap<any, any>> = {
   role: "tool-runtime-error";
-  toolCall: ToolCallForTools<T>;
+  toolCall: ToolCallFromToolMap<T>;
   error: string;
 };
 
 export type ToolValidationErrorMessage<T extends ToolMap<any, any>> = {
   role: "tool-validation-error";
-  toolCall: ToolCallForTools<T>;
+  toolCall: ToolCallFromToolMap<T>;
   error: string;
 
   // TODO: remove this, if the validation is aborted treat it like an assistant message abort
@@ -447,7 +447,7 @@ export type ToolParseErrorMessage = {
 
 export type ToolSkipOutputMessage<T extends ToolMap<any, any>> = {
   role: "tool-skip-output";
-  toolCall: ToolCallForTools<T>;
+  toolCall: ToolCallFromToolMap<T>;
   reason: string;
 };
 
@@ -462,7 +462,7 @@ export type ToolSkipOutputMessage<T extends ToolMap<any, any>> = {
  */
 export type ToolRejectMessage<T extends ToolMap<any, any>> = {
   role: "tool-reject";
-  toolCall: ToolCallForTools<T>;
+  toolCall: ToolCallFromToolMap<T>;
 };
 
 export type RequestErrorIR = {
@@ -508,7 +508,7 @@ export type RequestSnapshotEndIR = { role: "request-snapshot-end" };
 
 export type ToolSubagentInvoke<T extends ToolMap<any, any>, SubagentName extends string> = {
   role: "tool-invoke-subagent";
-  toolCall: ToolCallForTools<T>;
+  toolCall: ToolCallFromToolMap<T>;
   subagent: SubagentName;
   message: UserMessage["content"];
   model?: string;
@@ -641,7 +641,7 @@ type PreLoweredTrajectory<
   subagent: Name;
   task: UserMessage["content"];
   ir: Array<RecursiveLowered<Child>>;
-  toolCall: ToolCallForTools<Tools>;
+  toolCall: ToolCallFromToolMap<Tools>;
 };
 
 /*
@@ -732,7 +732,7 @@ export type RecursiveLowered<A extends Agent<any, any, any, any>> = IRConversion
       role: "subagent-trajectory";
       subagent: string;
       task: UserMessage["content"];
-      toolCall: ToolCallForTools<InspectionTools>;
+      toolCall: ToolCallFromToolMap<InspectionTools>;
       ir: Array<IRShape<RecursiveLowered<A>>>;
     })
 >;
@@ -750,15 +750,18 @@ export type TreeIR<A extends Agent<any, any, any, any>> =
   | DescendantOriginals<A["agents"]>;
 
 // As with tree IR, project tool calls after traversing the directory. Recursing through
-// ToolCallForTools and its inspection intersection makes generic assignability expand both at every level.
+// ToolCallFromToolMap and its inspection intersection makes generic assignability expand both at every level.
 type AgentToolCalls<Node> = Node extends [infer A extends Agent<any, any, any, any>]
-  ? ToolCallForTools<A["tools"]>
+  ? ToolCallFromToolMap<A["tools"]>
   : never;
 
+// Calls to this agent's own tools only, excluding anything a subagent declares.
+export type OwnToolCall<A extends Agent<any, any, any, any>> = ToolCallFromToolMap<A["tools"]>;
+
 // Runnable calls from any level, without widening an individual agent's tool map.
-export type ToolCall<A extends Agent<any, any, any, any>> =
-  | ToolCallForTools<A["tools"]>
-  | (AgentToolCalls<DescendantAgentNodes<A["agents"]>> & ToolCallForTools<InspectionTools>);
+export type TreeToolCall<A extends Agent<any, any, any, any>> =
+  | OwnToolCall<A>
+  | (AgentToolCalls<DescendantAgentNodes<A["agents"]>> & ToolCallFromToolMap<InspectionTools>);
 
 export type CompilerReadyIR<A extends Agent<any, any, any, any>> = IRConversion<
   TreeIR<A>,

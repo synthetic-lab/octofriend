@@ -1,4 +1,4 @@
-import type { Agent, ToolCall, UserMessage } from "./llm-ir.ts";
+import type { Agent, TreeToolCall, UserMessage } from "./llm-ir.ts";
 import { err, ok, type Result } from "./result.ts";
 
 export type PermissionDecision =
@@ -7,7 +7,7 @@ export type PermissionDecision =
 
 // The gate handles calls from every agent, including descendant-only tools.
 export type PermissionGate<A extends Agent<any, any, any, any>> = (
-  toolCall: ToolCall<A>,
+  toolCall: TreeToolCall<A>,
 ) => Promise<PermissionDecision>;
 
 /*

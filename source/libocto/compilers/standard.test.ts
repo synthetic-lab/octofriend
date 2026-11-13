@@ -11,12 +11,11 @@ import type {
 import { octoAgent } from "../../ir/octo-ir.ts";
 import { compilerUsage } from "./compiler-interface.ts";
 import { runAgent, toLlmMessages } from "./standard.ts";
-import type { LoweredIR, MalformedToolRequest } from "../llm-ir.ts";
-import type { ToolCall } from "../toolkits/tool-def.ts";
+import type { LoweredIR, MalformedToolRequest, OwnToolCall } from "../llm-ir.ts";
 import { defaultCountTokens } from "../execution.ts";
 
 type Ir = LoweredIR<typeof octoAgent.tools>;
-type ShellToolCall = Extract<ToolCall<typeof octoAgent.tools>, { name: "shell" }>;
+type ShellToolCall = Extract<OwnToolCall<typeof octoAgent>, { name: "shell" }>;
 
 describe("standard mixed stream chunks", () => {
   it.each(["reasoning", "reasoning_content"])(

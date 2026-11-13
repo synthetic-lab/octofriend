@@ -6,9 +6,9 @@ import {
   type CanDisplayImageResult,
   type MultimodalConfig,
 } from "../modalities.ts";
-import type { ToolCall } from "./tool-def.ts";
+import type { ToolCallFromToolMap } from "./tool-def.ts";
 
-export type FileReadIR<T extends ToolCall<any>> = {
+export type FileReadIR<T extends ToolCallFromToolMap<any>> = {
   role: "file-read";
   content: string;
   toolCall: T;
@@ -16,14 +16,14 @@ export type FileReadIR<T extends ToolCall<any>> = {
   image?: ImageInfo;
 };
 
-export type FileMutateIR<T extends ToolCall<any>> = {
+export type FileMutateIR<T extends ToolCallFromToolMap<any>> = {
   role: "file-mutate";
   content: string;
   toolCall: T;
   path: string;
 };
 
-export function fileReadIR<T extends ToolCall<any> & { parsed: { filePath: string } }>(
+export function fileReadIR<T extends ToolCallFromToolMap<any> & { parsed: { filePath: string } }>(
   toolCall: T,
 ) {
   return (args: { content: string; image?: ImageInfo }): FileReadIR<T> => ({
@@ -35,7 +35,7 @@ export function fileReadIR<T extends ToolCall<any> & { parsed: { filePath: strin
   });
 }
 
-export function fileMutateIR<T extends ToolCall<any> & { parsed: { filePath: string } }>(
+export function fileMutateIR<T extends ToolCallFromToolMap<any> & { parsed: { filePath: string } }>(
   toolCall: T,
 ) {
   return (args: { content: string }): FileMutateIR<T> => ({
@@ -58,13 +58,16 @@ function fileReadContent(
   return content;
 }
 
-type FileOutput<Call extends ToolCall<any>> = Content & { role: "tool-output"; toolCall: Call };
+type FileOutput<Call extends ToolCallFromToolMap<any>> = Content & {
+  role: "tool-output";
+  toolCall: Call;
+};
 
 // Preserve the client's provenance while lowering file extras in each contiguous history run.
 export function lowerFileExtras<
   Original,
   Converted extends { role: BuiltinIRRole },
-  Call extends ToolCall<any>,
+  Call extends ToolCallFromToolMap<any>,
 >(
   messages: Array<IRConversion<Original, Converted | FileReadIR<Call> | FileMutateIR<Call>>>,
   modalities: MultimodalConfig | null,

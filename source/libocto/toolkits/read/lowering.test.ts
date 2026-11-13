@@ -2,7 +2,7 @@ import { describe, expect, it } from "bun:test";
 import { downconvert, lowerMessages, pendingToolCalls } from "../../ir-operations.ts";
 import { agent, type TreeIR, type RecursiveLowered } from "../../llm-ir.ts";
 import { compilerUsage } from "../../compilers/compiler-interface.ts";
-import type { ToolCall } from "../tool-def.ts";
+import type { ToolCallFromToolMap } from "../tool-def.ts";
 import type { ImageInfo } from "../../images.ts";
 import type { MultimodalConfig } from "../../modalities.ts";
 import { prompt } from "../../system-prompt.ts";
@@ -24,7 +24,7 @@ const _agent = agent.definePermissionless({
  * out-of-distribution for models.
  */
 
-type ReadToolCall = ToolCall<typeof _agent.tools>;
+type ReadToolCall = ToolCallFromToolMap<typeof _agent.tools>;
 
 function readCall(id: string, filePath: string): ReadToolCall {
   return {

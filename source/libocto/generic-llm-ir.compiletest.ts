@@ -1,12 +1,12 @@
 import { prompt } from "./system-prompt.ts";
 import { t } from "structural";
 import { agent, LlmIR, trajectoryCond } from "./llm-ir.ts";
-import { TOOL_BUILDER, ToolBuilder, ToolCall } from "./toolkits/tool-def.ts";
+import { TOOL_BUILDER, ToolBuilder, ToolCallFromToolMap } from "./toolkits/tool-def.ts";
 import { ok, err } from "./result.ts";
 
 const BUILDER = new ToolBuilder();
 
-function testFileIR<T extends ToolCall<any>>(toolCall: T) {
+function testFileIR<T extends ToolCallFromToolMap<any>>(toolCall: T) {
   return (args: { contents: string }) => ({
     role: "file-read" as const,
     contents: args.contents,

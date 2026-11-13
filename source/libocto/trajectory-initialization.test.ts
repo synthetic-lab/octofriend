@@ -7,12 +7,13 @@ import {
   agent as agentBuilder,
   type AgentIR,
   type AssistantMessage,
+  type OwnToolCall,
   type RequestErrorIR,
   type UserMessage,
 } from "./llm-ir.ts";
 import { requestSnapshot } from "./request-snapshot.ts";
 import { ok } from "./result.ts";
-import { ToolBuilder, type ToolCall, type ToolMap } from "./toolkits/tool-def.ts";
+import { ToolBuilder, type ToolCallFromToolMap, type ToolMap } from "./toolkits/tool-def.ts";
 import { Trajectory, type TrajectoryEvents, type TrajectoryMode } from "./trajectory.ts";
 
 type TestData = { calls: string[] };
@@ -78,21 +79,21 @@ const requestError: RequestErrorIR = {
   requestError: "failed",
   curl: "curl",
 };
-const workCall: ToolCall<typeof leaf.tools> = {
+const workCall: OwnToolCall<typeof leaf> = {
   type: "tool-call",
   name: "work",
   toolCallId: "work",
   original: {},
   parsed: {},
 };
-const childCall: ToolCall<TestAgent["tools"]> = {
+const childCall: OwnToolCall<TestAgent> = {
   type: "tool-call",
   name: "delegateChild",
   toolCallId: "child",
   original: {},
   parsed: {},
 };
-const leafCall: ToolCall<typeof child.tools> = {
+const leafCall: OwnToolCall<typeof child> = {
   type: "tool-call",
   name: "delegateLeaf",
   toolCallId: "leaf",
@@ -100,7 +101,7 @@ const leafCall: ToolCall<typeof child.tools> = {
   parsed: {},
 };
 function assistant<Tools extends ToolMap<any, any>>(
-  toolCalls?: Array<ToolCall<Tools>>,
+  toolCalls?: Array<ToolCallFromToolMap<Tools>>,
 ): AssistantMessage<Tools> {
   return { role: "assistant", content: "done", usage: compilerUsage(1, 1), toolCalls };
 }

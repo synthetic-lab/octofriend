@@ -20,10 +20,11 @@ import {
   type LowerOutputIR,
   type LoweredIR,
   type MalformedToolRequest,
+  type OwnToolCall,
   type TreeIR,
 } from "./llm-ir.ts";
 import { err, ok, type Result } from "./result.ts";
-import { ToolBuilder, type LoadedTools, type ToolCall } from "./toolkits/tool-def.ts";
+import { ToolBuilder, type LoadedTools } from "./toolkits/tool-def.ts";
 import { Trajectory, type TrajectoryParams } from "./trajectory.ts";
 
 type ToolData = { executed: string[] };
@@ -107,7 +108,7 @@ function response(output: AssistantMessage<TestAgent["tools"]>): Response {
   return () => ok({ output, usage: compilerUsage(1, 1), curl: "curl", headers: new Headers() });
 }
 
-function searchCall(query: string): ToolCall<TestAgent["tools"]> {
+function searchCall(query: string): OwnToolCall<TestAgent> {
   return {
     type: "tool-call",
     name: "search",

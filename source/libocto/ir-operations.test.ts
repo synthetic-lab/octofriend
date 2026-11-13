@@ -1,7 +1,14 @@
 import { prompt } from "./system-prompt.ts";
 import { describe, expect, it } from "bun:test";
 import { t } from "structural";
-import type { AgentIR, Content, CompilerReadyIR, LowerOutputIR, TreeIR } from "./llm-ir.ts";
+import type {
+  AgentIR,
+  Content,
+  CompilerReadyIR,
+  LowerOutputIR,
+  OwnToolCall,
+  TreeIR,
+} from "./llm-ir.ts";
 import { agent } from "./llm-ir.ts";
 import {
   activeHistory,
@@ -13,7 +20,6 @@ import {
 } from "./ir-operations.ts";
 import { ok } from "./result.ts";
 import { ToolBuilder } from "./toolkits/tool-def.ts";
-import type { ToolCall } from "./toolkits/tool-def.ts";
 
 const searchTool = new ToolBuilder<unknown>()
   .declare({
@@ -68,7 +74,7 @@ function lowerHistory(messages: TestIR[]): TestLoweredIR[] {
   return lower<TestAgent>(convert(messages));
 }
 
-function pendingCalls(messages: TestIR[]): Array<ToolCall<TestAgent["tools"]>> {
+function pendingCalls(messages: TestIR[]): Array<OwnToolCall<TestAgent>> {
   return pendingToolCalls<TestAgent>(convert(messages));
 }
 
@@ -78,7 +84,7 @@ function trajectoryRunning(trajectory: Extract<TestIR, { role: "subagent-traject
   return isTrajectoryRunning(converted);
 }
 
-function searchCall(toolCallId: string, query: string = "cats"): ToolCall<TestAgent["tools"]> {
+function searchCall(toolCallId: string, query: string = "cats"): OwnToolCall<TestAgent> {
   return {
     type: "tool-call",
     name: "search",
@@ -97,7 +103,7 @@ function userMessage(content: string): TestIR {
 
 function assistantMessage(
   content: string,
-  toolCalls: Array<ToolCall<TestAgent["tools"]>> = [],
+  toolCalls: Array<OwnToolCall<TestAgent>> = [],
   tokenUsage: number = 10,
 ): Extract<TestIR, { role: "assistant" }> {
   return {
@@ -121,10 +127,7 @@ function researchUserMessage(content: string): ResearchIR {
     content: [{ type: "text", content }],
   };
 }
-function researchAssistantMessage(
-  content: string,
-  toolCall: ToolCall<TestAgent["tools"]>,
-): ResearchIR {
+function researchAssistantMessage(content: string, toolCall: OwnToolCall<TestAgent>): ResearchIR {
   return {
     role: "assistant",
     content,
@@ -154,7 +157,7 @@ function researchAssistantResponse(content: string): ResearchIR {
   };
 }
 function researchInvocation(
-  toolCall: ToolCall<TestAgent["tools"]>,
+  toolCall: OwnToolCall<TestAgent>,
 ): Extract<ResearchIR, { role: "tool-invoke-subagent" }> {
   return {
     role: "tool-invoke-subagent",
@@ -163,10 +166,7 @@ function researchInvocation(
     message: [{ type: "text", content: "Research nested lowering" }],
   };
 }
-function researchTrajectory(
-  ir: GrandchildIR[],
-  toolCall: ToolCall<TestAgent["tools"]>,
-): ResearchIR {
+function researchTrajectory(ir: GrandchildIR[], toolCall: OwnToolCall<TestAgent>): ResearchIR {
   return {
     role: "subagent-trajectory",
     subagent: "grandchild",
@@ -205,7 +205,7 @@ function checkpointMessage(summary: string): TestIR {
 }
 
 function subagentInvocation(
-  toolCall: ToolCall<TestAgent["tools"]>,
+  toolCall: OwnToolCall<TestAgent>,
 ): Extract<TestIR, { role: "tool-invoke-subagent" }> {
   return {
     role: "tool-invoke-subagent",
@@ -217,7 +217,7 @@ function subagentInvocation(
 
 function subagentTrajectory(
   ir: ResearchIR[],
-  toolCall: ToolCall<TestAgent["tools"]>,
+  toolCall: OwnToolCall<TestAgent>,
 ): Extract<TestIR, { role: "subagent-trajectory" }> {
   return {
     role: "subagent-trajectory",
@@ -689,7 +689,7 @@ describe("downconvert", () => {
       tools: { search: searchTool },
       agents: { research: child },
     });
-    const call: ToolCall<(typeof leaf)["tools"]> = {
+    const call: OwnToolCall<typeof leaf> = {
       type: "tool-call",
       name: "report",
       toolCallId: "c1",

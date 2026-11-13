@@ -3,13 +3,14 @@ import { beforeEach, describe, expect, it } from "bun:test";
 import { t } from "structural";
 import { LocalTransport } from "../transports/local.ts";
 import { err, ok, type Result } from "./result.ts";
-import { ToolBuilder, type LoadedTools, type ToolCall } from "./toolkits/tool-def.ts";
+import { ToolBuilder, type LoadedTools } from "./toolkits/tool-def.ts";
 import {
   agent,
   type Agent,
   type AssistantMessage,
   type LlmIR,
   type MalformedToolRequest,
+  type OwnToolCall,
 } from "./llm-ir.ts";
 import {
   compilerUsage,
@@ -62,7 +63,7 @@ type QueueItem = (
 
 function assistant(opts: {
   content?: string;
-  toolCalls?: Array<ToolCall<TestAgent["tools"]> | MalformedToolRequest>;
+  toolCalls?: Array<OwnToolCall<TestAgent> | MalformedToolRequest>;
 }): AssistantMessage<TestAgent["tools"]> {
   return {
     role: "assistant",
@@ -71,7 +72,7 @@ function assistant(opts: {
     toolCalls: opts.toolCalls,
   };
 }
-function searchCall(query: string, toolCallId = "call-1"): ToolCall<TestAgent["tools"]> {
+function searchCall(query: string, toolCallId = "call-1"): OwnToolCall<TestAgent> {
   return { type: "tool-call", name: "search", toolCallId, original: { query }, parsed: { query } };
 }
 function malformedRequest(): MalformedToolRequest {

@@ -1,8 +1,8 @@
 import type { octoAgent } from "../ir/octo-ir.ts";
-import type { ToolRegistry, ToolCall } from "../libocto/llm-ir.ts";
+import type { ToolRegistry, TreeToolCall } from "../libocto/llm-ir.ts";
 
 export type OctoToolRegistry = ToolRegistry<typeof octoAgent>;
-export type OctoToolCall = ToolCall<typeof octoAgent>;
+export type OctoToolCall = TreeToolCall<typeof octoAgent>;
 
 export const SKIP_CONFIRMATION_TOOLS: Array<keyof OctoToolRegistry> = [
   "read",

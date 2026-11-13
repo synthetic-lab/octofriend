@@ -4,7 +4,8 @@ import type {
   AgentIR,
   AgentPromptData,
   TreeIR,
-  ToolCall,
+  TreeToolCall,
+  OwnToolCall,
   LowerInputIR,
   ToolRegistry,
   CompilerReadyIR,
@@ -42,12 +43,7 @@ import type {
 export type { SubagentTrajectoryInspection } from "./ir-operations.ts";
 import type { MultimodalConfig } from "./modalities.ts";
 import { subagentPrompt, userInterruptReason } from "./compilers/ir-prompts.ts";
-import type {
-  LoadedTools,
-  ToolCall as ToolCallForTools,
-  ToolExtensionIR,
-  ToolReturn,
-} from "./toolkits/tool-def.ts";
+import type { LoadedTools, ToolExtensionIR, ToolReturn } from "./toolkits/tool-def.ts";
 import {
   loadAgentTools,
   type TrajectoryToolLoadError,
@@ -211,27 +207,24 @@ type WithArcScope<Scope, Modes> = Scope extends unknown
 // with their declared string-indexed agent type. Apply the inspection bound once, outside
 // recursion: repeating this same intersection at every depth multiplies generic union work.
 type SubagentModes<Agents extends AgentDirectory> = SubagentModeUnion<Agents> &
-  SharedArcModes<ToolCallForTools<any>, true>;
+  SharedArcModes<OwnToolCall<any>, true>;
 
 type SubagentModeUnion<Agents extends AgentDirectory> = string extends keyof Agents
   ? WithArcScope<
       ScopeSubagent<string>,
-      SharedArcModes<ToolCallForTools<Agents[string]["tools"]>, IsPermissioned<Agents[string]>>
+      SharedArcModes<OwnToolCall<Agents[string]>, IsPermissioned<Agents[string]>>
     >
   : {
       [K in keyof Agents & string]:
         | WithArcScope<
             ScopeSubagent<K>,
-            SharedArcModes<ToolCallForTools<Agents[K]["tools"]>, IsPermissioned<Agents[K]>>
+            SharedArcModes<OwnToolCall<Agents[K]>, IsPermissioned<Agents[K]>>
           >
         | SubagentModeUnion<Agents[K]["agents"]>;
     }[keyof Agents & string];
 
 export type TrajectoryMode<A extends Agent<any, any, any, any>> =
-  | WithArcScope<
-      ScopeRoot,
-      RootOnlyModes<A> | SharedArcModes<ToolCallForTools<A["tools"]>, IsPermissioned<A>>
-    >
+  | WithArcScope<ScopeRoot, RootOnlyModes<A> | SharedArcModes<OwnToolCall<A>, IsPermissioned<A>>>
   | (SubagentModes<A["agents"]> & {
       scope: { parentSubagentIR: Extract<TreeIR<A>, { role: "subagent-trajectory" }> };
     });
@@ -718,7 +711,7 @@ export class Trajectory<A extends Agent<any, any, any, any>, Provider> {
 
   private arcMode(
     location: ActiveHistory<A>,
-    mode: SharedArcModes<ToolCall<A>, true>,
+    mode: SharedArcModes<TreeToolCall<A>, true>,
   ): TrajectoryMode<A> {
     // The calls and scope belong to the same selected operation. Permission modes are only
     // emitted when the tree-wide gate exists; the public union retains both correlations.
@@ -727,7 +720,7 @@ export class Trajectory<A extends Agent<any, any, any, any>, Provider> {
 
   private setArcMode(
     location: ActiveHistory<A>,
-    mode: SharedArcModes<ToolCall<A>, true>,
+    mode: SharedArcModes<TreeToolCall<A>, true>,
   ): Promise<void> {
     return this.setMode(this.arcMode(location, mode));
   }

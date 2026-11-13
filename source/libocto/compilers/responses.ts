@@ -17,15 +17,16 @@ import type {
   AssistantMessage,
   Content as IRContent,
   MalformedToolRequest,
+  OwnToolCall,
 } from "../llm-ir.ts";
-import type { LoadedTools, ToolCall } from "../toolkits/tool-def.ts";
+import type { LoadedTools } from "../toolkits/tool-def.ts";
 import { errorToString, err } from "../result.ts";
 import * as irPrompts from "./ir-prompts.ts";
 import type { OpenAIBackend } from "./openai-shared.ts";
 import { openAIRequestError } from "./openai-shared.ts";
 import type { MultimodalConfig } from "../modalities.ts";
 
-type ToolCallRequest<A extends Agent<any, any, any, any>> = ToolCall<A["tools"]>;
+type ToolCallRequest<A extends Agent<any, any, any, any>> = OwnToolCall<A>;
 type LoadedTool<A extends Agent<any, any, any, any>> = LoadedTools<A["tools"]>[keyof LoadedTools<
   A["tools"]
 >];

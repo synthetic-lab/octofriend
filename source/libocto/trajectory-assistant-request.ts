@@ -7,6 +7,7 @@ import type {
   Agent,
   AgentIR,
   TreeIR,
+  OwnToolCall,
   AssistantMessage,
   InterruptedByUserIR,
   ModelErrorIR,
@@ -16,13 +17,15 @@ import type {
   ToolSkipOutputMessage,
   ToolValidationErrorMessage,
 } from "./llm-ir.ts";
-import type { LoadedTools, ToolCall, ToolDef } from "./toolkits/tool-def.ts";
+import type { LoadedTools, ToolDef } from "./toolkits/tool-def.ts";
 import type { AutofixJsonFn, Compiler, CompilerError } from "./compilers/compiler-interface.ts";
 import { compilerUsage } from "./compilers/compiler-interface.ts";
 import { userInterruptReason } from "./compilers/ir-prompts.ts";
 import type { ExecutionModel } from "./execution.ts";
 
-const SKIP_INVALID_REASON = "One of your other tool calls was invalid, so no tool calls were run";
+// A batch is all-or-nothing: one invalid call means its callable siblings are skipped.
+const SKIP_BECAUSE_SIBLING_FAILED =
+  "One of your other tool calls was invalid, so no tool calls were run";
 const SKIP_ABORTED_REASON = "The user aborted the response, so this tool was skipped";
 
 export type TrajectoryAssistantRequestTokenTypes = "reasoning" | "content" | "tool";
@@ -36,15 +39,26 @@ export type AssistantDelta<AllowedType extends string> = {
 };
 
 // Associate loaded tool definitions with the names used in model requests.
-export type LoadedToolsByName<A extends Agent<any, any, any, any>> = {
+type LoadedToolsByName<A extends Agent<any, any, any, any>> = {
   [K in keyof LoadedTools<A["tools"]> as LoadedTools<A["tools"]>[K]["name"]]: LoadedTools<
     A["tools"]
   >[K];
 };
 
-export type ToolNames<A extends Agent<any, any, any, any>> = keyof LoadedToolsByName<A> & string;
+type LoadedToolNames<A extends Agent<any, any, any, any>> = keyof LoadedToolsByName<A> & string;
 
-export type ToolCallByName<A extends Agent<any, any, any, any>, Name extends ToolNames<A>> = {
+// Every loaded definition, keyed by the name the model emits. Some declared tools are not
+// loaded on every arc, so this is partial by construction.
+type LoadedToolsByNameMap<A extends Agent<any, any, any, any>> = Partial<
+  Record<LoadedToolNames<A>, LoadedToolsByName<A>[LoadedToolNames<A>]>
+>;
+
+// A call whose name and payloads are correlated with the loaded definition it names: indexing
+// LoadedToolsByName by this call's name yields exactly its own schemas.
+export type LoadedToolCallByName<
+  A extends Agent<any, any, any, any>,
+  Name extends LoadedToolNames<A>,
+> = {
   type: "tool-call";
   name: Name;
   toolCallId: string;
@@ -52,9 +66,23 @@ export type ToolCallByName<A extends Agent<any, any, any, any>, Name extends Too
   parsed: t.GetType<LoadedToolsByName<A>[Name]["ParsedSchema"]>;
 };
 
-export type ToolCallForTools<A extends Agent<any, any, any, any>> = {
-  [Name in ToolNames<A>]: ToolCallByName<A, Name>;
-}[ToolNames<A>];
+// The same union OwnToolCall describes, re-indexed by the name the model emits. Definition
+// lookup happens in this view: the compiler's factory-keyed output cannot correlate a call's
+// name with the schemas of the definition that name selects.
+type LoadedToolCall<A extends Agent<any, any, any, any>> = {
+  [Name in LoadedToolNames<A>]: LoadedToolCallByName<A, Name>;
+}[LoadedToolNames<A>];
+
+// Per-call validation state for one attempt. An aborted attempt leaves the calls it never
+// reached with a null validation.
+type CallCheck<A extends Agent<any, any, any, any>> = {
+  call: OwnToolCall<A>;
+  validation: Result<null, string> | null;
+};
+
+type AutofixingToolHandler = {
+  autofixingTool: (event: { tool: string }) => Promise<void>;
+};
 
 export type ToolDataFor<Def> =
   Def extends ToolDef<infer Data, infer _Provider, infer _N, infer _A, infer _P, infer _S, infer _E>
@@ -62,7 +90,7 @@ export type ToolDataFor<Def> =
     : never;
 
 export type AgentToolData<A extends Agent<any, any, any, any>> = UnionToIntersection<
-  ToolDataFor<LoadedToolsByName<A>[ToolNames<A>]>
+  ToolDataFor<LoadedToolsByName<A>[LoadedToolNames<A>]>
 >;
 
 type UnionToIntersection<U> = (U extends U ? (x: U) => void : never) extends (x: infer I) => void
@@ -99,8 +127,8 @@ export type ToolCorrectionArgs<Call, Data> = {
 };
 
 export type ToolCorrections<A extends Agent<any, any, any, any>> = Partial<{
-  [Name in ToolNames<A>]: (
-    args: ToolCorrectionArgs<ToolCallByName<A, Name>, AgentToolData<A>>,
+  [Name in LoadedToolNames<A>]: (
+    args: ToolCorrectionArgs<LoadedToolCallByName<A, Name>, AgentToolData<A>>,
   ) => Promise<t.GetType<LoadedToolsByName<A>[Name]["ParsedSchema"]> | null>;
 }>;
 
@@ -224,9 +252,7 @@ async function assistantRequestAttempt<A extends Agent<any, any, any, any>, Mode
   const calls = assistant.toolCalls ?? [];
   if (calls.length === 0) return [assistant];
 
-  const wellformedCalls = calls.filter(
-    (call): call is ToolCall<A["tools"]> => call.type === "tool-call",
-  );
+  const wellformedCalls = calls.filter((call): call is OwnToolCall<A> => call.type === "tool-call");
   if (wellformedCalls.length !== calls.length) {
     const answers = calls.map((call): TrajectoryAssistantRequestIR<A> => {
       if (call.type === "malformed-tool-request") {
@@ -241,74 +267,51 @@ async function assistantRequestAttempt<A extends Agent<any, any, any, any>, Mode
     return [assistant, ...answers];
   }
 
-  const defsByName: Partial<Record<ToolNames<A>, LoadedToolsByName<A>[ToolNames<A>]>> = {};
+  const loadedToolsByName: LoadedToolsByNameMap<A> = {};
   for (const def of Object.values(tools)) {
-    if (def != null) defsByName[def.name as ToolNames<A>] = def;
+    if (def != null) loadedToolsByName[def.name as LoadedToolNames<A>] = def;
   }
-  const answers: Array<ToolValidationErrorMessage<A["tools"]> | ToolSkipOutputMessage<A["tools"]>> =
-    [];
-  for (const call of wellformedCalls) {
-    const toolCall = toToolCallForTools<A>(call);
-    let validation = await validate<A, typeof toolCall.name>(
+
+  const checks: Array<CallCheck<A>> = wellformedCalls.map(call => ({ call, validation: null }));
+  for (const check of checks) {
+    check.validation = await validateWithCorrection({
+      toolCall: asLoadedToolCall<A>(check.call),
+      loadedToolsByName,
+      data,
+      errorCorrection,
+      handler,
       abortSignal,
       transport,
-      defsByName,
-      data,
-      toolCall,
-    );
-    if (!validation.success && !abortSignal.aborted) {
-      const corrector = errorCorrection?.tools?.[toolCall.name];
-      if (corrector != null) {
-        await handler.autofixingTool({ tool: toolCall.name });
-        const fixed = await corrector({
-          toolCall,
-          validationError: validation.error,
-          abortSignal,
-          transport,
-          data,
-        });
-        if (fixed != null && !abortSignal.aborted) {
-          const corrected = { ...toolCall, parsed: fixed };
-          const correctedValidation = await validate<A, typeof toolCall.name>(
-            abortSignal,
-            transport,
-            defsByName,
-            data,
-            corrected,
-          );
-          if (correctedValidation.success) {
-            toolCall.parsed = fixed;
-            validation = correctedValidation;
-          }
-        }
-      }
-    }
-    if (validation.success) {
-      answers.push({ role: "tool-skip-output", toolCall: call, reason: SKIP_INVALID_REASON });
-    } else {
+    });
+    if (abortSignal.aborted) break;
+  }
+
+  const anyFailed = checks.some(check => check.validation != null && !check.validation.success);
+  const answers: Array<ToolValidationErrorMessage<A["tools"]> | ToolSkipOutputMessage<A["tools"]>> =
+    [];
+  for (const { call, validation } of checks) {
+    if (validation == null) {
+      // Aborted before this call was validated. No persisted prefix may expose unvalidated
+      // siblings as runnable work after a crash, so every remaining call is answered.
+      answers.push({ role: "tool-skip-output", toolCall: call, reason: SKIP_ABORTED_REASON });
+    } else if (!validation.success) {
       answers.push({
         role: "tool-validation-error",
         toolCall: call,
         error: validation.error,
         aborted: abortSignal.aborted,
       });
-    }
-    if (abortSignal.aborted) {
-      // Complete all tool answers before returning the interrupted attempt. No persisted
-      // prefix may expose unvalidated siblings as runnable work after a crash.
-      for (const remaining of wellformedCalls.slice(answers.length)) {
-        answers.push({
-          role: "tool-skip-output",
-          toolCall: remaining,
-          reason: SKIP_ABORTED_REASON,
-        });
-      }
-      return [assistant, ...answers, interrupted];
+    } else if (anyFailed || abortSignal.aborted) {
+      answers.push({
+        role: "tool-skip-output",
+        toolCall: call,
+        reason: SKIP_BECAUSE_SIBLING_FAILED,
+      });
     }
   }
 
-  if (answers.some(answer => answer.role === "tool-validation-error"))
-    return [assistant, ...answers];
+  if (abortSignal.aborted) return [assistant, ...answers, interrupted];
+  if (anyFailed) return [assistant, ...answers];
   return [assistant];
 }
 
@@ -330,22 +333,7 @@ function compilerErrorIR(error: CompilerError): RequestErrorIR | ModelErrorIR {
   }
 }
 
-async function validate<A extends Agent<any, any, any, any>, Name extends ToolNames<A>>(
-  abortSignal: AbortSignal,
-  transport: Transport,
-  defsByName: Partial<Record<ToolNames<A>, LoadedToolsByName<A>[ToolNames<A>]>>,
-  data: AgentToolData<A>,
-  toolCall: ToolCallByName<A, Name>,
-): Promise<Result<null, string>> {
-  const def = defsByName[toolCall.name] as LoadedToolsByName<A>[Name] | undefined;
-  if (def == null) return err(`No tool named ${toolCall.name}`);
-  const schemaPair = {
-    original: { name: toolCall.name, arguments: toolCall.original },
-    parsed: { name: toolCall.name, arguments: toolCall.parsed },
-  } as ValidateSchemaPair<LoadedToolsByName<A>[Name]>;
-  return def.validate(abortSignal, transport, schemaPair, data as ToolDataFor<typeof def>);
-}
-
+// The schema pair a definition's own validate() declares, recovered from its signature.
 type ValidateSchemaPair<Def> = Def extends {
   validate: (
     abortSignal: AbortSignal,
@@ -357,9 +345,87 @@ type ValidateSchemaPair<Def> = Def extends {
   ? Pair
   : never;
 
-// Re-associate tool names with their definitions without changing their payloads.
-function toToolCallForTools<A extends Agent<any, any, any, any>>(
-  toolCall: ToolCall<A["tools"]>,
-): ToolCallForTools<A> {
-  return toolCall as ToolCall<A["tools"]> & ToolCallForTools<A>;
+async function validate<A extends Agent<any, any, any, any>, Name extends LoadedToolNames<A>>(
+  abortSignal: AbortSignal,
+  transport: Transport,
+  loadedToolsByName: LoadedToolsByNameMap<A>,
+  data: AgentToolData<A>,
+  toolCall: LoadedToolCallByName<A, Name>,
+): Promise<Result<null, string>> {
+  const def = loadedToolsByName[toolCall.name] as LoadedToolsByName<A>[Name] | undefined;
+  if (def == null) return err(`No tool named ${toolCall.name}`);
+  const schemaPair = {
+    original: { name: toolCall.name, arguments: toolCall.original },
+    parsed: { name: toolCall.name, arguments: toolCall.parsed },
+  } as ValidateSchemaPair<LoadedToolsByName<A>[Name]>;
+  return def.validate(abortSignal, transport, schemaPair, data as ToolDataFor<typeof def>);
+}
+
+/*
+ * Validates one call, giving the client's corrector a single chance to fix its parsed payload.
+ * The call keeps its original payloads unless the corrected version validates.
+ */
+async function validateWithCorrection<
+  A extends Agent<any, any, any, any>,
+  Name extends LoadedToolNames<A>,
+>({
+  toolCall,
+  loadedToolsByName,
+  data,
+  errorCorrection,
+  handler,
+  abortSignal,
+  transport,
+}: {
+  toolCall: LoadedToolCallByName<A, Name>;
+  loadedToolsByName: LoadedToolsByNameMap<A>;
+  data: AgentToolData<A>;
+  errorCorrection: ErrorCorrection<A> | undefined;
+  handler: AutofixingToolHandler;
+  abortSignal: AbortSignal;
+  transport: Transport;
+}): Promise<Result<null, string>> {
+  const validation = await validate<A, Name>(
+    abortSignal,
+    transport,
+    loadedToolsByName,
+    data,
+    toolCall,
+  );
+  if (validation.success || abortSignal.aborted) return validation;
+
+  const corrector = errorCorrection?.tools?.[toolCall.name];
+  if (corrector == null) return validation;
+
+  await handler.autofixingTool({ tool: toolCall.name });
+  const fixed = await corrector({
+    toolCall,
+    validationError: validation.error,
+    abortSignal,
+    transport,
+    data,
+  });
+  if (fixed == null || abortSignal.aborted) return validation;
+
+  const correctedValidation = await validate<A, Name>(
+    abortSignal,
+    transport,
+    loadedToolsByName,
+    data,
+    {
+      ...toolCall,
+      parsed: fixed,
+    },
+  );
+  if (!correctedValidation.success) return validation;
+  toolCall.parsed = fixed;
+  return correctedValidation;
+}
+
+// The compiler emits calls keyed by tool-map key; definition lookup is keyed by the name the
+// model emits. Same members, different indexing, so payloads are untouched.
+function asLoadedToolCall<A extends Agent<any, any, any, any>>(
+  call: OwnToolCall<A>,
+): LoadedToolCall<A> {
+  return call as LoadedToolCall<A>;
 }
