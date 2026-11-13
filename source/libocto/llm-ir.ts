@@ -100,12 +100,9 @@ export type AgentFragment = {
 type FragmentTools<Fragment extends AgentFragment> = NonNullable<Fragment["tools"]>;
 type FragmentAgents<Fragment extends AgentFragment> = NonNullable<Fragment["agents"]>;
 
-type MergeAgentDefinition<Definition extends AgentDefinition, Tools, Agents> = Omit<
-  Definition,
-  "tools" | "agents"
-> & {
-  tools: Tools & Definition["tools"];
-  agents: Agents & Definition["agents"];
+type MergeAgentDefinition<Definition extends AgentDefinition, Tools, Agents> = Definition & {
+  tools: Tools;
+  agents: Agents;
 };
 
 type WithTreePermission<AgentType extends AgentDefinition, Permissioned extends boolean> = {
@@ -116,11 +113,10 @@ type WithTreePermission<AgentType extends AgentDefinition, Permissioned extends 
     };
   };
 
-// Validate the fully merged tree without requiring accumulated children in the final definition too.
-type ValidateComposedAgent<AgentType, Permissioned extends boolean> =
-  AgentType extends ValidateAgentSubagents<AgentType, Permissioned>
-    ? unknown
-    : ValidateAgentSubagents<AgentType, Permissioned>;
+// Validate dependencies before applying permissions, without requiring accumulated children
+// in the final definition too. WithTreePermission makes permission uniformity true by construction.
+type ValidateComposedAgent<AgentType> =
+  AgentType extends ValidateAgentSubagents<AgentType> ? unknown : ValidateAgentSubagents<AgentType>;
 
 declare const conflictingUseTools: unique symbol;
 declare const conflictingUseAgents: unique symbol;
@@ -145,19 +141,13 @@ type AgentComposer<Tools, Agents> = {
   definePermissioned<const Definition extends AgentDefinition>(
     definition: Definition &
       RejectUseConflicts<Tools, Agents, Definition> &
-      ValidateComposedAgent<
-        WithTreePermission<MergeAgentDefinition<Definition, Tools, Agents>, true>,
-        true
-      >,
+      ValidateComposedAgent<MergeAgentDefinition<Definition, Tools, Agents>>,
   ): WithTreePermission<MergeAgentDefinition<Definition, Tools, Agents>, true>;
 
   definePermissionless<const Definition extends AgentDefinition>(
     definition: Definition &
       RejectUseConflicts<Tools, Agents, Definition> &
-      ValidateComposedAgent<
-        WithTreePermission<MergeAgentDefinition<Definition, Tools, Agents>, false>,
-        false
-      >,
+      ValidateComposedAgent<MergeAgentDefinition<Definition, Tools, Agents>>,
   ): WithTreePermission<MergeAgentDefinition<Definition, Tools, Agents>, false>;
 };
 
@@ -190,10 +180,7 @@ function createAgentComposer<Tools extends ToolMap<any, any>, Agents extends Age
   function definePermissioned<const Definition extends AgentDefinition>(
     definition: Definition &
       RejectUseConflicts<Tools, Agents, Definition> &
-      ValidateComposedAgent<
-        WithTreePermission<MergeAgentDefinition<Definition, Tools, Agents>, true>,
-        true
-      >,
+      ValidateComposedAgent<MergeAgentDefinition<Definition, Tools, Agents>>,
   ): WithTreePermission<MergeAgentDefinition<Definition, Tools, Agents>, true> {
     return {
       ...definition,
@@ -205,10 +192,7 @@ function createAgentComposer<Tools extends ToolMap<any, any>, Agents extends Age
   function definePermissionless<const Definition extends AgentDefinition>(
     definition: Definition &
       RejectUseConflicts<Tools, Agents, Definition> &
-      ValidateComposedAgent<
-        WithTreePermission<MergeAgentDefinition<Definition, Tools, Agents>, false>,
-        false
-      >,
+      ValidateComposedAgent<MergeAgentDefinition<Definition, Tools, Agents>>,
   ): WithTreePermission<MergeAgentDefinition<Definition, Tools, Agents>, false> {
     return {
       ...definition,
@@ -978,24 +962,12 @@ type _BuiltinIRRolesMatch = AssertNever<
  * get a compile error.
  */
 declare const missingToolSubagents: unique symbol;
-declare const mixedPermissionTree: unique symbol;
 
 type RequiredToolSubagentNames<Tools> = ToolSubagentNames<Tools[keyof Tools]>;
 
-// Type used to validate that the given agent's tools have all of their subagent dependencies
-// fulfilled, and that the permission capability is uniform down the tree: every subagent of a
-// permissioned agent is permissioned, and no subagent of a permissionless agent is. Mixed trees
-// would need a runtime capability probe per arc to know which ones may gate; uniformity keeps
-// the "permission" param's presence the single source of truth for the whole tree, and keeps
-// histories honest — a permissionless arc's universe promises never to contain tool-rejects.
-// Recursively narrows the given type until it's either {} (all dependencies are satisfied), or
-// an impossible-to-construct type via a non-existent unique symbol, which will cause a useful
-// compile error.
-//
-// The current node's own capability arrives as an argument — the constructor function's choice,
-// since a payload under construction never carries its own brand — and threads to every deeper
-// node unchanged, with each level's own directory checked against it.
-type ValidateAgentSubagents<A, Permissioned extends boolean> = A extends {
+// Recursively check each node's own tool dependencies, including raw child definitions.
+// Missing dependencies produce an impossible-to-construct property at the offending node.
+type ValidateAgentSubagents<A> = A extends {
   tools: infer Tools;
   agents: infer SubagentDirectory extends AgentDirectory;
 }
@@ -1005,11 +977,8 @@ type ValidateAgentSubagents<A, Permissioned extends boolean> = A extends {
     > extends never
     ? {
         agents: {
-          [K in keyof SubagentDirectory]: ValidateAgentSubagents<
-            SubagentDirectory[K],
-            Permissioned
-          >;
-        } & ValidateChildCapabilities<Permissioned, SubagentDirectory>;
+          [K in keyof SubagentDirectory]: ValidateAgentSubagents<SubagentDirectory[K]>;
+        };
       }
     : {
         readonly [missingToolSubagents]: Exclude<
@@ -1018,18 +987,3 @@ type ValidateAgentSubagents<A, Permissioned extends boolean> = A extends {
         >;
       }
   : never;
-
-type ValidateChildCapabilities<
-  Permissioned extends boolean,
-  SubagentDirectory extends AgentDirectory,
-> = [Permissioned] extends [true]
-  ? Exclude<SubagentDirectory[keyof SubagentDirectory], PermissionedBrand> extends never
-    ? unknown
-    : {
-        readonly [mixedPermissionTree]: "a permissioned tree must be permissioned down to its leaves";
-      }
-  : Extract<SubagentDirectory[keyof SubagentDirectory], PermissionedBrand> extends never
-    ? unknown
-    : {
-        readonly [mixedPermissionTree]: "a permissionless tree must be permissionless down to its leaves";
-      };
