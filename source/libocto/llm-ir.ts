@@ -167,7 +167,7 @@ function mergeRecords<Left extends object, Right extends object>(
   right: Right,
 ): Left & Right {
   for (const name of Object.keys(right)) {
-    if (left.hasOwnProperty(name)) {
+    if (Object.keys(left).includes(name)) {
       throw new Error(`Cannot use fragment: ${kind} "${name}" is already defined`);
     }
   }
