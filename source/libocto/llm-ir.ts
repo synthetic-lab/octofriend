@@ -4,6 +4,7 @@ import type { BuiltinIRRole } from "./ir-roles.ts";
 import type { CompilerUsage } from "./compilers/compiler-interface.ts";
 import type { SystemPrompt, SystemPromptData } from "./system-prompt.ts";
 import type {
+  LoadedTools,
   ToolCallFromToolMap,
   ToolExtensionIR,
   ToolFactory,
@@ -246,6 +247,10 @@ export type TreeToolMap<A extends Agent<any, any, any, any>> = A["tools"] &
 type UnionToIntersection<U> = (U extends U ? (x: U) => void : never) extends (x: infer I) => void
   ? I
   : never;
+
+// The loaded implementations of A's own tools, excluding anything a subagent declares. Loaders
+// hand out a Partial of this, since a factory may decline to load on a given arc.
+export type OwnToolRegistry<A extends Agent<any, any, any, any>> = LoadedTools<A["tools"]>;
 
 // What the one tree-wide loader produces: every level's tools, merged by key, each entry the
 // loaded definition of exactly the tool declared under that key. The value conditionals stay

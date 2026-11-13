@@ -19,11 +19,11 @@ import type {
   PreLoweredIR,
   IsPermissioned,
   OwnToolCall,
+  OwnToolRegistry,
 } from "./llm-ir.ts";
 import { agent, messageText } from "./llm-ir.ts";
 import { downconvert, lower, lowerMessages, meaningfulTailIR } from "./ir-operations.ts";
 import type { ActiveHistory, ClientLowerOutputIR } from "./ir-operations.ts";
-import type { LoadedTools } from "./toolkits/tool-def.ts";
 import { ToolBuilder } from "./toolkits/tool-def.ts";
 import { ok } from "./result.ts";
 import type {
@@ -162,9 +162,7 @@ type _noNames = Expect<Equal<AllSubagentNames<Single>, never>>;
 
 // The merged tool map: every level's keys, shared keys shared, values exact per key.
 type _treeKeys = Expect<Equal<keyof ToolRegistry<Root>, "search" | "note" | "delegate">>;
-expectType<Partial<ToolRegistry<Single>>>(
-  undefined as unknown as Partial<LoadedTools<Single["tools"]>>,
-);
+expectType<Partial<ToolRegistry<Single>>>(undefined as unknown as Partial<OwnToolRegistry<Single>>);
 
 // A declared key takes exactly the loaded definition of the tool declared under it — never
 // another tool's definition, even when that definition loaded perfectly fine.

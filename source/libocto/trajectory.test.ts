@@ -7,7 +7,7 @@ import { defaultCountTokens, type ExecutionModel } from "./execution.ts";
 import type { ImageInfo } from "./images.ts";
 import type { MultimodalConfig } from "./modalities.ts";
 import { err, ok, type Result } from "./result.ts";
-import { ToolBuilder, type LoadedTools, type ToolReturn } from "./toolkits/tool-def.ts";
+import { ToolBuilder, type ToolReturn } from "./toolkits/tool-def.ts";
 import {
   agent,
   type Agent,
@@ -17,6 +17,7 @@ import {
   type LoweredIR,
   type LowerOutputIR,
   type OwnToolCall,
+  type OwnToolRegistry,
   type TreeIR,
   type UserMessage,
 } from "./llm-ir.ts";
@@ -228,7 +229,7 @@ function makeRunCompiler(queue: CompilerQueueItem[]) {
   }> = [];
   const runCompiler: Compiler<null> = async <
     A extends Agent<any, any, any, any>,
-    Tools extends Partial<LoadedTools<A["tools"]>> | undefined = undefined,
+    Tools extends Partial<OwnToolRegistry<A>> | undefined = undefined,
   >(
     params: CompilerParams<A, null, Tools>,
   ): Promise<CompilerResult<A, Tools>> => {
@@ -1101,7 +1102,7 @@ describe("trajectory", () => {
       const models: string[] = [];
       const compiler: Compiler<string> = async <
         A extends Agent<any, any, any, any>,
-        Tools extends Partial<LoadedTools<A["tools"]>> | undefined = undefined,
+        Tools extends Partial<OwnToolRegistry<A>> | undefined = undefined,
       >(
         params: CompilerParams<A, string, Tools>,
       ): Promise<CompilerResult<A, Tools>> => {

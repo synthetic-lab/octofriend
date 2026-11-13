@@ -14,8 +14,8 @@ import type {
   Content as IRContent,
   MalformedToolRequest,
   OwnToolCall,
+  OwnToolRegistry,
 } from "../llm-ir.ts";
-import type { LoadedTools } from "../toolkits/tool-def.ts";
 import { errorToString, err, type Result } from "../result.ts";
 import * as irPrompts from "./ir-prompts.ts";
 import { tagged } from "./ir-prompts.ts";
@@ -24,9 +24,7 @@ import { openAIRequestError } from "./openai-shared.ts";
 import type { MultimodalConfig } from "../modalities.ts";
 
 type ToolCallRequest<A extends Agent<any, any, any, any>> = OwnToolCall<A>;
-type LoadedTool<A extends Agent<any, any, any, any>> = LoadedTools<A["tools"]>[keyof LoadedTools<
-  A["tools"]
->];
+type LoadedTool<A extends Agent<any, any, any, any>> = OwnToolRegistry<A>[keyof OwnToolRegistry<A>];
 
 type UserContent = Array<
   | { type: "text"; text: string }

@@ -1,6 +1,6 @@
 import { err, ok, type Result } from "../result.ts";
-import type { Agent, AssistantMessage, LoweredIR } from "../llm-ir.ts";
-import type { LoadedTools, ToolMap } from "../toolkits/tool-def.ts";
+import type { Agent, AssistantMessage, LoweredIR, OwnToolRegistry } from "../llm-ir.ts";
+import type { ToolMap } from "../toolkits/tool-def.ts";
 import { Transport } from "../transport.ts";
 import type { ExecutionModel } from "../execution.ts";
 
@@ -146,7 +146,7 @@ type CompilerParamsBase<A extends Agent<any, any, any, any>, Backend> = {
 export type CompilerParams<
   A extends Agent<any, any, any, any>,
   Backend,
-  Tools extends Partial<LoadedTools<A["tools"]>> | undefined = undefined,
+  Tools extends Partial<OwnToolRegistry<A>> | undefined = undefined,
 > = CompilerParamsBase<A, Backend> & {
   onTokens: (t: string, type: CompilerTokenType<Tools>) => Promise<void>;
   tools?: Tools;
@@ -163,7 +163,7 @@ export type CompilerParamsWithoutTools<
 export type CompilerParamsWithTools<
   A extends Agent<any, any, any, any>,
   Backend,
-  Tools extends Partial<LoadedTools<A["tools"]>> = Partial<LoadedTools<A["tools"]>>,
+  Tools extends Partial<OwnToolRegistry<A>> = Partial<OwnToolRegistry<A>>,
 > = CompilerParamsBase<A, Backend> & {
   onTokens: (t: string, type: "reasoning" | "content" | "tool") => Promise<void>;
   tools: Tools;
@@ -231,7 +231,7 @@ function compilerSuccess<A extends Agent<any, any, any, any>, Backend>(
 
 export type Compiler<Backend> = <
   A extends Agent<any, any, any, any>,
-  Tools extends Partial<LoadedTools<A["tools"]>> | undefined = undefined,
+  Tools extends Partial<OwnToolRegistry<A>> | undefined = undefined,
 >(
   params: CompilerParams<A, Backend, Tools>,
 ) => Promise<CompilerResult<A, Tools>>;

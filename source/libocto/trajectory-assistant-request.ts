@@ -8,6 +8,7 @@ import type {
   AgentIR,
   TreeIR,
   OwnToolCall,
+  OwnToolRegistry,
   AssistantMessage,
   InterruptedByUserIR,
   ModelErrorIR,
@@ -17,7 +18,7 @@ import type {
   ToolSkipOutputMessage,
   ToolValidationErrorMessage,
 } from "./llm-ir.ts";
-import type { LoadedTools, ToolDef } from "./toolkits/tool-def.ts";
+import type { ToolDef } from "./toolkits/tool-def.ts";
 import type { AutofixJsonFn, Compiler, CompilerError } from "./compilers/compiler-interface.ts";
 import { compilerUsage } from "./compilers/compiler-interface.ts";
 import { userInterruptReason } from "./compilers/ir-prompts.ts";
@@ -40,9 +41,7 @@ export type AssistantDelta<AllowedType extends string> = {
 
 // Associate loaded tool definitions with the names used in model requests.
 type LoadedToolsByName<A extends Agent<any, any, any, any>> = {
-  [K in keyof LoadedTools<A["tools"]> as LoadedTools<A["tools"]>[K]["name"]]: LoadedTools<
-    A["tools"]
-  >[K];
+  [K in keyof OwnToolRegistry<A> as OwnToolRegistry<A>[K]["name"]]: OwnToolRegistry<A>[K];
 };
 
 type LoadedToolNames<A extends Agent<any, any, any, any>> = keyof LoadedToolsByName<A> & string;
@@ -140,7 +139,7 @@ export type ErrorCorrection<A extends Agent<any, any, any, any>> = {
 export type TrajectoryAssistantRequestParams<A extends Agent<any, any, any, any>, Provider> = {
   model: ExecutionModel<Provider>;
   messages: Array<AgentIR<A>>;
-  tools: Partial<LoadedTools<A["tools"]>>;
+  tools: Partial<OwnToolRegistry<A>>;
   data: AgentToolData<A>;
   runCompiler: Compiler<Provider>;
   lowerMessages: (messages: Array<TreeIR<A>>) => Array<CompilerReadyIR<A>>;
@@ -206,7 +205,7 @@ async function assistantRequestAttempt<A extends Agent<any, any, any, any>, Mode
       }
     : undefined;
   const buffer: AssistantBuffer<TrajectoryAssistantRequestTokenTypes> = {};
-  const result = await runCompiler<A, Partial<LoadedTools<A["tools"]>>>({
+  const result = await runCompiler<A, Partial<OwnToolRegistry<A>>>({
     model,
     backend: model.provider,
     irs: lowerMessages(messages).map(({ converted }) => converted),

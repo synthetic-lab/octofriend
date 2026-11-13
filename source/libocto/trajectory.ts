@@ -6,6 +6,7 @@ import type {
   TreeIR,
   TreeToolCall,
   OwnToolCall,
+  OwnToolRegistry,
   LowerInputIR,
   ToolRegistry,
   CompilerReadyIR,
@@ -43,7 +44,7 @@ import type {
 export type { SubagentTrajectoryInspection } from "./ir-operations.ts";
 import type { MultimodalConfig } from "./modalities.ts";
 import { subagentPrompt, userInterruptReason } from "./compilers/ir-prompts.ts";
-import type { LoadedTools, ToolExtensionIR, ToolReturn } from "./toolkits/tool-def.ts";
+import type { ToolExtensionIR, ToolReturn } from "./toolkits/tool-def.ts";
 import {
   loadAgentTools,
   type TrajectoryToolLoadError,
@@ -886,7 +887,7 @@ export class Trajectory<A extends Agent<any, any, any, any>, Provider> {
     const run = <B extends Agent<any, any, any, any>>(agent: B, history: Array<AgentIR<B>>) =>
       trajectoryAssistantRequest.run<B, Provider>({
         model,
-        tools: arcTools<A>(agent, allTools) as Partial<LoadedTools<B["tools"]>>,
+        tools: arcTools<A>(agent, allTools) as Partial<OwnToolRegistry<B>>,
         messages: history,
         data: data as AgentToolData<B>,
         runCompiler: params.runCompiler,
