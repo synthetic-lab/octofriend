@@ -1,4 +1,9 @@
-import { prompt } from "../libocto/system-prompt.ts";
+import { prompt } from "../../system-prompt.ts";
+import glob from "../glob/index.ts";
+import grep from "../grep/index.ts";
+import list from "../list/index.ts";
+import partialRead from "../partial-read/index.ts";
+import read from "../read/index.ts";
 
 export const exploreSystemPrompt = prompt.declare(async () => {
   return `
@@ -15,3 +20,9 @@ everything you discovered. Omit irrelevant files and a narration of your search 
 Mention unresolved questions only when they affect the task.
 `.trim();
 });
+
+export const exploreAgent = {
+  systemPrompt: exploreSystemPrompt,
+  tools: { read, "partial-read": partialRead, list, grep, glob },
+  agents: {},
+};

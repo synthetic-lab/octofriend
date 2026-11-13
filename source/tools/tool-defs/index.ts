@@ -14,7 +14,7 @@ import backgroundProcess from "../../libocto/toolkits/background-process/index.t
 import manageBackgroundProcess from "../../libocto/toolkits/manage-background-process/index.ts";
 import glob from "../../libocto/toolkits/glob/index.ts";
 import grep from "../../libocto/toolkits/grep/index.ts";
-import explore from "./explore.ts";
+import explore from "../../libocto/toolkits/explore/explore-tool.ts";
 import lspDefinition from "../../libocto/toolkits/lsp-definition/index.ts";
 import lspReferences from "../../libocto/toolkits/lsp-references/index.ts";
 import lspHover from "../../libocto/toolkits/lsp-hover/index.ts";
