@@ -1,7 +1,7 @@
 import { t } from "structural";
-import { TOOL_BUILDER } from "../../libocto/toolkits/tool-def.ts";
-import type { WebSearchData } from "../../libocto/toolkits/web-search/index.ts";
-import { ok } from "../../libocto/result.ts";
+import { TOOL_BUILDER } from "../tool-def.ts";
+import type { WebSearchData } from "../web-search/index.ts";
+import { ok } from "../../result.ts";
 
 export default TOOL_BUILDER.withData<WebSearchData>()
   .declare({

@@ -1,4 +1,6 @@
-import { prompt } from "../libocto/system-prompt.ts";
+import { prompt } from "../../system-prompt.ts";
+import fetch from "../fetch/index.ts";
+import webSearch from "../web-search/index.ts";
 
 export const researcherSystemPrompt = prompt.declare(async () => {
   return `
@@ -18,3 +20,9 @@ Omit irrelevant results and any narration of your search process.
 Every line of your summary must include a link (or multiple links) citing some page you have read.
 `.trim();
 });
+
+export const researcherAgent = {
+  systemPrompt: researcherSystemPrompt,
+  tools: { fetch, "web-search": webSearch },
+  agents: {},
+};

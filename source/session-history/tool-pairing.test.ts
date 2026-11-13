@@ -6,11 +6,10 @@ import {
 } from "./tool-pairing.ts";
 import type { HistoryNode } from "./index.ts";
 import { compilerUsage } from "../libocto/compilers/compiler-interface.ts";
-import type { ToolCall } from "../libocto/toolkits/tool-def.ts";
 import type { OctoIR } from "../ir/octo-ir.ts";
-import type toolMap from "../tools/tool-defs/index.ts";
+import type { OctoToolCall } from "../tools/index.ts";
 
-type ShellToolCall = Extract<ToolCall<typeof toolMap>, { name: "shell" }>;
+type ShellToolCall = Extract<OctoToolCall, { name: "shell" }>;
 
 let nextNodeId = 1;
 

@@ -1,13 +1,10 @@
-import toolMap from "./tool-defs/index.ts";
-import {
-  LoadedTools as GenericLoadedTools,
-  ToolCall as GenericToolCall,
-} from "../libocto/toolkits/tool-def.ts";
+import type { octoAgent } from "../ir/octo-ir.ts";
+import type { ToolRegistry, ToolCall } from "../libocto/llm-ir.ts";
 
-export type LoadedTools = GenericLoadedTools<typeof toolMap>;
-export type ToolCall = GenericToolCall<typeof toolMap>;
+export type OctoToolRegistry = ToolRegistry<typeof octoAgent>;
+export type OctoToolCall = ToolCall<typeof octoAgent>;
 
-export const SKIP_CONFIRMATION_TOOLS: Array<keyof LoadedTools> = [
+export const SKIP_CONFIRMATION_TOOLS: Array<keyof OctoToolRegistry> = [
   "read",
   "partial-read",
   "list",
@@ -29,7 +26,7 @@ export const SKIP_CONFIRMATION_TOOLS: Array<keyof LoadedTools> = [
   "manage-background-process",
 ];
 
-export const ALWAYS_REQUEST_PERMISSION_TOOLS: Array<keyof LoadedTools> = [
+export const ALWAYS_REQUEST_PERMISSION_TOOLS: Array<keyof OctoToolRegistry> = [
   "shell",
   "background-process",
 ];
