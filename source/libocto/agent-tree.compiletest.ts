@@ -1,6 +1,6 @@
 import { prompt } from "./system-prompt.ts";
 import { t } from "structural";
-import { fileReadIR } from "./tools/file-ir.ts";
+import { fileReadIR } from "./toolkits/file-ir.ts";
 import type {
   Agent,
   AgentExtra,
@@ -22,8 +22,8 @@ import type {
 import { agent, messageText } from "./llm-ir.ts";
 import { downconvert, lower, lowerMessages, meaningfulTailIR } from "./ir-operations.ts";
 import type { ActiveHistory, ClientLowerOutputIR } from "./ir-operations.ts";
-import type { LoadedTools, ToolCall } from "./tools/tool-def.ts";
-import { ToolBuilder } from "./tools/tool-def.ts";
+import type { LoadedTools, ToolCall } from "./toolkits/tool-def.ts";
+import { ToolBuilder } from "./toolkits/tool-def.ts";
 import { ok } from "./result.ts";
 import type {
   Trajectory,
@@ -543,7 +543,7 @@ function inspectMode(mode: TrajectoryMode<Root>) {
 }
 
 // The final builder call chooses the permission capability for the complete tree, rather than
-// retaining independently selected capabilities from its input fragments.
+// retaining independently selected capabilities from its input definitions.
 const permissionlessTree = agent.definePermissionless({
   systemPrompt: testPrompt,
   tools: { search: searchTool },

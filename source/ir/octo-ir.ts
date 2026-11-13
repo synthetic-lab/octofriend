@@ -1,9 +1,9 @@
 import toolMap from "../tools/tool-defs/index.ts";
-import read from "../libocto/tools/read/index.ts";
-import partialRead from "../libocto/tools/partial-read/index.ts";
-import list from "../libocto/tools/list/index.ts";
-import grep from "../libocto/tools/grep/index.ts";
-import glob from "../libocto/tools/glob/index.ts";
+import read from "../libocto/toolkits/read/index.ts";
+import partialRead from "../libocto/toolkits/partial-read/index.ts";
+import list from "../libocto/toolkits/list/index.ts";
+import grep from "../libocto/toolkits/grep/index.ts";
+import glob from "../libocto/toolkits/glob/index.ts";
 import { agent } from "../libocto/llm-ir.ts";
 import type { AgentIR } from "../libocto/llm-ir.ts";
 import { systemPrompt } from "../prompts/system-prompt.ts";

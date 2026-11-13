@@ -1,6 +1,6 @@
 import type { Agent, Content, LoweredIR } from "../llm-ir.ts";
 import { defaultCountTokens, type ExecutionModel } from "../execution.ts";
-import type { ToolMap } from "../tools/tool-def.ts";
+import type { ToolMap } from "../toolkits/tool-def.ts";
 import type {
   CompilerError,
   CompilerIR,

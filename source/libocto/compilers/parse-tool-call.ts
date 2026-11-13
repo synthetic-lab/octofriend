@@ -1,6 +1,6 @@
 import { toTypescript } from "structural";
 import type { JsonFixResponse } from "./compiler-interface.ts";
-import type { LoadedTools, ToolCall, ToolMap } from "../tools/tool-def.ts";
+import type { LoadedTools, ToolCall, ToolMap } from "../toolkits/tool-def.ts";
 import { Transport } from "../transport.ts";
 import { logger } from "../logger.ts";
 import { attemptSync } from "../result.ts";

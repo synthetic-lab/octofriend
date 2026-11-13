@@ -26,9 +26,9 @@ import type {
 } from "./llm-ir.ts";
 import type { ScopeHop, ScopeRoot, ScopeSubagent } from "./trajectory.ts";
 import type { MultimodalConfig } from "./modalities.ts";
-import { lowerFileExtras, type FileReadIR, type FileMutateIR } from "./tools/file-ir.ts";
+import { lowerFileExtras, type FileReadIR, type FileMutateIR } from "./toolkits/file-ir.ts";
 import type { IRConversion } from "./llm-ir.ts";
-import type { ToolCall } from "./tools/tool-def.ts";
+import type { ToolCall } from "./toolkits/tool-def.ts";
 import { err, ok, type Result } from "./result.ts";
 import {
   retryable,

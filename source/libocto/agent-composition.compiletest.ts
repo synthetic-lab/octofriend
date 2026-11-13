@@ -3,7 +3,7 @@ import type { AgentExtra, IsPermissioned } from "./llm-ir.ts";
 import { agent } from "./llm-ir.ts";
 import { ok } from "./result.ts";
 import { prompt } from "./system-prompt.ts";
-import { ToolBuilder } from "./tools/tool-def.ts";
+import { ToolBuilder } from "./toolkits/tool-def.ts";
 import type { TrajectoryParams } from "./trajectory.ts";
 
 function expectType<T>(_: T) {}
@@ -96,11 +96,11 @@ const sameNameAcrossNamespaces = agent
 expectType<typeof searchTool>(sameNameAcrossNamespaces.tools.shared);
 agent
   .use({ tools: { duplicate: searchTool } })
-  // @ts-expect-error A later fragment cannot replace a tool at the same agent node.
+  // @ts-expect-error A later toolkit cannot replace a tool at the same agent node.
   .use({ tools: { duplicate: noteTool } });
 agent
   .use({ agents: { duplicate: grandchild } })
-  // @ts-expect-error A later fragment cannot replace a child, even with a different child tree.
+  // @ts-expect-error A later toolkit cannot replace a child, even with a different child tree.
   .use({ agents: { duplicate: research } });
 
 // Invocation-tool dependencies are checked against the accumulated tree at final definition.
@@ -125,7 +125,7 @@ const resolveComposedData: TrajectoryParams<typeof composedData, null>["getData"
 });
 expectType<Promise<{ composed: string; tool: boolean }>>(resolveComposedData());
 
-// Dependencies of raw fragment children are local to each child's directory, not its parent.
+// Dependencies of raw children supplied by a toolkit are local to each child's directory, not its parent.
 const invalidChild = agent.use({
   agents: {
     research,

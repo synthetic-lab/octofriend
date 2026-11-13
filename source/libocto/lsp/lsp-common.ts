@@ -1,5 +1,5 @@
 import { t } from "structural";
-import { fileTracker } from "../tools/file-tracker.ts";
+import { fileTracker } from "../toolkits/file-tracker.ts";
 import { LspClient } from "./client.ts";
 import type { LspToolData } from "./detect.ts";
 import type { Transport } from "../transport.ts";

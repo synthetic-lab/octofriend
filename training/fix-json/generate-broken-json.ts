@@ -13,7 +13,7 @@ import {
   parseJson, JSONASTNode, NullNode, NumberNode, StringNode, ArrayNode, ObjectNode, BooleanNode
 } from "./json-parser.ts";
 import { generateJSON } from "./json-generator.ts";
-import { ArgumentsSchema as CreateArgumentsSchema } from "../../source/libocto/tools/create/index.ts";
+import { ArgumentsSchema as CreateArgumentsSchema } from "../../source/libocto/toolkits/create/index.ts";
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 const TRAIN_PATH = path.join(__dirname, "unfat/output/data/train.jsonl");

@@ -1,6 +1,6 @@
 import { t } from "structural";
 import { Config, apiKeyFromAuth, readAuthForModel } from "../config.ts";
-import { ArgumentsSchema as EditSchema } from "../libocto/tools/edit/index.ts";
+import { ArgumentsSchema as EditSchema } from "../libocto/toolkits/edit/index.ts";
 import {
   fixEditPrompt,
   fixJsonPrompt,

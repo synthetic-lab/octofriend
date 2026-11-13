@@ -6,7 +6,7 @@ import {
 } from "./tool-pairing.ts";
 import type { HistoryNode } from "./index.ts";
 import { compilerUsage } from "../libocto/compilers/compiler-interface.ts";
-import type { ToolCall } from "../libocto/tools/tool-def.ts";
+import type { ToolCall } from "../libocto/toolkits/tool-def.ts";
 import type { OctoIR } from "../ir/octo-ir.ts";
 import type toolMap from "../tools/tool-defs/index.ts";
 

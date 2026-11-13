@@ -7,7 +7,12 @@ import { defaultCountTokens, type ExecutionModel } from "./execution.ts";
 import type { ImageInfo } from "./images.ts";
 import type { MultimodalConfig } from "./modalities.ts";
 import { err, ok, type Result } from "./result.ts";
-import { ToolBuilder, type LoadedTools, type ToolCall, type ToolReturn } from "./tools/tool-def.ts";
+import {
+  ToolBuilder,
+  type LoadedTools,
+  type ToolCall,
+  type ToolReturn,
+} from "./toolkits/tool-def.ts";
 import {
   agent,
   type Agent,

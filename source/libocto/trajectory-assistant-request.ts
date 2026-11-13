@@ -16,7 +16,7 @@ import type {
   ToolSkipOutputMessage,
   ToolValidationErrorMessage,
 } from "./llm-ir.ts";
-import type { LoadedTools, ToolCall, ToolDef } from "./tools/tool-def.ts";
+import type { LoadedTools, ToolCall, ToolDef } from "./toolkits/tool-def.ts";
 import type { AutofixJsonFn, Compiler, CompilerError } from "./compilers/compiler-interface.ts";
 import { compilerUsage } from "./compilers/compiler-interface.ts";
 import { userInterruptReason } from "./compilers/ir-prompts.ts";

@@ -1,5 +1,5 @@
 import { octoAgent } from "./ir/octo-ir.ts";
-import type { ToolCall } from "./libocto/tools/tool-def.ts";
+import type { ToolCall } from "./libocto/toolkits/tool-def.ts";
 import type { UserMessage } from "./libocto/llm-ir.ts";
 import type { PermissionDecision, PermissionGate } from "./libocto/permissions.ts";
 import type toolMap from "./tools/tool-defs/index.ts";

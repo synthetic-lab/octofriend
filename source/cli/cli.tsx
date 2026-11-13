@@ -12,7 +12,11 @@ import { fileExists } from "../fs-utils.ts";
 import App from "../app.tsx";
 import { readConfig, readAuthForModel, AUTOFIX_KEYS, APP_METADATA } from "../config.ts";
 import { tokenCounts } from "../token-tracker.ts";
-import { getMcpClient, connectMcpServer, shutdownMcpClients } from "../libocto/tools/mcp/index.ts";
+import {
+  getMcpClient,
+  connectMcpServer,
+  shutdownMcpClients,
+} from "../libocto/toolkits/mcp/index.ts";
 import { FirstTimeSetup } from "../first-time-setup.tsx";
 import { loadSyntheticModels, type SyntheticModel } from "../synthetic-models.ts";
 import { PreflightModelAuth, PreflightAutofixAuth } from "../preflight-auth.tsx";
@@ -26,7 +30,7 @@ import type { Backend } from "../compilers/run.ts";
 import { octoAgent } from "../ir/octo-ir.ts";
 import { loadInputHistory } from "../input-history/index.ts";
 import { makeAutofixJson } from "../compilers/autofix.ts";
-import { discoverSkills } from "../libocto/tools/skill/skills.ts";
+import { discoverSkills } from "../libocto/toolkits/skill/skills.ts";
 import { timeout } from "../libocto/signals.ts";
 import { shutdownLspClients } from "../libocto/lsp/client.ts";
 import { replaceDockerRunArgs, replaceOctoFlags, withOctoFlags } from "./cli-args.ts";

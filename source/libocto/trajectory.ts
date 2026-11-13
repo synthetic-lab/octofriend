@@ -42,13 +42,13 @@ import type {
 export type { SubagentTrajectoryInspection } from "./ir-operations.ts";
 import type { MultimodalConfig } from "./modalities.ts";
 import { subagentPrompt, userInterruptReason } from "./compilers/ir-prompts.ts";
-import type { LoadedTools, ToolCall, ToolExtensionIR, ToolReturn } from "./tools/tool-def.ts";
+import type { LoadedTools, ToolCall, ToolExtensionIR, ToolReturn } from "./toolkits/tool-def.ts";
 import {
   loadAgentTools,
   type TrajectoryToolLoadError,
   type TreeToolData,
-} from "./tools/load-tools.ts";
-export type { TrajectoryToolLoadError } from "./tools/load-tools.ts";
+} from "./toolkits/load-tools.ts";
+export type { TrajectoryToolLoadError } from "./toolkits/load-tools.ts";
 import { combineSignals } from "./signals.ts";
 import { Input } from "./input.ts";
 import { err, ok, type Result } from "./result.ts";

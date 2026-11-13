@@ -1,6 +1,6 @@
 import { describe, expect, it } from "bun:test";
 import { MockTransport } from "../../transports/mock.ts";
-import webSearchTool from "../../libocto/tools/web-search/index.ts";
+import webSearchTool from "../../libocto/toolkits/web-search/index.ts";
 import webResearchTool from "./web-research.ts";
 import { defaultCountTokens } from "../../libocto/execution.ts";
 

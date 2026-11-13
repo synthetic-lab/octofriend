@@ -8,8 +8,8 @@ import { DockerTransport, manageContainer } from "./docker.ts";
 import { logger } from "../libocto/logger.ts";
 import { BackgroundProcessManager } from "../libocto/background-process.ts";
 import { ProcessManager, processes } from "../process-manager.ts";
-import backgroundProcessTool from "../libocto/tools/background-process/index.ts";
-import manageBackgroundProcessTool from "../libocto/tools/manage-background-process/index.ts";
+import backgroundProcessTool from "../libocto/toolkits/background-process/index.ts";
+import manageBackgroundProcessTool from "../libocto/toolkits/manage-background-process/index.ts";
 import type { ProcessExecFileCallback } from "../libocto/transport.ts";
 import { defaultCountTokens } from "../libocto/execution.ts";
 
