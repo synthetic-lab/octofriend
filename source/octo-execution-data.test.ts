@@ -1,6 +1,6 @@
 import { describe, expect, it } from "bun:test";
 import type { Config } from "./config.ts";
-import { isLspGloballyDisabled } from "./lsp/detect.ts";
+import { isLspGloballyDisabled } from "./libocto/lsp/detect.ts";
 import { adaptOctoExecutionData, createCachedSearchConfigReader } from "./octo-execution-data.ts";
 
 const config: Config = { yourName: "Test", models: [] };

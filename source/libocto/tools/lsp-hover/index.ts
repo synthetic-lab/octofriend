@@ -1,13 +1,13 @@
 import { t } from "structural";
-import { TOOL_BUILDER } from "../../libocto/tools/tool-def.ts";
-import type { LspToolData } from "../tool-data.ts";
-import { ok } from "../../libocto/result.ts";
+import { TOOL_BUILDER } from "../tool-def.ts";
+import type { LspToolData } from "../../lsp/detect.ts";
+import { ok } from "../../result.ts";
 import {
   runLspPositionQuery,
   getLspExtensionsComment,
   LineSchema,
   CharSchema,
-} from "../lsp-common.ts";
+} from "../../lsp/lsp-common.ts";
 import { getUsableLspExtensions } from "../../lsp/detect.ts";
 
 export default TOOL_BUILDER.withData<LspToolData>().dynamicDefineTool(async function ({

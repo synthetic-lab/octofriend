@@ -15,14 +15,14 @@ import manageBackgroundProcess from "../../libocto/tools/manage-background-proce
 import glob from "./glob.ts";
 import grep from "./grep.ts";
 import explore from "./explore.ts";
-import lspDefinition from "./lsp-definition.ts";
-import lspReferences from "./lsp-references.ts";
-import lspHover from "./lsp-hover.ts";
-import lspDiagnostics from "./lsp-diagnostics.ts";
-import lspDocumentSymbol from "./lsp-document-symbol.ts";
-import lspImplementation from "./lsp-implementation.ts";
-import lspIncomingCalls from "./lsp-incoming-calls.ts";
-import lspOutgoingCalls from "./lsp-outgoing-calls.ts";
+import lspDefinition from "../../libocto/tools/lsp-definition/index.ts";
+import lspReferences from "../../libocto/tools/lsp-references/index.ts";
+import lspHover from "../../libocto/tools/lsp-hover/index.ts";
+import lspDiagnostics from "../../libocto/tools/lsp-diagnostics/index.ts";
+import lspDocumentSymbol from "../../libocto/tools/lsp-document-symbol/index.ts";
+import lspImplementation from "../../libocto/tools/lsp-implementation/index.ts";
+import lspIncomingCalls from "../../libocto/tools/lsp-incoming-calls/index.ts";
+import lspOutgoingCalls from "../../libocto/tools/lsp-outgoing-calls/index.ts";
 
 export default {
   read,

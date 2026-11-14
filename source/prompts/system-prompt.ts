@@ -1,6 +1,6 @@
 import path from "path";
 import { Config } from "../config.ts";
-import type { LspToolData } from "../tools/tool-data.ts";
+import type { LspToolData } from "../libocto/lsp/detect.ts";
 import { getMcpClient } from "../libocto/tools/mcp/index.ts";
 import { tagged } from "../xml.ts";
 import { Transport, getEnvVar } from "../libocto/transport.ts";

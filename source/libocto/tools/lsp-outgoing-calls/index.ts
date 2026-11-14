@@ -1,14 +1,14 @@
 import { t } from "structural";
-import { TOOL_BUILDER } from "../../libocto/tools/tool-def.ts";
-import type { LspToolData } from "../tool-data.ts";
-import { ok } from "../../libocto/result.ts";
-import { formatLocations } from "../../lsp/client.ts";
+import { TOOL_BUILDER } from "../tool-def.ts";
+import type { LspToolData } from "../../lsp/detect.ts";
+import { ok } from "../../result.ts";
+import { formatCallHierarchy } from "../../lsp/client.ts";
 import {
   runLspPositionQuery,
   getLspExtensionsComment,
   LineSchema,
   CharSchema,
-} from "../lsp-common.ts";
+} from "../../lsp/lsp-common.ts";
 import { getUsableLspExtensions } from "../../lsp/detect.ts";
 
 export default TOOL_BUILDER.withData<LspToolData>().dynamicDefineTool(async function ({
@@ -19,11 +19,11 @@ export default TOOL_BUILDER.withData<LspToolData>().dynamicDefineTool(async func
   const extensions = await getUsableLspExtensions(signal, transport.cwd, data, transport);
   if (extensions.size === 0) return null;
 
-  const description = `Find all references to a symbol at the given position. ${getLspExtensionsComment(extensions)}`;
+  const description = `Find all callees of a symbol at the given position. ${getLspExtensionsComment(extensions)}`;
 
   return TOOL_BUILDER.withData<LspToolData>()
     .declare({
-      name: "lsp-references",
+      name: "lsp-outgoing-calls",
       description,
       ArgumentsSchema: t.subtype({
         filePath: t.str.comment("Path to the file to query"),
@@ -38,10 +38,10 @@ export default TOOL_BUILDER.withData<LspToolData>().dynamicDefineTool(async func
           transport,
           data,
           toolCall.parsed.arguments,
-          "references",
-          (client, filePath, line, character) => client.getReferences(filePath, line, character),
-          (refs, filePath, line, character) =>
-            `References for symbol at ${filePath}:${line}:${character}:\n${formatLocations(refs)}`,
+          "outgoing calls",
+          (client, filePath, line, character) => client.getOutgoingCalls(filePath, line, character),
+          (calls, filePath, line, character) =>
+            `Outgoing calls from symbol at ${filePath}:${line}:${character}:\n${formatCallHierarchy(calls, "outgoing")}`,
         );
         if (!output.success) return output;
         return ok({

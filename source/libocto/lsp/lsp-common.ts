@@ -1,10 +1,10 @@
 import { t } from "structural";
-import { fileTracker } from "../libocto/tools/file-tracker.ts";
-import { LspClient } from "../lsp/client.ts";
-import type { LspToolData } from "./tool-data.ts";
-import type { Transport } from "../libocto/transport.ts";
-import { getLspClientForFile } from "../lsp/detect.ts";
-import { Result, ok, err } from "../libocto/result.ts";
+import { fileTracker } from "../tools/file-tracker.ts";
+import { LspClient } from "./client.ts";
+import type { LspToolData } from "./detect.ts";
+import type { Transport } from "../transport.ts";
+import { getLspClientForFile } from "./detect.ts";
+import { Result, ok, err } from "../result.ts";
 
 export type LspFileOnlyArgs = t.GetType<typeof LspFileOnlyArgumentsSchema>;
 export const LspFileOnlyArgumentsSchema = t.subtype({

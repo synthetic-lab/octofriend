@@ -28,7 +28,7 @@ import { loadInputHistory } from "../input-history/index.ts";
 import { makeAutofixJson } from "../compilers/autofix.ts";
 import { discoverSkills } from "../libocto/tools/skill/skills.ts";
 import { timeout } from "../libocto/signals.ts";
-import { shutdownLspClients } from "../lsp/client.ts";
+import { shutdownLspClients } from "../libocto/lsp/client.ts";
 import { replaceDockerRunArgs, replaceOctoFlags, withOctoFlags } from "./cli-args.ts";
 import type { ParsedCliArgs } from "./cli-args.ts";
 import { deleteSession, listSessions, loadSession } from "../session-history/index.ts";
