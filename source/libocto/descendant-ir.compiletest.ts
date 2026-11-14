@@ -9,8 +9,10 @@ import type {
   RecursiveLowered,
   ShallowLoweredIR,
   TreeIR,
+  TreeToolCall,
 } from "./llm-ir.ts";
-import type { ToolFactory } from "./tools/tool-def.ts";
+import type { ActiveHistory } from "./ir-operations.ts";
+import type { ToolCall, ToolFactory } from "./tools/tool-def.ts";
 
 // The optimized traversal must project directory entries, not individual members of a
 // union-valued entry. Nor may an any entry swallow its typed siblings before projection.
@@ -113,3 +115,53 @@ type _anySiblingRecursiveReject = Expect<
     ReadReject["toolCall"]
   >
 >;
+
+// Tool-call projection uses the same boxed traversal, retaining per-entry union semantics
+// and stopping at abstract directories rather than recursively expanding their constraints.
+type _unionCalls = Expect<Equivalent<TreeToolCall<UnionRoot>, ToolCall<UnionChild["tools"]>>>;
+type _abstractCalls = Expect<Equivalent<TreeToolCall<AbstractRoot>, ToolCall<UnionChild["tools"]>>>;
+type _leafCalls = Expect<Equivalent<TreeToolCall<ReadAgent>, ToolCall<ReadAgent["tools"]>>>;
+type _emptyCalls = Expect<Equivalent<TreeToolCall<Root<{}>>, never>>;
+
+type NestedRoot = PermissionedAgent<
+  never,
+  { branch: Root<{ reader: ReadAgent; writer: WriteAgent }> },
+  ReadAgent["tools"],
+  {}
+>;
+type NestedCalls = TreeToolCall<NestedRoot>;
+type _nestedCalls = Expect<
+  Equivalent<NestedCalls, ToolCall<ReadAgent["tools"]> | ToolCall<WriteAgent["tools"]>>
+>;
+type _nestedReadArguments = Expect<
+  Equivalent<Extract<NestedCalls, { name: "read" }>["original"], { path: string }>
+>;
+type _nestedReadParsed = Expect<
+  Equivalent<Extract<NestedCalls, { name: "read" }>["parsed"], string>
+>;
+type _nestedWriteParsed = Expect<
+  Equivalent<Extract<NestedCalls, { name: "write" }>["parsed"], number>
+>;
+
+function inspectNestedCall(call: NestedCalls) {
+  if (call.name === "read") {
+    // @ts-expect-error A read call does not acquire the sibling write tool's arguments.
+    call.original.text;
+  } else {
+    // @ts-expect-error Descendant parsed arguments must not widen to any.
+    const parsed: string = call.parsed;
+  }
+}
+
+// Moving the inspection intersection outside recursion must retain each child's own history,
+// not turn it into the entire tree's history through the shared inspection bound.
+function inspectNestedHistory(location: ActiveHistory<NestedRoot>) {
+  if (location.root || location.subagent !== "writer") return;
+  const history: Array<AgentIR<WriteAgent>> = location.history;
+  const name: "writer" = location.scope.parentSubagentIR.subagent;
+  const top: "branch" = location.scope.toplevelSubagentIR.subagent;
+  // @ts-expect-error A writer history cannot become the sibling reader's history.
+  const readerHistory: Array<AgentIR<ReadAgent>> = location.history;
+  // @ts-expect-error The reader's tools must not appear on the writer agent.
+  location.agent.tools.read;
+}

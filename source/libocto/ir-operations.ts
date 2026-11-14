@@ -72,16 +72,22 @@ type ChildHistory<
   };
 };
 
-type DescendantHistories<
+type DescendantHistoryUnion<
   Root extends Agent<any, any, any, any>,
   Parent extends Agent<any, any, any, any>,
-> = (string extends keyof Parent["agents"]
+> = string extends keyof Parent["agents"]
   ? ChildHistory<Root, Parent, keyof Parent["agents"] & string>
   : {
       [K in keyof Parent["agents"] & string]:
         | ChildHistory<Root, Parent, K>
-        | DescendantHistories<Root, Parent["agents"][K]>;
-    }[keyof Parent["agents"] & string]) &
+        | DescendantHistoryUnion<Root, Parent["agents"][K]>;
+    }[keyof Parent["agents"] & string];
+
+// Apply the generic inspection bound once, not at every level of the recursive union.
+type DescendantHistories<Root extends Agent<any, any, any, any>> = DescendantHistoryUnion<
+  Root,
+  Root
+> &
   ScopeSubagent<string> & {
     agent: { tools: object; agents: AgentDirectory };
     history: Array<TreeIR<Root>>;
@@ -97,7 +103,7 @@ type DescendantHistories<
 
 export type ActiveHistory<A extends Agent<any, any, any, any>> =
   | (ScopeRoot & { agent: A; history: Array<AgentIR<A>> })
-  | DescendantHistories<A, A>;
+  | DescendantHistories<A>;
 
 // Inspect a recursively downconverted view, but return only references into the live raw tree.
 // The result is temporary: call again after appending rather than saving execution frames.

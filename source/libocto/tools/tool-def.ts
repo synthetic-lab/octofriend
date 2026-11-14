@@ -145,29 +145,21 @@ type SimpleRawToolFactory<
   SubagentNames extends string,
   Extra,
   CustomIR,
-> = (args: ExecutionArgs<Data, Provider>) => Promise<
-  | (Omit<
-      ToolDef<Data, Provider, S["name"], S["arguments"], Parsed, SubagentNames, Extra>,
-      "ArgumentsSchema" | "ParsedSchema" | "description" | "name" | "validate" | "run"
-    > & {
-      run: (
-        args: ToolImplementationRunArgs<
-          Data,
-          Provider,
-          S["name"],
-          S["arguments"],
-          Parsed,
-          CustomIR
-        >,
-      ) => Promise<Result<ToolReturn<SubagentNames, Extra>, string>>;
-    } & Partial<
-        Pick<
-          ToolDef<Data, Provider, S["name"], S["arguments"], Parsed, SubagentNames, Extra>,
-          "validate"
-        >
-      >)
-  | null
->;
+> = (args: ExecutionArgs<Data, Provider>) => Promise<{
+  parse: ToolDef<Data, Provider, S["name"], S["arguments"], Parsed, SubagentNames, Extra>["parse"];
+  run: (
+    args: ToolImplementationRunArgs<Data, Provider, S["name"], S["arguments"], Parsed, CustomIR>,
+  ) => Promise<Result<ToolReturn<SubagentNames, Extra>, string>>;
+  validate?: ToolDef<
+    Data,
+    Provider,
+    S["name"],
+    S["arguments"],
+    Parsed,
+    SubagentNames,
+    Extra
+  >["validate"];
+} | null>;
 
 type SimpleAutoParsedRawToolFactory<
   Data,
@@ -176,29 +168,27 @@ type SimpleAutoParsedRawToolFactory<
   SubagentNames extends string,
   Extra,
   CustomIR,
-> = (args: ExecutionArgs<Data, Provider>) => Promise<
-  | (Omit<
-      ToolDef<Data, Provider, S["name"], S["arguments"], S["arguments"], SubagentNames, Extra>,
-      "ArgumentsSchema" | "ParsedSchema" | "description" | "name" | "parse" | "validate" | "run"
-    > & {
-      run: (
-        args: ToolImplementationRunArgs<
-          Data,
-          Provider,
-          S["name"],
-          S["arguments"],
-          S["arguments"],
-          CustomIR
-        >,
-      ) => Promise<Result<ToolReturn<SubagentNames, Extra>, string>>;
-    } & Partial<
-        Pick<
-          ToolDef<Data, Provider, S["name"], S["arguments"], S["arguments"], SubagentNames, Extra>,
-          "validate"
-        >
-      >)
-  | null
->;
+> = (args: ExecutionArgs<Data, Provider>) => Promise<{
+  run: (
+    args: ToolImplementationRunArgs<
+      Data,
+      Provider,
+      S["name"],
+      S["arguments"],
+      S["arguments"],
+      CustomIR
+    >,
+  ) => Promise<Result<ToolReturn<SubagentNames, Extra>, string>>;
+  validate?: ToolDef<
+    Data,
+    Provider,
+    S["name"],
+    S["arguments"],
+    S["arguments"],
+    SubagentNames,
+    Extra
+  >["validate"];
+} | null>;
 
 type DynamicToolFactoryReturn<T extends (...args: any) => any> = ReturnType<
   Extract<Exclude<Awaited<ReturnType<T>>, null>, (...args: any) => any>
@@ -211,16 +201,13 @@ type DynamicToolFactoryExtra<T extends (...args: any) => any> = ToolFactoryExtra
   Exclude<Awaited<ReturnType<T>>, null>
 >;
 
-type RuntimeToolDefinition<Extra> = Omit<
-  ToolDef<unknown, unknown, string, unknown, unknown, string, Extra>,
-  "ArgumentsSchema" | "ParsedSchema" | "description" | "name" | "parse" | "validate" | "run"
-> & {
+type RuntimeToolDefinition<Data, Provider, Name extends string, Arguments, Parsed, Extra> = {
   run: (
-    args: ToolImplementationRunArgs<unknown, unknown, string, unknown, unknown, any>,
+    args: ToolImplementationRunArgs<Data, Provider, Name, Arguments, Parsed, any>,
   ) => Promise<Result<ToolReturn<string, Extra>, string>>;
-} & Partial<
-    Pick<ToolDef<unknown, unknown, string, unknown, unknown, string, Extra>, "parse" | "validate">
-  >;
+  parse?: ToolDef<Data, Provider, Name, Arguments, Parsed, string, Extra>["parse"];
+  validate?: ToolDef<Data, Provider, Name, Arguments, Parsed, string, Extra>["validate"];
+};
 
 type AnyToolSchema = Schema<any, any>;
 type AnyParsedArguments = any;
@@ -390,17 +377,7 @@ export class DeclaredTool<
     return new DeclaredTool(this.partial, builders);
   }
 
-  define<
-    T extends SimpleRawToolFactory<
-      Data,
-      Provider,
-      Schema<Name, Arguments>,
-      Parsed,
-      SubagentNames,
-      Extra,
-      CustomIR
-    >,
-  >(
+  define(
     this: DeclaredTool<
       Data,
       Provider,
@@ -412,19 +389,18 @@ export class DeclaredTool<
       true,
       CustomIR
     >,
-    factory: (args: Parameters<T>[0]) => Promise<Awaited<ReturnType<T>>>,
-  ): ToolFactory<Data, Provider, Schema<Name, Arguments>, Parsed, SubagentNames, Extra>;
-
-  define<
-    T extends SimpleAutoParsedRawToolFactory<
+    factory: SimpleRawToolFactory<
       Data,
       Provider,
       Schema<Name, Arguments>,
+      Parsed,
       SubagentNames,
       Extra,
       CustomIR
     >,
-  >(
+  ): ToolFactory<Data, Provider, Schema<Name, Arguments>, Parsed, SubagentNames, Extra>;
+
+  define(
     this: DeclaredTool<
       Data,
       Provider,
@@ -436,11 +412,20 @@ export class DeclaredTool<
       false,
       CustomIR
     >,
-    factory: (args: Parameters<T>[0]) => Promise<Awaited<ReturnType<T>>>,
+    factory: SimpleAutoParsedRawToolFactory<
+      Data,
+      Provider,
+      Schema<Name, Arguments>,
+      SubagentNames,
+      Extra,
+      CustomIR
+    >,
   ): ToolFactory<Data, Provider, Schema<Name, Arguments>, Arguments, SubagentNames, Extra>;
 
-  define(
-    factory: (args: ExecutionArgs<Data, Provider>) => Promise<RuntimeToolDefinition<Extra> | null>,
+  define<RunParsed>(
+    factory: (
+      args: ExecutionArgs<Data, Provider>,
+    ) => Promise<RuntimeToolDefinition<Data, Provider, Name, Arguments, RunParsed, Extra> | null>,
   ): any {
     const partial = this.partial;
     const customIRBuilders = this.customIRBuilders;
@@ -464,7 +449,7 @@ export class DeclaredTool<
             },
           })),
         validate: def.validate ?? (async () => ({ success: true, data: null })),
-        run: async (runArgs: ToolRunArgs<Data, Provider, Name, Arguments, Parsed>) =>
+        run: async (runArgs: ToolRunArgs<Data, Provider, Name, Arguments, RunParsed>) =>
           def.run({
             ...runArgs,
             customIR: bindCustomIR(customIRBuilders, flattenToolCall(runArgs.toolCall)),

@@ -124,3 +124,34 @@ const resolveComposedData: TrajectoryParams<typeof composedData, null>["getData"
   tool: true,
 });
 expectType<Promise<{ composed: string; tool: boolean }>>(resolveComposedData());
+
+// Dependencies of raw fragment children are local to each child's directory, not its parent.
+const invalidChild = agent.use({
+  agents: {
+    research,
+    child: { systemPrompt: testPrompt, tools: { delegate: delegateTool }, agents: {} },
+  },
+});
+invalidChild.definePermissioned({
+  systemPrompt: testPrompt,
+  tools: {},
+  // @ts-expect-error The raw child still lacks its own research agent.
+  agents: {},
+});
+invalidChild.definePermissionless({
+  systemPrompt: testPrompt,
+  tools: {},
+  // @ts-expect-error The same dependency must be checked regardless of final permissions.
+  agents: {},
+});
+
+const withMetadata = agent.use({ tools: { search: searchTool } }).definePermissioned({
+  systemPrompt: testPrompt,
+  tools: { note: noteTool },
+  agents: { research },
+  metadata: { label: "retained", enabled: true } as const,
+});
+type _mergedMetadata = Expect<
+  Equal<typeof withMetadata.metadata, { readonly label: "retained"; readonly enabled: true }>
+>;
+type _mergedFinalTools = Expect<Equal<keyof typeof withMetadata.tools, "search" | "note">>;
