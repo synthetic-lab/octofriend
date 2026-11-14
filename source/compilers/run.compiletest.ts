@@ -2,19 +2,19 @@ import type {
   CompilerResult,
   CompilerResultWithoutToolCalls,
   CompilerTokenType,
+  ExecutionModel,
   JsonFixResponse,
-} from "../libocto/compilers/compiler-interface.ts";
-import type { LoweredIR } from "../libocto/llm-ir.ts";
-import type { Transport } from "../libocto/transport.ts";
-import type { LoadedTools as GenericLoadedTools } from "../libocto/toolkits/tool-def.ts";
+  LoweredIR,
+  Transport,
+  toolkits,
+} from "../libocto/index.ts";
 import { octoAgent } from "../ir/octo-ir.ts";
 import { run } from "./run.ts";
 import type { Backend } from "./run.ts";
-import type { ExecutionModel } from "../libocto/execution.ts";
 
 function expectType<T>(_: T) {}
 
-type LoadedTools = GenericLoadedTools<typeof octoAgent.tools>;
+type LoadedTools = toolkits.LoadedTools<typeof octoAgent.tools>;
 
 declare const backend: Backend;
 declare const model: Omit<ExecutionModel<Backend>, "countTokens">;

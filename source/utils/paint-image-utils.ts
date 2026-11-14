@@ -1,5 +1,5 @@
 import type { PaintFile } from "paintcannon";
-import { createDataUrl, isSupportedImageMimeType, type ImageInfo } from "../libocto/images.ts";
+import { createDataUrl, isSupportedImageMimeType, type ImageInfo } from "../libocto/index.ts";
 
 export async function loadImageFromPaintFile(file: PaintFile): Promise<ImageInfo> {
   if (!isSupportedImageMimeType(file.type)) {

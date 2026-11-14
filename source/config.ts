@@ -11,7 +11,7 @@ import { getCodexOAuthTokens } from "./codex-oauth.ts";
 import { serializeModelJson, tryDeserializeModelJson } from "./session-history/model-json.ts";
 import { isDeepStrictEqual } from "node:util";
 import { registry } from "antipattern";
-import { err, errorToString, ok, type Result } from "./libocto/result.ts";
+import { err, errorToString, ok, type Result } from "./libocto/index.ts";
 import packageJson from "../package.json" with { type: "json" };
 
 const CONFIG_DIR = path.join(os.homedir(), ".config/octofriend");

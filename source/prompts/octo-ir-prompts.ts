@@ -1,5 +1,4 @@
-import { ImageInfo } from "../libocto/images.ts";
-import { imageAttachmentPlaceholderText } from "../libocto/compilers/ir-prompts.ts";
+import { ImageInfo, imageAttachmentPlaceholderText } from "../libocto/index.ts";
 
 export function toolReject() {
   return `

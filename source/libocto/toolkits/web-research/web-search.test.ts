@@ -1,6 +1,6 @@
 import { describe, expect, it } from "bun:test";
 import { MockTransport } from "../../../transports/mock.ts";
-import webSearchTool from "../web-search/index.ts";
+import * as webSearch from "../web-search/index.ts";
 import webResearchTool from "./web-research-tool.ts";
 import { defaultCountTokens } from "../../execution.ts";
 
@@ -21,13 +21,13 @@ function args(searchConfig: { url: string; key: string } | null) {
 
 describe("web tool search data", () => {
   it("disables both tools when resolved search configuration is null", async () => {
-    expect(await webSearchTool(args(null))).toBeNull();
+    expect(await webSearch.toolkit(args(null))).toBeNull();
     expect(await webResearchTool(args(null))).toBeNull();
   });
 
   it("enables both tools from directly resolved search configuration", async () => {
     const searchConfig = { url: "https://search.example", key: "secret" };
-    expect(await webSearchTool(args(searchConfig))).not.toBeNull();
+    expect(await webSearch.toolkit(args(searchConfig))).not.toBeNull();
     expect(await webResearchTool(args(searchConfig))).not.toBeNull();
   });
 });

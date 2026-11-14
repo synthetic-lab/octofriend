@@ -1,6 +1,6 @@
 import { t } from "structural";
 import { Config, apiKeyFromAuth, readAuthForModel } from "../config.ts";
-import { ArgumentsSchema as EditSchema } from "../libocto/toolkits/edit/index.ts";
+import { toolkits } from "../libocto/index.ts";
 import {
   fixEditPrompt,
   fixJsonPrompt,
@@ -10,7 +10,7 @@ import {
 import { trackTokens } from "../token-tracker.ts";
 import { getDefaultOpenaiClient } from "./openai.ts";
 
-type Edit = t.GetType<typeof EditSchema>;
+type Edit = t.GetType<typeof toolkits.edit.ArgumentsSchema>;
 export async function autofixEdit(
   config: Config,
   file: string,

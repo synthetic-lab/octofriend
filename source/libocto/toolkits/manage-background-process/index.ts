@@ -9,7 +9,7 @@ import {
   type BackgroundProcessStatus,
 } from "../../background-process.ts";
 
-export default TOOL_BUILDER.withData<{}>()
+export const toolkit = TOOL_BUILDER.withData<{}>()
   .declare({
     name: "manage-background-process",
     description: `

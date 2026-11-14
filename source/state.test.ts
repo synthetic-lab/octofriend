@@ -22,26 +22,26 @@ import {
   treeNodes,
   trees,
 } from "./session-history/schema/session-history-schema.ts";
-import { err, ok, type Result } from "./libocto/result.ts";
-import type { Backend } from "./compilers/run.ts";
 import {
+  answeredToolCallId,
   compilerUsage,
+  err,
+  meaningfulTailIR,
+  ok,
+  type Agent,
+  type AssistantMessage,
   type Compiler,
   type CompilerError,
   type CompilerParams,
   type CompilerResult,
   type CompilerSuccessData,
   type CompilerUsage,
-} from "./libocto/compilers/compiler-interface.ts";
-import {
-  answeredToolCallId,
-  type Agent,
-  type AssistantMessage,
   type LoweredIR,
   type OwnToolRegistry,
-} from "./libocto/llm-ir.ts";
-import type { TrajectoryMode } from "./libocto/trajectory.ts";
-import { meaningfulTailIR } from "./libocto/ir-operations.ts";
+  type Result,
+  type TrajectoryMode,
+} from "./libocto/index.ts";
+import type { Backend } from "./compilers/run.ts";
 import type { octoAgent, OctoIR } from "./ir/octo-ir.ts";
 import type { OctoToolCall } from "./tools/index.ts";
 import { LocalTransport } from "./transports/local.ts";

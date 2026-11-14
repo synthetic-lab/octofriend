@@ -131,7 +131,7 @@ export async function shutdownMcpClients(): Promise<void> {
   }
 }
 
-export default TOOL_BUILDER.withData<McpToolData>()
+export const toolkit = TOOL_BUILDER.withData<McpToolData>()
   .declare({
     name: "mcp",
     description: `

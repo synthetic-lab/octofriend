@@ -36,7 +36,7 @@ Applies a search/replace edit to a file. This should be your default tool to edi
   ParsedSchema,
 });
 
-export default edit.withCustomIR({ fileMutateIR }).define(async () => ({
+export const toolkit = edit.withCustomIR({ fileMutateIR }).define(async () => ({
   async validate(signal, transport, toolCall) {
     return validate(signal, transport, toolCall.parsed.arguments);
   },

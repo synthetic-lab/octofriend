@@ -1,25 +1,26 @@
 import {
+  CommandFailedError,
   Transport,
   TransportError,
-  CommandFailedError,
-  runShell,
-  runBackgroundShell,
+  TransportProcess,
   createPollingFileWatcher,
-  type FsWatcher,
+  err,
+  errorToString,
+  logger,
+  ok,
+  runBackgroundShell,
+  runShell,
   type BackgroundShellOptions,
-} from "../libocto/transport.ts";
+  type FsWatcher,
+  type ProcessExecFileCallback,
+  type ProcessExecFileOptions,
+  type ProcessSpawnOptions,
+  type Result,
+} from "../libocto/index.ts";
 import { ProcessManager, processes } from "../process-manager.ts";
 import { spawn, execFile, type ChildProcess } from "child_process";
 import { posix } from "path";
-import { logger } from "../libocto/logger.ts";
-import { err, errorToString, ok, type Result } from "../libocto/result.ts";
 import { quote } from "shell-quote";
-import {
-  TransportProcess,
-  type ProcessSpawnOptions,
-  type ProcessExecFileOptions,
-  type ProcessExecFileCallback,
-} from "../libocto/transport.ts";
 
 export async function manageContainer(args: string[]) {
   const processManager = processes.manager();

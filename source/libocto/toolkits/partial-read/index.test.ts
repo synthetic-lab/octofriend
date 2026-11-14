@@ -1,7 +1,7 @@
 import { describe, expect, it } from "bun:test";
 import { toJSONSchema } from "structural";
-import readToolFactory from "../read/index.ts";
-import partialReadToolFactory from "./index.ts";
+import * as read from "../read/index.ts";
+import * as partialRead from "./index.ts";
 import { fileTracker } from "../file-tracker.ts";
 import { err, ok, unwrap } from "../../result.ts";
 import { MockTransport } from "../../../transports/mock.ts";
@@ -21,7 +21,7 @@ function createTransport(files: Record<string, string>): Transport {
 }
 
 async function createReadTool(transport: Transport) {
-  const tool = await readToolFactory({
+  const tool = await read.toolkit({
     signal: new AbortController().signal,
     transport,
     model,
@@ -32,7 +32,7 @@ async function createReadTool(transport: Transport) {
 }
 
 async function createPartialReadTool(transport: Transport) {
-  const tool = await partialReadToolFactory({
+  const tool = await partialRead.toolkit({
     signal: new AbortController().signal,
     transport,
     model,

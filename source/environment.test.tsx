@@ -5,8 +5,7 @@ import type { PaintCannon } from "paintcannon";
 import { AppContext } from "paintcannon-react/dist/src/hooks/use-app.js";
 import { EnvironmentProvider, useEnvironment } from "./environment.tsx";
 import { MockTransport } from "./transports/mock.ts";
-import { CommandFailedError, type Transport } from "./libocto/transport.ts";
-import { err, ok } from "./libocto/result.ts";
+import { CommandFailedError, err, ok, type Transport } from "./libocto/index.ts";
 
 (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT =
   true;

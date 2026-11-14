@@ -5,7 +5,7 @@ import { readFileSync } from "node:fs";
 import path from "path";
 import { t } from "structural";
 import { isStandaloneExecutable } from "../bun-env.ts";
-import { attemptSync, type Result } from "../libocto/result.ts";
+import { attemptSync, type Result } from "../libocto/index.ts";
 import { db } from "./db.ts";
 
 const __dir = import.meta.dirname;

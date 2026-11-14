@@ -11,7 +11,7 @@ import {
   INPUT_BACKGROUND_COLOR,
 } from "../theme.ts";
 import { useTerminalFocus } from "../hooks/use-terminal-focus.ts";
-import { ImageInfo } from "../libocto/images.ts";
+import { ImageInfo } from "../libocto/index.ts";
 import { useInputDisabled } from "../hooks/use-input-disabled.tsx";
 
 function getImageBadgeText(index: number): string {

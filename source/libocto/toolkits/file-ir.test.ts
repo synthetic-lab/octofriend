@@ -8,12 +8,12 @@ import type { MultimodalConfig } from "../modalities.ts";
 import { agent as agentBuilder, type TreeIR } from "../llm-ir.ts";
 import { downconvert, lowerMessages } from "../ir-operations.ts";
 import { prompt } from "../system-prompt.ts";
-import read from "./read/index.ts";
-import rewrite from "./rewrite/index.ts";
+import * as read from "./read/index.ts";
+import * as rewrite from "./rewrite/index.ts";
 
 const agent = agentBuilder.definePermissionless({
   systemPrompt: prompt.declare(async () => "Test prompt"),
-  tools: { read, rewrite },
+  tools: { read: read.toolkit, rewrite: rewrite.toolkit },
   agents: {},
 });
 

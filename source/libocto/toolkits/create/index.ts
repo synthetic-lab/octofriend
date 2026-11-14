@@ -14,7 +14,7 @@ const create = TOOL_BUILDER.withData<{}>().declare({
   ArgumentsSchema,
 });
 
-export default create.withCustomIR({ fileMutateIR }).define(async () => ({
+export const toolkit = create.withCustomIR({ fileMutateIR }).define(async () => ({
   async validate(signal, transport, toolCall) {
     return fileTracker.assertCanCreate(transport, signal, toolCall.parsed.arguments.filePath);
   },

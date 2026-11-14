@@ -1,6 +1,6 @@
 import { prompt } from "../../system-prompt.ts";
-import fetch from "../fetch/index.ts";
-import webSearch from "../web-search/index.ts";
+import * as fetch from "../fetch/index.ts";
+import * as webSearch from "../web-search/index.ts";
 
 export const researcherSystemPrompt = prompt.declare(async () => {
   return `
@@ -23,6 +23,6 @@ Every line of your summary must include a link (or multiple links) citing some p
 
 export const researcherAgent = {
   systemPrompt: researcherSystemPrompt,
-  tools: { fetch, "web-search": webSearch },
+  tools: { fetch: fetch.toolkit, "web-search": webSearch.toolkit },
   agents: {},
 };

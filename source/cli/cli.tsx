@@ -12,15 +12,10 @@ import { fileExists } from "../fs-utils.ts";
 import App from "../app.tsx";
 import { readConfig, readAuthForModel, AUTOFIX_KEYS, APP_METADATA } from "../config.ts";
 import { tokenCounts } from "../token-tracker.ts";
-import {
-  getMcpClient,
-  connectMcpServer,
-  shutdownMcpClients,
-} from "../libocto/toolkits/mcp/index.ts";
+import { Transport, logger, timeout, toolkits } from "../libocto/index.ts";
 import { FirstTimeSetup } from "../first-time-setup.tsx";
 import { loadSyntheticModels, type SyntheticModel } from "../synthetic-models.ts";
 import { PreflightModelAuth, PreflightAutofixAuth } from "../preflight-auth.tsx";
-import { Transport } from "../libocto/transport.ts";
 import { LocalTransport } from "../transports/local.ts";
 import { DockerTransport, manageContainer } from "../transports/docker.ts";
 import { readUpdates, markUpdatesSeen } from "../update-notifs/update-notifs.ts";
@@ -30,9 +25,6 @@ import type { Backend } from "../compilers/run.ts";
 import { octoAgent } from "../ir/octo-ir.ts";
 import { loadInputHistory } from "../input-history/index.ts";
 import { makeAutofixJson } from "../compilers/autofix.ts";
-import { discoverSkills } from "../libocto/toolkits/skill/skills.ts";
-import { timeout } from "../libocto/signals.ts";
-import { shutdownLspClients } from "../libocto/lsp/client.ts";
 import { replaceDockerRunArgs, replaceOctoFlags, withOctoFlags } from "./cli-args.ts";
 import type { ParsedCliArgs } from "./cli-args.ts";
 import { deleteSession, listSessions, loadSession } from "../session-history/index.ts";
@@ -49,7 +41,6 @@ import { renderInteractive } from "./render-interactive.tsx";
 import { setOctoTitles } from "./titles.ts";
 import changelog from "../../CHANGELOG.md" with { type: "text" };
 import { processes } from "../process-manager.ts";
-import { logger } from "../libocto/logger.ts";
 import * as octoLogger from "../logger.ts";
 
 mock(logger, "log", octoLogger);
@@ -210,7 +201,7 @@ async function runMain(opts: {
     if (cleanedUp) return;
     cleanedUp = true;
     restoreTitles();
-    await Promise.all([shutdownLspClients(), shutdownMcpClients()]);
+    await Promise.all([toolkits.shutdownLspClients(), toolkits.mcp.shutdownMcpClients()]);
   };
   const unregisterCleanup = processes.manager().registerOctoExitCleanup(cleanup);
 
@@ -224,11 +215,11 @@ async function runMain(opts: {
         try {
           logger.log.info("Connecting to", server, "MCP server...");
           // Run the basic connection setup with logging enabled, so that first-time setup gets logged
-          const client = await connectMcpServer(server, config.mcpServers, true);
+          const client = await toolkits.mcp.connectMcpServer(server, config.mcpServers, true);
           if (!client.success) throw new Error(client.error);
           await client.data.close();
           // Then run the cache setup codepath, so future results use a cached client with logging off
-          const cachedClient = await getMcpClient(server, config.mcpServers);
+          const cachedClient = await toolkits.mcp.getMcpClient(server, config.mcpServers);
           if (!cachedClient.success) throw new Error(cachedClient.error);
           logger.log.info("Connected to", server, "MCP server");
         } catch (error) {
@@ -241,7 +232,11 @@ async function runMain(opts: {
       logger.log.info("MCP server initialization complete.");
     }
 
-    const skills = await discoverSkills(opts.transport, timeout(5000), config.skills?.paths);
+    const skills = await toolkits.skill.discoverSkills(
+      opts.transport,
+      timeout(5000),
+      config.skills?.paths,
+    );
     const cwd = opts.transport.cwd;
 
     const store = useAppStore.getState();

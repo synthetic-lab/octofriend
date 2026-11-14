@@ -1,9 +1,8 @@
 import { afterEach, describe, expect, it, jest } from "bun:test";
 import { withMock } from "antipattern";
-import { ok } from "../libocto/result.ts";
+import { ok, type TransportProcess } from "../libocto/index.ts";
 import { ProcessManager, processes } from "../process-manager.ts";
 import { LocalTransport } from "./local.ts";
-import type { TransportProcess } from "../libocto/transport.ts";
 import { once } from "events";
 
 async function withTestManager(cb: (manager: ProcessManager) => Promise<void>): Promise<void> {

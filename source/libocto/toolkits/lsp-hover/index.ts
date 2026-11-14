@@ -10,7 +10,7 @@ import {
 } from "../../lsp/lsp-common.ts";
 import { getUsableLspExtensions } from "../../lsp/detect.ts";
 
-export default TOOL_BUILDER.withData<LspToolData>().dynamicDefineTool(async function ({
+export const toolkit = TOOL_BUILDER.withData<LspToolData>().dynamicDefineTool(async function ({
   signal,
   transport,
   data,

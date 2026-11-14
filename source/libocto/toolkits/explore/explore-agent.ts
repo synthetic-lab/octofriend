@@ -1,9 +1,9 @@
 import { prompt } from "../../system-prompt.ts";
-import glob from "../glob/index.ts";
-import grep from "../grep/index.ts";
-import list from "../list/index.ts";
-import partialRead from "../partial-read/index.ts";
-import read from "../read/index.ts";
+import * as glob from "../glob/index.ts";
+import * as grep from "../grep/index.ts";
+import * as list from "../list/index.ts";
+import * as partialRead from "../partial-read/index.ts";
+import * as read from "../read/index.ts";
 
 export const exploreSystemPrompt = prompt.declare(async () => {
   return `
@@ -23,6 +23,12 @@ Mention unresolved questions only when they affect the task.
 
 export const exploreAgent = {
   systemPrompt: exploreSystemPrompt,
-  tools: { read, "partial-read": partialRead, list, grep, glob },
+  tools: {
+    read: read.toolkit,
+    "partial-read": partialRead.toolkit,
+    list: list.toolkit,
+    grep: grep.toolkit,
+    glob: glob.toolkit,
+  },
   agents: {},
 };

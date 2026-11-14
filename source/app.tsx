@@ -37,21 +37,22 @@ import {
 } from "./theme.ts";
 import { DiffRenderer } from "./components/diff-renderer.tsx";
 import { FileRenderer } from "./components/file-renderer.tsx";
-import shell from "./libocto/toolkits/shell/index.ts";
-import read from "./libocto/toolkits/read/index.ts";
-import partialRead from "./libocto/toolkits/partial-read/index.ts";
-import list from "./libocto/toolkits/list/index.ts";
-import edit from "./libocto/toolkits/edit/index.ts";
-import rewrite from "./libocto/toolkits/rewrite/index.ts";
-import createTool from "./libocto/toolkits/create/index.ts";
-import mcp from "./libocto/toolkits/mcp/index.ts";
-import skill from "./libocto/toolkits/skill/index.ts";
-import glob from "./libocto/toolkits/glob/index.ts";
-import grep from "./libocto/toolkits/grep/index.ts";
-import backgroundProcess from "./libocto/toolkits/background-process/index.ts";
-import manageBackgroundProcess from "./libocto/toolkits/manage-background-process/index.ts";
 import { ALWAYS_REQUEST_PERMISSION_TOOLS } from "./tools/index.ts";
-import { ParsedSchema as EditParsedSchema } from "./libocto/toolkits/edit/index.ts";
+import {
+  ImageInfo,
+  Transport,
+  toolkits,
+  type ClearControl,
+  type Content,
+  type MalformedToolRequest,
+  type OwnToolCall,
+  type RectifyControl,
+  type RetryControl,
+  type SubagentIR,
+  type SubagentTrajectoryInspection,
+  type TrajectoryMode,
+  type UserMessage,
+} from "./libocto/index.ts";
 import { useShallow } from "zustand/react/shallow";
 import { KbShortcutPanel } from "./components/kb-select/kb-shortcut-panel.tsx";
 import { Item, ShortcutArray } from "./components/kb-select/kb-shortcut-select.tsx";
@@ -66,15 +67,7 @@ import {
   userMessageContent,
   MAX_RETRY_COUNT,
 } from "./state.ts";
-import type {
-  TrajectoryMode,
-  SubagentTrajectoryInspection,
-  RetryControl,
-  RectifyControl,
-  ClearControl,
-} from "./libocto/trajectory.ts";
 import type { octoAgent, OctoIR } from "./ir/octo-ir.ts";
-import type { SubagentIR, UserMessage } from "./libocto/llm-ir.ts";
 import type { HistoryNode } from "./session-history/index.ts";
 import { tryDeserializeModelJson } from "./session-history/model-json.ts";
 import { Octo } from "./components/octo.tsx";
@@ -90,7 +83,6 @@ import { displayLog } from "./logger.ts";
 import { CenteredBox } from "./components/centered-box.tsx";
 import { Hud, useHudTextOffset, useHudLayout } from "./components/hud.tsx";
 import { EnvironmentProvider } from "./environment.tsx";
-import { Transport } from "./libocto/transport.ts";
 import { TransportContext } from "./transport-context.ts";
 import { SessionContext } from "./session-context.ts";
 import { markUpdatesSeen } from "./update-notifs/update-notifs.ts";
@@ -101,13 +93,11 @@ import {
 } from "./components/exit-on-double-ctrl-c.tsx";
 import { InputHistory } from "./input-history/index.ts";
 import { MultimediaInput } from "./components/multimedia-input.tsx";
-import { ImageInfo } from "./libocto/images.ts";
 import { Markdown } from "./markdown/index.tsx";
 import { LINE_SPLIT_REGEX, excerpt } from "./str.ts";
 import { VimModeIndicator } from "./components/vim-mode.tsx";
 import { DEFAULT_INPUT_MODE, type InputMode, type VimMode } from "./components/input-mode.ts";
 import { type OctoPermissionControl } from "./octo-permissions.ts";
-import type { Content, MalformedToolRequest, OwnToolCall } from "./libocto/llm-ir.ts";
 import {
   InputPriorityProvider,
   usePriorityInput,
@@ -2562,7 +2552,7 @@ function GlobRenderer({
   item,
   animate,
 }: {
-  item: ParsedToolSchemaFrom<typeof glob>;
+  item: ParsedToolSchemaFrom<typeof toolkits.glob.toolkit>;
   animate: boolean;
 }) {
   return (
@@ -2581,7 +2571,7 @@ function GrepRenderer({
   item,
   animate,
 }: {
-  item: ParsedToolSchemaFrom<typeof grep>;
+  item: ParsedToolSchemaFrom<typeof toolkits.grep.toolkit>;
   animate: boolean;
 }) {
   return (
@@ -2620,7 +2610,11 @@ function GlobArg({ name, arg }: { name: string; arg: string | number | boolean |
     </Span>
   );
 }
-function SkillToolRenderer({ item }: { item: ParsedToolSchemaFrom<typeof skill> }) {
+function SkillToolRenderer({
+  item,
+}: {
+  item: ParsedToolSchemaFrom<typeof toolkits.skill.toolkit>;
+}) {
   return (
     <TerminalFlex>
       <Span
@@ -2637,7 +2631,7 @@ function ShellToolRenderer({
   item,
   animate,
 }: {
-  item: ParsedToolSchemaFrom<typeof shell>;
+  item: ParsedToolSchemaFrom<typeof toolkits.shell.toolkit>;
   animate: boolean;
 }) {
   return (
@@ -2653,7 +2647,7 @@ function ShellToolRenderer({
 function BackgroundProcessToolRenderer({
   item,
 }: {
-  item: ParsedToolSchemaFrom<typeof backgroundProcess>;
+  item: ParsedToolSchemaFrom<typeof toolkits.backgroundProcess.toolkit>;
 }) {
   return (
     <TerminalFlex
@@ -2709,7 +2703,7 @@ function ManageBackgroundProcessToolRenderer({
   item,
   animate,
 }: {
-  item: ParsedToolSchemaFrom<typeof manageBackgroundProcess>;
+  item: ParsedToolSchemaFrom<typeof toolkits.manageBackgroundProcess.toolkit>;
   animate: boolean;
 }) {
   const rowAnimate = ((): boolean => {
@@ -2767,10 +2761,14 @@ function ManageBackgroundProcessToolRenderer({
   );
 }
 
-function ReadToolRenderer({ item }: { item: ParsedToolSchemaFrom<typeof read> }) {
+function ReadToolRenderer({ item }: { item: ParsedToolSchemaFrom<typeof toolkits.read.toolkit> }) {
   return <ToolCallRow name={item.name} details={item.arguments.filePath} animate={false} />;
 }
-function PartialReadToolRenderer({ item }: { item: ParsedToolSchemaFrom<typeof partialRead> }) {
+function PartialReadToolRenderer({
+  item,
+}: {
+  item: ParsedToolSchemaFrom<typeof toolkits.partialRead.toolkit>;
+}) {
   return (
     <ToolCallRow
       name={item.name}
@@ -2779,7 +2777,7 @@ function PartialReadToolRenderer({ item }: { item: ParsedToolSchemaFrom<typeof p
     />
   );
 }
-function ListToolRenderer({ item }: { item: ParsedToolSchemaFrom<typeof list> }) {
+function ListToolRenderer({ item }: { item: ParsedToolSchemaFrom<typeof toolkits.list.toolkit> }) {
   return (
     <ToolCallRow
       name={item.name}
@@ -2788,7 +2786,7 @@ function ListToolRenderer({ item }: { item: ParsedToolSchemaFrom<typeof list> })
     />
   );
 }
-function EditToolRenderer({ item }: { item: ParsedToolSchemaFrom<typeof edit> }) {
+function EditToolRenderer({ item }: { item: ParsedToolSchemaFrom<typeof toolkits.edit.toolkit> }) {
   const themeColor = useColor();
   return (
     <TerminalFlex
@@ -2810,7 +2808,11 @@ function EditToolRenderer({ item }: { item: ParsedToolSchemaFrom<typeof edit> })
     </TerminalFlex>
   );
 }
-function RewriteToolRenderer({ item }: { item: ParsedToolSchemaFrom<typeof rewrite> }) {
+function RewriteToolRenderer({
+  item,
+}: {
+  item: ParsedToolSchemaFrom<typeof toolkits.rewrite.toolkit>;
+}) {
   const { text, filePath, originalFileContents } = item.arguments;
   return (
     <TerminalFlex
@@ -2833,7 +2835,7 @@ function DiffEditRenderer({
   item,
   filePath,
 }: {
-  item: t.GetType<typeof EditParsedSchema>;
+  item: t.GetType<typeof toolkits.edit.ParsedSchema>;
   filePath: string;
 }) {
   return (
@@ -2852,7 +2854,11 @@ function DiffEditRenderer({
     </TerminalFlex>
   );
 }
-function CreateToolRenderer({ item }: { item: ParsedToolSchemaFrom<typeof createTool> }) {
+function CreateToolRenderer({
+  item,
+}: {
+  item: ParsedToolSchemaFrom<typeof toolkits.create.toolkit>;
+}) {
   const themeColor = useColor();
   return (
     <TerminalFlex
@@ -2882,7 +2888,7 @@ function McpToolRenderer({
   item,
   animate,
 }: {
-  item: ParsedToolSchemaFrom<typeof mcp>;
+  item: ParsedToolSchemaFrom<typeof toolkits.mcp.toolkit>;
   animate: boolean;
 }) {
   return (

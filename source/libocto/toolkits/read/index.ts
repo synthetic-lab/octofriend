@@ -25,7 +25,7 @@ once before editing.
   ArgumentsSchema,
 });
 
-export default read.withCustomIR({ fileReadIR }).define(async () => ({
+export const toolkit = read.withCustomIR({ fileReadIR }).define(async () => ({
   async validate(signal, transport, toolCall) {
     return await attemptUntrackedStat(transport, signal, toolCall.parsed.arguments.filePath);
   },

@@ -3,8 +3,8 @@ import { withMock } from "antipattern";
 import { BackgroundProcessManager, backgroundProcesses } from "../../background-process.ts";
 import { MockTransport } from "../../../transports/mock.ts";
 import { unwrap } from "../../result.ts";
-import backgroundProcessTool from "./index.ts";
-import manageBackgroundProcessTool from "../manage-background-process/index.ts";
+import * as backgroundProcess from "./index.ts";
+import * as manageBackgroundProcess from "../manage-background-process/index.ts";
 import { defaultCountTokens } from "../../execution.ts";
 
 async function createTools(controller: AbortController) {
@@ -21,8 +21,8 @@ async function createTools(controller: AbortController) {
     },
     data: {},
   };
-  const start = await backgroundProcessTool(context);
-  const manage = await manageBackgroundProcessTool(context);
+  const start = await backgroundProcess.toolkit(context);
+  const manage = await manageBackgroundProcess.toolkit(context);
   if (!start || !manage) throw new Error("Background process tools did not load");
   return {
     transport,

@@ -6,11 +6,11 @@ import type { ToolCallFromToolMap } from "../tool-def.ts";
 import type { ImageInfo } from "../../images.ts";
 import type { MultimodalConfig } from "../../modalities.ts";
 import { prompt } from "../../system-prompt.ts";
-import read from "./index.ts";
+import * as read from "./index.ts";
 
 const _agent = agent.definePermissionless({
   systemPrompt: prompt.declare(async () => "Test prompt"),
-  tools: { read },
+  tools: { read: read.toolkit },
   agents: {},
 });
 

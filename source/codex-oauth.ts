@@ -8,8 +8,7 @@ import { registry } from "antipattern";
 import { fileExists } from "./fs-utils.ts";
 import { spawnBrowser } from "./browser-spawn.ts";
 import { fetchDeps } from "./fetch.ts";
-import { err, errorToString, ok } from "./libocto/result.ts";
-import type { Result } from "./libocto/result.ts";
+import { err, errorToString, ok, type Result } from "./libocto/index.ts";
 
 export const CODEX_OAUTH_CLIENT_ID = "app_EMoamEEZ73f0CkXaXp7hrann";
 export const CODEX_OAUTH_ISSUER = "https://auth.openai.com";

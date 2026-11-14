@@ -1,7 +1,15 @@
-import { runAnthropicAgent } from "../libocto/compilers/anthropic.ts";
-import type { AnthropicBackend } from "../libocto/compilers/anthropic.ts";
-import { runResponsesAgent } from "../libocto/compilers/responses.ts";
-import { runAgent } from "../libocto/compilers/standard.ts";
+import {
+  compilerUsageHasTokens,
+  runAgent,
+  runAnthropicAgent,
+  runResponsesAgent,
+  type Agent,
+  type AnthropicBackend,
+  type Compiler,
+  type CompilerResult,
+  type CompilerUsage,
+  type OpenAIBackend,
+} from "../libocto/index.ts";
 import Anthropic from "@anthropic-ai/sdk";
 import { APP_METADATA, ModelConfig } from "../config.ts";
 import type {
@@ -10,14 +18,6 @@ import type {
   CodexModelConfig,
   OAuthLoadedAuth,
 } from "../config.ts";
-import type { Agent } from "../libocto/llm-ir.ts";
-import type {
-  Compiler,
-  CompilerResult,
-  CompilerUsage,
-} from "../libocto/compilers/compiler-interface.ts";
-import { compilerUsageHasTokens } from "../libocto/compilers/compiler-interface.ts";
-import type { OpenAIBackend } from "../libocto/compilers/openai-shared.ts";
 import { getCodexOpenaiClient, getDefaultOpenaiClient } from "./openai.ts";
 import { trackTokens } from "../token-tracker.ts";
 

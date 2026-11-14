@@ -7,7 +7,23 @@ import {
   readSearchConfig,
   runNotifyCommand,
 } from "./config.ts";
-import { ImageInfo } from "./libocto/images.ts";
+import {
+  DEFAULT_MAX_TOOL_OUTPUT_FRACTION,
+  ImageInfo,
+  Transport,
+  Trajectory,
+  err,
+  logger,
+  lowerMessages,
+  messageText,
+  ok,
+  toolkits,
+  type Compiler,
+  type ExecutionModel,
+  type TrajectoryMode,
+  type TrajectoryModelResult,
+  type UserMessage,
+} from "./libocto/index.ts";
 import {
   createSession,
   deleteHistoryNodes,
@@ -28,20 +44,8 @@ import type { ParsedCliArgs } from "./cli/cli-args.ts";
 import { create } from "zustand";
 import { useShallow } from "zustand/shallow";
 import { toLlmIR } from "./ir/convert-history-ir.ts";
-import { Transport } from "./libocto/transport.ts";
 import { run, type Backend } from "./compilers/run.ts";
-import type { Compiler } from "./libocto/compilers/compiler-interface.ts";
-import { lowerMessages } from "./libocto/ir-operations.ts";
 import { autofixEdit, makeAutofixJson } from "./compilers/autofix.ts";
-import { messageText, type UserMessage } from "./libocto/llm-ir.ts";
-import { err, ok } from "./libocto/result.ts";
-import type { ExecutionModel } from "./libocto/execution.ts";
-import {
-  Trajectory,
-  DEFAULT_MAX_TOOL_OUTPUT_FRACTION,
-  type TrajectoryMode,
-  type TrajectoryModelResult,
-} from "./libocto/trajectory.ts";
 import {
   octoPermissionGate,
   whitelistKey,
@@ -52,10 +56,8 @@ import {
 import { parseQuotaJson, QuotaData } from "./utils/quota.ts";
 import { throttledBuffer } from "./throttled-buffer.ts";
 import { SKIP_CONFIRMATION_TOOLS } from "./tools/index.ts";
-import { attemptUntrackedRead } from "./libocto/toolkits/common.ts";
 import { estimateTokens } from "./ir/count-ir-tokens.ts";
 import { octoAgent, type OctoIR } from "./ir/octo-ir.ts";
-import { logger } from "./libocto/logger.ts";
 import { drain } from "./logger.ts";
 
 export const MAX_RETRY_COUNT = 20;
@@ -361,7 +363,7 @@ export const useAppStore = create<UiState>((set, get) => {
         tools: {
           edit: async ({ toolCall, abortSignal: fixSignal, transport: fixTransport }) => {
             if (fixSignal.aborted) return null;
-            const file = await attemptUntrackedRead(
+            const file = await toolkits.attemptUntrackedRead(
               fixTransport,
               fixSignal,
               toolCall.parsed.filePath,

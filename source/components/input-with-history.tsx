@@ -3,7 +3,7 @@ import TextInput from "../components/text-input.tsx";
 import { MODAL_BACKGROUND_COLOR } from "../theme.ts";
 import { InputHistory } from "../input-history/index.ts";
 import { FileSuggestionBox } from "./file-suggestions/index.js";
-import { ImageInfo } from "../libocto/images.ts";
+import { ImageInfo } from "../libocto/index.ts";
 import type { PaintFile } from "paintcannon";
 import { useKeyboard } from "../hooks/use-keyboard.ts";
 import { TerminalFlex } from "./terminal-flex.tsx";
