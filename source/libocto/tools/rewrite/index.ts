@@ -1,9 +1,10 @@
 import { t } from "structural";
 import { fileTracker } from "../file-tracker.ts";
-import { attemptUntrackedRead, fileMutateIR, parseOriginalFile } from "../common.ts";
-import { TOOL_BUILDER } from "../../libocto/tools/tool-def.ts";
-import { Transport } from "../../libocto/transport.ts";
-import { ok } from "../../libocto/result.ts";
+import { attemptUntrackedRead, parseOriginalFile } from "../common.ts";
+import { fileMutateIR } from "../file-ir.ts";
+import { TOOL_BUILDER } from "../tool-def.ts";
+import { Transport } from "../../transport.ts";
+import { ok } from "../../result.ts";
 
 const ArgumentsSchema = t.subtype({
   filePath: t.str.comment("The path to the file"),

@@ -56,7 +56,7 @@ const convert = downconvert<TestAgent>(messages => {
     }
     return { original, converted: original };
   });
-});
+}, null);
 const requestError: RequestErrorIR = {
   role: "request-error",
   requestError: "failed",

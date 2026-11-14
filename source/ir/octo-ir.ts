@@ -1,5 +1,5 @@
 import toolMap from "../tools/tool-defs/index.ts";
-import read from "../tools/tool-defs/read.ts";
+import read from "../libocto/tools/read/index.ts";
 import partialRead from "../tools/tool-defs/partial-read.ts";
 import list from "../tools/tool-defs/list.ts";
 import grep from "../tools/tool-defs/grep.ts";

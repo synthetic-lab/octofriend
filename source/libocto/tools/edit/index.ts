@@ -1,14 +1,10 @@
 import { t } from "structural";
 import { fileTracker } from "../file-tracker.ts";
-import {
-  attemptUntrackedRead,
-  FILE_OUTDATED_ERROR_MESSAGE,
-  fileMutateIR,
-  parseOriginalFile,
-} from "../common.ts";
-import { TOOL_BUILDER } from "../../libocto/tools/tool-def.ts";
-import { Transport } from "../../libocto/transport.ts";
-import { ok, err } from "../../libocto/result.ts";
+import { attemptUntrackedRead, FILE_OUTDATED_ERROR_MESSAGE, parseOriginalFile } from "../common.ts";
+import { fileMutateIR } from "../file-ir.ts";
+import { TOOL_BUILDER } from "../tool-def.ts";
+import { Transport } from "../../transport.ts";
+import { ok, err } from "../../result.ts";
 
 // Construct the intersection manually, since OpenAI and Anthropic can't handle top-level allOf(...)
 const DiffParts = {

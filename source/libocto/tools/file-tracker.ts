@@ -1,6 +1,6 @@
 import * as path from "path";
-import { Transport } from "../libocto/transport.ts";
-import { err, ok, type Result } from "../libocto/result.ts";
+import { Transport } from "../transport.ts";
+import { err, ok, type Result } from "../result.ts";
 
 export class FileTracker {
   private readTimestamps = new Map<string, number>();

@@ -8,7 +8,6 @@ import type {
   TreeToolCall,
   LowerInputIR,
   AllToolsAcrossTree,
-  LowerOutputIR,
   CompilerReadyIR,
   IsPermissioned,
   LlmIR,
@@ -39,6 +38,7 @@ import type {
   ActiveHistory,
   HistoryInspection,
   SubagentTrajectoryInspection,
+  ClientLowerOutputIR,
 } from "./ir-operations.ts";
 export type { SubagentTrajectoryInspection } from "./ir-operations.ts";
 import type { MultimodalConfig } from "./modalities.ts";
@@ -377,13 +377,14 @@ export type TrajectoryParams<A extends Agent<any, any, any, any>, Model> = Omit<
   >;
   // The client's extension pass handles non-trajectory IR from every agent in the tree.
   // Libocto sends contiguous runs to this callback and handles trajectories and recursion
-  // itself. Neither callback inputs nor outputs can contain subagent trajectories.
+  // itself and lowers file-tool extras passed through by the client. Neither callback inputs
+  // nor outputs can contain subagent trajectories.
   // Model-independent execution-state inspections pass null; modalities control rendering,
   // not which calls an IR answers or whether a trajectory is terminal.
   lowerMessages: (
     messages: Array<LowerInputIR<A>>,
     modalities: MultimodalConfig | null,
-  ) => Array<LowerOutputIR<A>>;
+  ) => Array<ClientLowerOutputIR<A>>;
   // Caps any single tool output, counted after lowering; defaults to 20% of the context window
   // so one huge result can't push history past autocompaction's reach.
   maxToolOutput?: number;
@@ -555,7 +556,7 @@ export class Trajectory<A extends Agent<any, any, any, any>, Model> {
   constructor(private readonly params: TrajectoryParams<A, Model>) {
     this.history = [...params.messages];
     this.lower = (messages, modalities) =>
-      lower<A>(downconvert<A>(irs => params.lowerMessages(irs, modalities))(messages));
+      lower<A>(downconvert<A>(params.lowerMessages, modalities)(messages));
     this._mode = this.prepareMode();
     // The permission param is conditional on the IsPermissioned brand, which TS can't reduce
     // for a generic A; check for its presence at runtime instead.
@@ -627,7 +628,7 @@ export class Trajectory<A extends Agent<any, any, any, any>, Model> {
     trajectory: TreeIR<A> & { role: "subagent-trajectory"; ir: Array<TreeIR<A>> },
   ): SubagentTrajectoryInspection {
     return inspectSubagentTrajectory<A>(
-      downconvert<A>(irs => this.params.lowerMessages(irs, null))(trajectory.ir),
+      downconvert<A>(this.params.lowerMessages, null)(trajectory.ir),
     );
   }
 
@@ -763,7 +764,7 @@ export class Trajectory<A extends Agent<any, any, any, any>, Model> {
     const inspected = inspectHistory(
       this.params.agent,
       this.history,
-      downconvert<A>(irs => this.params.lowerMessages(irs, null))(this.history),
+      downconvert<A>(this.params.lowerMessages, null)(this.history),
     );
     if (!inspected.success) throw new Error(inspected.error);
     return inspected.data;
@@ -836,9 +837,7 @@ export class Trajectory<A extends Agent<any, any, any, any>, Model> {
         }
       }
       // Response-phase aborts mark themselves in the assistant request; don't double-mark.
-      const tail = lastOutcome(
-        downconvert<A>(irs => this.params.lowerMessages(irs, null))(location.history),
-      );
+      const tail = lastOutcome(downconvert<A>(this.params.lowerMessages, null)(location.history));
       if (
         tail?.role !== "interrupted-by-user" &&
         (!location.root || this.inspect().action !== "wait-for-input")
@@ -1196,7 +1195,7 @@ export class Trajectory<A extends Agent<any, any, any, any>, Model> {
   }
 
   private async waitRetry(location: ActiveHistory<A>): Promise<void> {
-    const history = downconvert<A>(irs => this.params.lowerMessages(irs, null))(location.history);
+    const history = downconvert<A>(this.params.lowerMessages, null)(location.history);
     const snapshot = latestRequestSnapshot(history);
     if (snapshot == null || validationFailure(snapshot.irs)) return;
     const error = snapshot.irs.at(-1)?.converted;

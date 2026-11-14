@@ -1,8 +1,8 @@
 import { describe, expect, it } from "bun:test";
-import rewriteToolFactory from "./rewrite.ts";
+import rewriteToolFactory from "./index.ts";
 import { fileTracker } from "../file-tracker.ts";
-import { err, ok, unwrap } from "../../libocto/result.ts";
-import { MockTransport } from "../../transports/mock.ts";
+import { err, ok, unwrap } from "../../result.ts";
+import { MockTransport } from "../../../transports/mock.ts";
 
 const config = {};
 const model = { contextWindow: 100_000 };

@@ -1,7 +1,6 @@
 import { prompt } from "./system-prompt.ts";
 import { t } from "structural";
-import { optimizeFiles } from "../compilers/optimize-files.ts";
-import { fileReadIR } from "../tools/common.ts";
+import { fileReadIR } from "./tools/file-ir.ts";
 import type {
   Agent,
   AgentExtra,
@@ -20,8 +19,8 @@ import type {
   PreLoweredIR,
 } from "./llm-ir.ts";
 import { definePermissionedAgent, definePermissionlessAgent, messageText } from "./llm-ir.ts";
-import { downconvert, lower, meaningfulTailIR } from "./ir-operations.ts";
-import type { ActiveHistory } from "./ir-operations.ts";
+import { downconvert, lower, lowerMessages, meaningfulTailIR } from "./ir-operations.ts";
+import type { ActiveHistory, ClientLowerOutputIR } from "./ir-operations.ts";
 import type { LoadedTools, ToolCall } from "./tools/tool-def.ts";
 import { ToolBuilder } from "./tools/tool-def.ts";
 import { ok } from "./result.ts";
@@ -120,13 +119,40 @@ const fileRoot = definePermissionedAgent({
   agents: { child: fileChild },
 });
 
-// Accept disjoint parent/child inputs without requiring the optimizer's declared output
-// universe to narrow to this particular tree (which declares reads but not mutations).
-function optimizeTreeFiles(messages: Array<LowerInputIR<typeof fileRoot>>) {
-  optimizeFiles(messages, null);
-}
+// The standard pass handles file extras automatically, including descendant-only reads.
+const convertTreeFiles = downconvert<typeof fileRoot>(lowerMessages, null);
+void convertTreeFiles;
 
-void optimizeTreeFiles;
+type FileRoles = "file-read" | "file-mutate";
+type _noGlobalFileIR = Expect<Equal<Extract<AgentIR<Single>, { role: FileRoles }>, never>>;
+type _fileExtraOnlyOnDeclaringAgent = Expect<
+  Equal<AgentExtra<typeof fileChild>["role"], "file-read">
+>;
+type _noParentFileExtra = Expect<Equal<AgentExtra<typeof fileRoot>, never>>;
+type _filePassthrough = Expect<
+  Equal<
+    Extract<ClientLowerOutputIR<typeof fileRoot>["converted"], { role: FileRoles }>["role"],
+    "file-read"
+  >
+>;
+type _noUndeclaredFilePassthrough = Expect<
+  Equal<Extract<ClientLowerOutputIR<Single>["converted"], { role: FileRoles }>, never>
+>;
+type _filesFullyLowered = Expect<
+  Equal<
+    Extract<ReturnType<typeof convertTreeFiles>[number]["converted"], { role: FileRoles }>,
+    never
+  >
+>;
+type _customExtrasStillRequireConversion = Expect<
+  Equal<
+    typeof lowerMessages extends TrajectoryParams<Root, null>["lowerMessages"] ? true : false,
+    false
+  >
+>;
+type _modalitiesArgumentRequired = Expect<
+  Equal<Parameters<typeof downconvert<typeof fileRoot>>["length"], 2>
+>;
 
 // Subagent names span the whole tree, not one level's directory.
 type _names = Expect<Equal<AllSubagentNames<Root>, "research" | "grandchild">>;
@@ -360,7 +386,7 @@ function inspectTreeInput(
   expectType<TreeIR<ConversionRoot>>(childIR);
   expectType<Array<LowerOutputIR<ConversionRoot>>>(treePass([childOutput], null));
   expectType<Array<RecursiveLowered<ConversionRoot>>>(
-    downconvert<ConversionRoot>(irs => treePass(irs, null))([childIR]),
+    downconvert<ConversionRoot>(treePass, null)([childIR]),
   );
   expectType<LowerOutputIR<ConversionRoot>>({ original: childOutput, converted: childOutput });
   expectType<RecursiveLowered<ConversionRoot>>({ original: childOutput, converted: childOutput });

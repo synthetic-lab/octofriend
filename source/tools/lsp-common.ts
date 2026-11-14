@@ -1,5 +1,5 @@
 import { t } from "structural";
-import { fileTracker } from "./file-tracker.ts";
+import { fileTracker } from "../libocto/tools/file-tracker.ts";
 import { LspClient } from "../lsp/client.ts";
 import type { LspToolData } from "./tool-data.ts";
 import type { Transport } from "../libocto/transport.ts";
