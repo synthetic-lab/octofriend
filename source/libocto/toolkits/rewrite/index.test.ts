@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import rewriteToolFactory from "./index.ts";
+import * as rewrite from "./index.ts";
 import { fileTracker } from "../file-tracker.ts";
 import { err, ok, unwrap } from "../../result.ts";
 import { MockTransport } from "../../../transports/mock.ts";
@@ -15,7 +15,7 @@ const model = {
 };
 
 async function createRewriteTool(transport: MockTransport) {
-  const tool = await rewriteToolFactory({
+  const tool = await rewrite.toolkit({
     signal: new AbortController().signal,
     transport,
     model,

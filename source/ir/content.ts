@@ -1,4 +1,4 @@
-import type { Content } from "../libocto/llm-ir.ts";
+import type { Content } from "../libocto/index.ts";
 
 export function contentToText(content: Content["content"]): string {
   return content

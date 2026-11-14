@@ -3,7 +3,7 @@ import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { toJSONSchema } from "structural";
-import readToolFactory from "./index.ts";
+import * as read from "./index.ts";
 import { err, unwrap } from "../../result.ts";
 import { MockTransport } from "../../../transports/mock.ts";
 import type { Transport } from "../../transport.ts";
@@ -22,7 +22,7 @@ function createTransport(files: Record<string, string>): Transport {
 }
 
 async function createReadTool(transport: Transport) {
-  const tool = await readToolFactory({
+  const tool = await read.toolkit({
     signal: new AbortController().signal,
     transport,
     model,

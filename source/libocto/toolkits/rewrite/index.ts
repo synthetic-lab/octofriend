@@ -30,7 +30,7 @@ can't leave anything out by saying e.g. "[The rest of the file stays the same]"
   ParsedSchema,
 });
 
-export default rewrite.withCustomIR({ fileMutateIR }).define(async () => ({
+export const toolkit = rewrite.withCustomIR({ fileMutateIR }).define(async () => ({
   async validate(signal, transport, toolCall) {
     return validate(signal, transport, toolCall.parsed.arguments);
   },

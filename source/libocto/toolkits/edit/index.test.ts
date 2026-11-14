@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import editToolFactory from "./index.ts";
+import * as edit from "./index.ts";
 import { FILE_OUTDATED_ERROR_MESSAGE } from "../common.ts";
 import { fileTracker } from "../file-tracker.ts";
 import { err, ok, unwrap } from "../../result.ts";
@@ -20,7 +20,7 @@ function createTransport(files: Record<string, string>): Transport {
 }
 
 async function createEditTool(transport: Transport) {
-  const tool = await editToolFactory({
+  const tool = await edit.toolkit({
     signal: new AbortController().signal,
     transport,
     model,

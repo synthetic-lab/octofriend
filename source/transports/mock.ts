@@ -2,22 +2,22 @@ import { EventEmitter } from "events";
 import { PassThrough } from "stream";
 import type { ChildProcess, ExecFileException } from "child_process";
 import {
-  type Transport,
-  type TransportError,
-  runBackgroundShell,
+  TransportProcess,
   createPollingFileWatcher,
-  type FsWatcher,
+  err,
+  ok,
+  runBackgroundShell,
   type BackgroundShellOptions,
-} from "../libocto/transport.ts";
-import { err, ok, type Result } from "../libocto/result.ts";
-import {
+  type FsWatcher,
   type ProcessExecFileCallback,
   type ProcessExecFileOptions,
-  TransportProcess,
-  type TransportProcessEvents,
   type ProcessSpawnOptions,
+  type Result,
+  type Transport,
+  type TransportError,
+  type TransportProcessEvents,
   type TransportProcessOptions,
-} from "../libocto/transport.ts";
+} from "../libocto/index.ts";
 
 export type MockProcessCall = {
   command: string;

@@ -9,7 +9,7 @@ const converter = compile({
   wordwrap: 130,
 });
 
-export default TOOL_BUILDER.withData<{}>()
+export const toolkit = TOOL_BUILDER.withData<{}>()
   .declare({
     name: "fetch",
     description: "Fetches web resources via HTTP/HTTPS. Prefer this to bash-isms like curl/wget",

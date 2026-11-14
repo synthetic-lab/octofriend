@@ -1,12 +1,12 @@
 import React, { useState, useEffect, useCallback } from "react";
 import { InputWithHistory } from "./input-with-history.tsx";
 import { InputHistory } from "../input-history/index.ts";
-import type { ImageInfo } from "../libocto/images.ts";
+import type { ImageInfo } from "../libocto/index.ts";
 import { loadImageFromPaintFile } from "../utils/paint-image-utils.ts";
 import type { PaintFile } from "paintcannon";
 import { useCtrlC } from "./exit-on-double-ctrl-c.tsx";
 import { DEFAULT_MULTIMODAL_IMAGE_MODEL_EXAMPLE } from "../providers.ts";
-import { canDisplayImage, type MultimodalConfig } from "../libocto/modalities.ts";
+import { canDisplayImage, type MultimodalConfig } from "../libocto/index.ts";
 import { Span } from "paintcannon-react";
 import { TerminalFlex } from "./terminal-flex.tsx";
 import { DEFAULT_INPUT_MODE, type InputMode, type VimMode } from "./input-mode.ts";

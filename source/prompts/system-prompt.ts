@@ -1,14 +1,11 @@
 import path from "path";
 import { Config } from "../config.ts";
-import type { LspToolData } from "../libocto/lsp/detect.ts";
-import { getMcpClient } from "../libocto/toolkits/mcp/index.ts";
 import { tagged } from "../xml.ts";
-import { Transport, getEnvVar } from "../libocto/transport.ts";
-import { prompt } from "../libocto/system-prompt.ts";
+import { Transport, getEnvVar, prompt, toolkits } from "../libocto/index.ts";
 
 const LLM_INSTR_FILES = ["OCTO.md", "CLAUDE.md", "AGENTS.md"] as const;
 
-type SystemPromptData = Omit<Config, "lsp"> & LspToolData;
+type SystemPromptData = Omit<Config, "lsp"> & toolkits.LspToolData;
 
 export const systemPrompt = prompt
   .withData<SystemPromptData>()
@@ -173,7 +170,7 @@ async function mcpPrompt(config: SystemPromptData) {
   const mcpSections = [];
 
   for (const [serverName, _] of Object.entries(config.mcpServers)) {
-    const client = await getMcpClient(serverName, config.mcpServers);
+    const client = await toolkits.mcp.getMcpClient(serverName, config.mcpServers);
     if (!client.success) continue;
     const listed = await client.data.listTools();
 

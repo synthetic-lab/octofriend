@@ -5,7 +5,7 @@ import { TOOL_BUILDER } from "../tool-def.ts";
 import { AbortError, CommandFailedError } from "../../transport.ts";
 import { ok, err } from "../../result.ts";
 
-export default TOOL_BUILDER.withData<{}>()
+export const toolkit = TOOL_BUILDER.withData<{}>()
   .declare({
     name: "grep",
     description:

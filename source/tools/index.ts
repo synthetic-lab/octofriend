@@ -1,5 +1,5 @@
 import type { octoAgent } from "../ir/octo-ir.ts";
-import type { ToolRegistry, TreeToolCall } from "../libocto/llm-ir.ts";
+import type { ToolRegistry, TreeToolCall } from "../libocto/index.ts";
 
 export type OctoToolRegistry = ToolRegistry<typeof octoAgent>;
 export type OctoToolCall = TreeToolCall<typeof octoAgent>;

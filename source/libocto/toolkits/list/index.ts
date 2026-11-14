@@ -19,7 +19,7 @@ async function validate(
   return ok(null);
 }
 
-export default TOOL_BUILDER.withData<{}>()
+export const toolkit = TOOL_BUILDER.withData<{}>()
   .declare({
     name: "list",
     description:

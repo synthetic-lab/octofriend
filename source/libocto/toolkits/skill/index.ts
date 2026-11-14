@@ -4,11 +4,13 @@ import { TOOL_BUILDER } from "../tool-def.ts";
 import { discoverSkills } from "./skills.ts";
 import { ok } from "../../result.ts";
 
+export { discoverSkills } from "./skills.ts";
+
 export type SkillToolData = {
   skillPaths?: readonly string[];
 };
 
-export default TOOL_BUILDER.withData<SkillToolData>().dynamicDefineTool(async function ({
+export const toolkit = TOOL_BUILDER.withData<SkillToolData>().dynamicDefineTool(async function ({
   signal,
   transport,
   data,

@@ -22,7 +22,7 @@ const SearchResultsSchema = t.subtype({
   ),
 });
 
-export default TOOL_BUILDER.withData<WebSearchData>()
+export const toolkit = TOOL_BUILDER.withData<WebSearchData>()
   .declare({
     name: "web-search",
     description: `

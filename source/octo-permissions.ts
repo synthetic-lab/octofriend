@@ -1,6 +1,5 @@
 import { octoAgent } from "./ir/octo-ir.ts";
-import type { UserMessage } from "./libocto/llm-ir.ts";
-import type { PermissionDecision, PermissionGate } from "./libocto/permissions.ts";
+import type { PermissionDecision, PermissionGate, UserMessage } from "./libocto/index.ts";
 import type { OctoToolCall } from "./tools/index.ts";
 
 export type ToolCallRequest = OctoToolCall;

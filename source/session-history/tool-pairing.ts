@@ -1,4 +1,4 @@
-import { answeredToolCallId } from "../libocto/llm-ir.ts";
+import { answeredToolCallId } from "../libocto/index.ts";
 import type { OctoIR } from "../ir/octo-ir.ts";
 import type { HistoryNode } from "./index.ts";
 

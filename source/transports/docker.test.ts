@@ -1,17 +1,19 @@
-import { ok, unwrap } from "../libocto/result.ts";
+import {
+  BackgroundProcessManager,
+  defaultCountTokens,
+  logger,
+  ok,
+  toolkits,
+  unwrap,
+  type ProcessExecFileCallback,
+} from "../libocto/index.ts";
 import { afterEach, describe, expect, it, jest } from "bun:test";
 import { withMock } from "antipattern";
 import * as childProcess from "child_process";
 import { EventEmitter } from "events";
 import { PassThrough } from "stream";
 import { DockerTransport, manageContainer } from "./docker.ts";
-import { logger } from "../libocto/logger.ts";
-import { BackgroundProcessManager } from "../libocto/background-process.ts";
 import { ProcessManager, processes } from "../process-manager.ts";
-import backgroundProcessTool from "../libocto/toolkits/background-process/index.ts";
-import manageBackgroundProcessTool from "../libocto/toolkits/manage-background-process/index.ts";
-import type { ProcessExecFileCallback } from "../libocto/transport.ts";
-import { defaultCountTokens } from "../libocto/execution.ts";
 
 class FakeChild extends EventEmitter {
   stdin = new PassThrough();
@@ -172,8 +174,8 @@ describe("DockerTransport", () => {
       },
       data: {},
     };
-    expect(await backgroundProcessTool(context)).not.toBeNull();
-    expect(await manageBackgroundProcessTool(context)).not.toBeNull();
+    expect(await toolkits.backgroundProcess.toolkit(context)).not.toBeNull();
+    expect(await toolkits.manageBackgroundProcess.toolkit(context)).not.toBeNull();
     const background = unwrap(
       transport.backgroundShell({
         command: "printf hello",

@@ -2,7 +2,7 @@ import { describe, expect, it } from "bun:test";
 import { err, ok } from "../../result.ts";
 import { MockTransport } from "../../../transports/mock.ts";
 import { fileTracker } from "../file-tracker.ts";
-import createToolFactory from "./index.ts";
+import * as create from "./index.ts";
 import { defaultCountTokens } from "../../execution.ts";
 
 const config = {};
@@ -15,7 +15,7 @@ const model = {
 };
 
 async function createTool(transport: MockTransport) {
-  const tool = await createToolFactory({
+  const tool = await create.toolkit({
     signal: new AbortController().signal,
     transport,
     model,

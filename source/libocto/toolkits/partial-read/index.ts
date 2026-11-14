@@ -41,7 +41,7 @@ permission. You MUST perform a full read of a file before editing it.
   ArgumentsSchema,
 });
 
-export default partialRead.define(async () => ({
+export const toolkit = partialRead.define(async () => ({
   async validate(signal, transport, toolCall) {
     const args = toolCall.parsed.arguments;
     if (!Number.isInteger(args.offset) || args.offset < 1) {

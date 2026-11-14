@@ -4,21 +4,22 @@ import path from "path";
 import { spawn, execFile, type ChildProcess } from "child_process";
 import {
   Transport,
-  runShell,
-  runBackgroundShell,
-  createPollingFileWatcher,
-  type FsWatcher,
-  type BackgroundShellOptions,
-} from "../libocto/transport.ts";
-import { processes } from "../process-manager.ts";
-import { err, errorToString, ok, type Result } from "../libocto/result.ts";
-import {
   TransportProcess,
-  type TransportProcessOptions,
-  type ProcessSpawnOptions,
-  type ProcessExecFileOptions,
+  createPollingFileWatcher,
+  err,
+  errorToString,
+  ok,
+  runBackgroundShell,
+  runShell,
+  type BackgroundShellOptions,
+  type FsWatcher,
   type ProcessExecFileCallback,
-} from "../libocto/transport.ts";
+  type ProcessExecFileOptions,
+  type ProcessSpawnOptions,
+  type Result,
+  type TransportProcessOptions,
+} from "../libocto/index.ts";
+import { processes } from "../process-manager.ts";
 
 const KILL_GRACE_MS = 500;
 

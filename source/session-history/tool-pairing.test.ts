@@ -5,7 +5,7 @@ import {
   repairOrphanedToolOutputs,
 } from "./tool-pairing.ts";
 import type { HistoryNode } from "./index.ts";
-import { compilerUsage } from "../libocto/compilers/compiler-interface.ts";
+import { compilerUsage } from "../libocto/index.ts";
 import type { OctoIR } from "../ir/octo-ir.ts";
 import type { OctoToolCall } from "../tools/index.ts";
 

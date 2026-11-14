@@ -4,7 +4,7 @@ import { TOOL_BUILDER } from "../tool-def.ts";
 import { AbortError, findFiles } from "../../transport.ts";
 import { ok, err } from "../../result.ts";
 
-export default TOOL_BUILDER.withData<{}>()
+export const toolkit = TOOL_BUILDER.withData<{}>()
   .declare({
     name: "glob",
     description: `

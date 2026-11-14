@@ -2,8 +2,7 @@ import { useState, useEffect, useRef } from "react";
 import ignore from "ignore";
 import { usePriorityInput, FILE_SUGGESTIONS_PRIORITY } from "../../hooks/use-priority-input.tsx";
 import { useTransport } from "../../transport-context.ts";
-import { AbortError, findFiles } from "../../libocto/transport.ts";
-import { logger } from "../../libocto/logger.ts";
+import { AbortError, findFiles, logger } from "../../libocto/index.ts";
 
 const MAX_SUGGESTIONS = 8;
 const CACHE_TTL = 5000;
