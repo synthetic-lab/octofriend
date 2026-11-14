@@ -96,7 +96,12 @@ async function runAssistantRequest(opts: {
 }) {
   const data = opts.data ?? { marker: "fresh" };
   const abortController = opts.abortController ?? new AbortController();
-  const search = await searchTool({ signal: abortController.signal, transport, data });
+  const search = await searchTool({
+    signal: abortController.signal,
+    transport,
+    model: { contextWindow: 100_000 },
+    data,
+  });
   if (search == null) throw new Error("search tool failed to load");
   const runCompiler: Compiler<null> = async <
     A extends Agent<any, any, any, any>,

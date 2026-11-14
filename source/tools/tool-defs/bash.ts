@@ -1,11 +1,13 @@
 import { t } from "structural";
-import { TOOL, USER_ABORTED_ERROR_MESSAGE } from "../common.ts";
+import { USER_ABORTED_ERROR_MESSAGE } from "../common.ts";
+import { TOOL_BUILDER } from "../../libocto/tool-def.ts";
 import { AbortError } from "../../libocto/transport.ts";
 import { ok, err } from "../../libocto/result.ts";
 
-export default TOOL.declare({
-  name: "shell",
-  description: `
+export default TOOL_BUILDER.withData<{}>()
+  .declare({
+    name: "shell",
+    description: `
 Runs a shell command in the cwd. This tool uses /bin/sh. Do NOT use bash-isms; they won't work.
 Only use POSIX-compliant shell.
 
@@ -18,23 +20,24 @@ can ask the user to run the command, explaining that it's interactive.
 
 Often interactive commands provide flags to run them non-interactively. Prefer those flags.
 `.trim(),
-  ArgumentsSchema: t.subtype({
-    timeout: t.num.comment(
-      "A timeout for the command, in milliseconds. Be generous. You MUST specify this.",
-    ),
-    cmd: t.str.comment("The command to run"),
-  }),
-}).define(async () => ({
-  async run({ signal, transport, toolCall }) {
-    const { cmd, timeout } = toolCall.parsed.arguments;
-    const result = await transport.shell(signal, cmd, timeout);
-    if (!result.success) {
-      if (result.error instanceof AbortError) return err(USER_ABORTED_ERROR_MESSAGE);
-      return err(result.error.message);
-    }
-    return ok({
-      type: "output",
-      content: [{ type: "text", content: result.data }],
-    });
-  },
-}));
+    ArgumentsSchema: t.subtype({
+      timeout: t.num.comment(
+        "A timeout for the command, in milliseconds. Be generous. You MUST specify this.",
+      ),
+      cmd: t.str.comment("The command to run"),
+    }),
+  })
+  .define(async () => ({
+    async run({ signal, transport, toolCall }) {
+      const { cmd, timeout } = toolCall.parsed.arguments;
+      const result = await transport.shell(signal, cmd, timeout);
+      if (!result.success) {
+        if (result.error instanceof AbortError) return err(USER_ABORTED_ERROR_MESSAGE);
+        return err(result.error.message);
+      }
+      return ok({
+        type: "output",
+        content: [{ type: "text", content: result.data }],
+      });
+    },
+  }));

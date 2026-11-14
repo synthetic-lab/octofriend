@@ -47,7 +47,7 @@ function fixture(provider: Provider, transport: MockTransport) {
     messages,
     model: async () => ok({ model: null, contextWindow: 100_000, modalities: null }),
     loadTools: async () => ok({}),
-    getData: async () => ({ yourName: "Test", models: [] }),
+    getData: async () => ({ yourName: "Test", models: [], lsp: { config: {} } }),
     toolContentTooLargeError: async () => "Unexpected oversized output",
     runCompiler,
     lowerMessages: irs => irs.map(original => ({ original, converted: original })),

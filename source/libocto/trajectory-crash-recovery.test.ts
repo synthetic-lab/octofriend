@@ -148,7 +148,12 @@ async function fixture(
   const compilerCalls: Array<{ scope: Scope; irs: Array<LoweredIR<TestAgent["tools"]>> }> = [];
   const controller = new AbortController();
   const data: ToolData = { executed };
-  const loadParams = { signal: controller.signal, transport, data };
+  const loadParams = {
+    signal: controller.signal,
+    transport,
+    model: { contextWindow: 100_000 },
+    data,
+  };
   const search = await searchTool(loadParams);
   const delegate = await delegateTool(loadParams);
   if (search == null || delegate == null) throw new Error("Test tools failed to load");

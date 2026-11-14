@@ -1,5 +1,5 @@
 import toolMap from "./tool-defs/index.ts";
-import { Config } from "../config.ts";
+import type { ExecutionArgs, ExecutionModel } from "../libocto/execution.ts";
 import { AbortError, Transport } from "../libocto/transport.ts";
 import { err, ok, errorToString, type Result } from "../libocto/result.ts";
 import type { TrajectoryToolLoadError } from "../libocto/trajectory.ts";
@@ -11,17 +11,28 @@ import {
 export type LoadedTools = GenericLoadedTools<typeof toolMap>;
 export type ToolCall = GenericToolCall<typeof toolMap>;
 
+type UnionToIntersection<Union> = (Union extends unknown ? (value: Union) => void : never) extends (
+  value: infer Intersection,
+) => void
+  ? Intersection
+  : never;
+type ToolFactoryData<Factory> = Factory extends (args: ExecutionArgs<infer Data>) => unknown
+  ? Data
+  : never;
+export type ToolData = UnionToIntersection<ToolFactoryData<(typeof toolMap)[keyof typeof toolMap]>>;
+
 export async function loadTools(
   transport: Transport,
   signal: AbortSignal,
-  config: Config,
+  model: ExecutionModel,
+  data: ToolData,
 ): Promise<Result<Partial<LoadedTools>, TrajectoryToolLoadError>> {
   if (signal.aborted) return err({ type: "quit" });
   // TODO: Make tool factories return Results so loading can propagate failures without allSettled.
   const results = await Promise.allSettled(
     (Object.keys(toolMap) as Array<keyof typeof toolMap>).map(async key => ({
       key,
-      toolDef: await toolMap[key]({ signal, transport, data: config }),
+      toolDef: await toolMap[key]({ signal, transport, model, data }),
     })),
   );
   for (const result of results) {

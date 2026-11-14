@@ -56,6 +56,7 @@ import { estimateTokens } from "./ir/count-ir-tokens.ts";
 import { octoAgent, type OctoIR } from "./ir/octo-ir.ts";
 import { logger } from "./libocto/logger.ts";
 import { drain } from "./logger.ts";
+import { getOctoExecutionData } from "./octo-execution-data.ts";
 
 export const MAX_RETRY_COUNT = 20;
 
@@ -318,7 +319,9 @@ export const useAppStore = create<UiState>((set, get) => {
           modalities: model.modalities ?? null,
         });
       },
-      loadTools: signal => loadTools(transport, signal, currentConfig()),
+      loadTools: async (signal, model) => {
+        return loadTools(transport, signal, model, await getOctoExecutionData(currentConfig()));
+      },
       countTokens: irs => irs.reduce((tokens, ir) => tokens + estimateTokens(messageText(ir)), 0),
       toolContentTooLargeError: async ir => {
         let text = "";
@@ -345,12 +348,12 @@ export const useAppStore = create<UiState>((set, get) => {
           `inspect them; here they are:\n${preview}`
         );
       },
-      getData: async () => currentConfig(),
+      getData: async () => getOctoExecutionData(currentConfig()),
       runCompiler,
       lowerMessages: lowerOctoToLlmIR,
       transport,
       errorCorrection: {
-        json: makeAutofixJson(config),
+        json: (...args) => makeAutofixJson(currentConfig())(...args),
         tools: {
           edit: async ({ toolCall, abortSignal: fixSignal, transport: fixTransport }) => {
             if (fixSignal.aborted) return null;
@@ -360,7 +363,7 @@ export const useAppStore = create<UiState>((set, get) => {
               toolCall.parsed.filePath,
             );
             if (!file.success || fixSignal.aborted) return null;
-            const fix = await autofixEdit(config, file.data, toolCall.parsed, fixSignal);
+            const fix = await autofixEdit(currentConfig(), file.data, toolCall.parsed, fixSignal);
             if (fix == null) return null;
             return { ...toolCall.parsed, ...fix };
           },

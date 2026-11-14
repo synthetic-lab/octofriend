@@ -1,5 +1,6 @@
 import path from "path";
 import { Config } from "../config.ts";
+import type { LspToolData } from "../tools/tool-data.ts";
 import { getMcpClient } from "../tools/tool-defs/mcp.ts";
 import { tagged } from "../xml.ts";
 import { Transport, getEnvVar } from "../libocto/transport.ts";
@@ -7,8 +8,10 @@ import { prompt } from "../libocto/system-prompt.ts";
 
 const LLM_INSTR_FILES = ["OCTO.md", "CLAUDE.md", "AGENTS.md"] as const;
 
+type SystemPromptData = Omit<Config, "lsp"> & LspToolData;
+
 export const systemPrompt = prompt
-  .withData<Config>()
+  .withData<SystemPromptData>()
   .declare(async ({ transport, signal, data: config }) => {
     // Shell/transport failures here propagate: the trajectory turns AbortError into an
     // interruption and aborts the request on anything else, rather than sending a request
@@ -124,7 +127,11 @@ ${await llmInstrsPrompt(transport, signal, config)}
 `.trim();
   });
 
-async function llmInstrsPrompt(transport: Transport, signal: AbortSignal, config: Config) {
+async function llmInstrsPrompt(
+  transport: Transport,
+  signal: AbortSignal,
+  config: SystemPromptData,
+) {
   const instrs = await getLlmInstrs(transport, signal);
   if (instrs.length === 0) return "";
 
@@ -160,13 +167,13 @@ these files.
 `.trim();
 }
 
-async function mcpPrompt(config: Config) {
+async function mcpPrompt(config: SystemPromptData) {
   if (config.mcpServers == null || Object.keys(config.mcpServers).length === 0) return "";
 
   const mcpSections = [];
 
   for (const [serverName, _] of Object.entries(config.mcpServers)) {
-    const client = await getMcpClient(serverName, config);
+    const client = await getMcpClient(serverName, config.mcpServers);
     if (!client.success) continue;
     const listed = await client.data.listTools();
 

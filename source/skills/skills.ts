@@ -2,7 +2,6 @@ import path from "path";
 import { parse as parseYaml } from "yaml";
 import { Transport, getEnvVar } from "../libocto/transport.ts";
 import { logger } from "../libocto/logger.ts";
-import { Config } from "../config.ts";
 
 const SKILL_FILE_NAME = "SKILL.md";
 const MAX_NAME_LENGTH = 64;
@@ -135,15 +134,12 @@ async function* walkDirectory(
 export async function discoverSkills(
   transport: Transport,
   signal: AbortSignal,
-  config: Config,
+  additionalPaths: readonly string[] = [],
 ): Promise<Skill[]> {
   const skillsPaths = [];
   const defaultPaths = await getDefaultSkillsPaths(transport, signal);
   skillsPaths.push(...defaultPaths);
-
-  if (config.skills?.paths && config.skills.paths.length > 0) {
-    skillsPaths.push(...config.skills.paths);
-  }
+  skillsPaths.push(...additionalPaths);
 
   const skills: Skill[] = [];
   const seen = new Set<string>();

@@ -2,11 +2,11 @@ import { t } from "structural";
 import { fileTracker } from "../file-tracker.ts";
 import {
   attemptUntrackedRead,
-  TOOL,
   FILE_OUTDATED_ERROR_MESSAGE,
   fileMutateIR,
   parseOriginalFile,
 } from "../common.ts";
+import { TOOL_BUILDER } from "../../libocto/tool-def.ts";
 import { Transport } from "../../libocto/transport.ts";
 import { ok, err } from "../../libocto/result.ts";
 
@@ -31,7 +31,7 @@ export const ParsedSchema = ArgumentsSchema.and(
   }),
 );
 
-const edit = TOOL.declare({
+const edit = TOOL_BUILDER.withData<{}>().declare({
   name: "edit",
   description: `
 Applies a search/replace edit to a file. This should be your default tool to edit existing files.

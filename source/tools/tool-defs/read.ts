@@ -1,6 +1,7 @@
 import { t } from "structural";
 import { fileTracker } from "../file-tracker.ts";
-import { attemptUntrackedStat, TOOL, fileReadIR } from "../common.ts";
+import { attemptUntrackedStat, fileReadIR } from "../common.ts";
+import { TOOL_BUILDER } from "../../libocto/tool-def.ts";
 import { isImagePath, loadImageFromPath } from "../../libocto/images.ts";
 import { attempt } from "../../libocto/result.ts";
 import { LINE_NUMBER_PROMPT, withLineNumbers } from "./line-numbers.ts";
@@ -9,7 +10,7 @@ const ArgumentsSchema = t.subtype({
   filePath: t.str.comment("Path to file to read"),
 });
 
-const read = TOOL.declare({
+const read = TOOL_BUILDER.withData<{}>().declare({
   name: "read",
   description: `
 Reads a UTF-8 file, or loads a supported image file (PNG, JPEG, etc.) for visual

@@ -30,7 +30,12 @@ describe("standard mixed stream chunks", () => {
           ArgumentsSchema: t.subtype({ pattern: t.str }),
         })
         .define(async () => ({ run: async () => ok({ type: "output", content: [] }) }));
-      const loaded = await search({ signal: controller.signal, transport, data: undefined });
+      const loaded = await search({
+        signal: controller.signal,
+        transport,
+        model: { contextWindow: 100_000 },
+        data: undefined,
+      });
       if (loaded == null) throw new Error("Search tool failed to load");
       const chunk = {
         id: "mixed-response",

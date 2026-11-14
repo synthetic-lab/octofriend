@@ -1,6 +1,7 @@
 import { t } from "structural";
 import { fileTracker } from "../file-tracker.ts";
-import { attemptUntrackedStat, TOOL } from "../common.ts";
+import { attemptUntrackedStat } from "../common.ts";
+import { TOOL_BUILDER } from "../../libocto/tool-def.ts";
 import { isImagePath } from "../../libocto/images.ts";
 import { err, ok } from "../../libocto/result.ts";
 import { LINE_NUMBER_PROMPT, withLineNumbers } from "./line-numbers.ts";
@@ -27,7 +28,7 @@ function lineRange(content: string, args: Arguments) {
   };
 }
 
-const partialRead = TOOL.declare({
+const partialRead = TOOL_BUILDER.withData<{}>().declare({
   name: "partial-read",
   description: `
 Reads a range of lines from a UTF-8 text file.

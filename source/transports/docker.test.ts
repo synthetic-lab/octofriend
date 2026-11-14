@@ -159,7 +159,12 @@ describe("DockerTransport", () => {
   it("loads background tools and runs background commands in the container", async () => {
     const { transport, children, spawn } = await harness();
     const controller = new AbortController();
-    const context = { signal: controller.signal, transport, data: {} as never };
+    const context = {
+      signal: controller.signal,
+      transport,
+      model: { contextWindow: 100_000 },
+      data: {},
+    };
     expect(await backgroundProcessTool(context)).not.toBeNull();
     expect(await manageBackgroundProcessTool(context)).not.toBeNull();
     const background = unwrap(

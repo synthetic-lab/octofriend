@@ -4,12 +4,14 @@ import { MockTransport } from "../../transports/mock.ts";
 import { fileTracker } from "../file-tracker.ts";
 import createToolFactory from "./create.ts";
 
-const config = { yourName: "Test", models: [] };
+const config = {};
+const model = { contextWindow: 100_000 };
 
 async function createTool(transport: MockTransport) {
   const tool = await createToolFactory({
     signal: new AbortController().signal,
     transport,
+    model,
     data: config,
   });
   if (tool == null) throw new Error("create tool did not load");
@@ -36,6 +38,7 @@ describe("create tool", () => {
         await tool.run({
           signal: new AbortController().signal,
           transport,
+          model,
           toolCall: toolCall("new.txt"),
           data: config,
         }),
@@ -51,7 +54,7 @@ describe("create tool", () => {
     const result =
       operation === "validate"
         ? await tool.validate(signal, transport, call, config)
-        : await tool.run({ signal, transport, toolCall: call, data: config });
+        : await tool.run({ signal, transport, model, toolCall: call, data: config });
 
     expect(result).toEqual(err("File already exists"));
     expect(await transport.readFile(signal, "exists.txt")).toEqual(ok("original"));
@@ -72,7 +75,13 @@ describe("create tool", () => {
     const transport = new MockTransport({});
     const tool = await createTool(transport);
     expect(
-      await tool.run({ signal, transport, toolCall: toolCall("create-success.txt"), data: config }),
+      await tool.run({
+        signal,
+        transport,
+        model,
+        toolCall: toolCall("create-success.txt"),
+        data: config,
+      }),
     ).toMatchObject({
       success: true,
       data: { type: "custom-ir", data: { role: "file-mutate", path: "create-success.txt" } },

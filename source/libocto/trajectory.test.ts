@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import { t } from "structural";
 import { LocalTransport } from "../transports/local.ts";
 import type { Transport } from "./transport.ts";
+import type { ExecutionModel } from "./execution.ts";
 import type { ImageInfo } from "./images.ts";
 import type { MultimodalConfig } from "./modalities.ts";
 import { err, ok, type Result } from "./result.ts";
@@ -48,6 +49,7 @@ type RunResult = Result<ToolReturn<"research", never>, string>;
 
 let runImpl: (query: string) => Promise<RunResult>;
 const runDataSeen: TestData[] = [];
+const runModelSeen: ExecutionModel[] = [];
 
 const searchTool = new ToolBuilder<TestData>()
   .declare({
@@ -61,8 +63,9 @@ const searchTool = new ToolBuilder<TestData>()
       if (toolCall.parsed.arguments.query === "invalid") return err("invalid query");
       return ok(null);
     },
-    run: async ({ toolCall, data }) => {
+    run: async ({ toolCall, model, data }) => {
       runDataSeen.push(data);
+      runModelSeen.push(model);
       return runImpl(toolCall.parsed.arguments.query);
     },
   }));
@@ -254,6 +257,7 @@ function makeTrajectory(opts?: {
   modelAuthError?: (invocation: TestInvocation | null) => string | undefined;
   loadTools?: (
     signal: AbortSignal,
+    model: ExecutionModel,
   ) => Promise<Result<Partial<LoadedTools<TestAgent["tools"]>>, TrajectoryToolLoadError>>;
 }) {
   const rec = {
@@ -284,9 +288,20 @@ function makeTrajectory(opts?: {
   exitControllers.push(exit);
 
   const build = async (queue: CompilerQueueItem[]) => {
+    const model = { contextWindow: 10_000 };
     const [searchDef, shellDef] = await Promise.all([
-      searchTool({ signal: new AbortController().signal, transport, data: { marker: "fresh" } }),
-      shellTool({ signal: new AbortController().signal, transport, data: { marker: "fresh" } }),
+      searchTool({
+        signal: new AbortController().signal,
+        transport,
+        model,
+        data: { marker: "fresh" },
+      }),
+      shellTool({
+        signal: new AbortController().signal,
+        transport,
+        model,
+        data: { marker: "fresh" },
+      }),
     ]);
     if (searchDef == null || shellDef == null) throw new Error("tools failed to load");
     const { runCompiler, calls } = makeRunCompiler(queue);
@@ -303,9 +318,9 @@ function makeTrajectory(opts?: {
           modalities: opts?.modalities ?? null,
         });
       },
-      loadTools: async signal => {
+      loadTools: async (signal, model) => {
         rec.loadToolsCalls++;
-        if (opts?.loadTools != null) return opts.loadTools(signal);
+        if (opts?.loadTools != null) return opts.loadTools(signal, model);
         return ok({ search: searchDef, shell: shellDef });
       },
       maxToolOutput: opts?.maxToolOutput,
@@ -438,6 +453,7 @@ function retryControl(traj: Trajectory<any, null>): RetryControl & Partial<Clear
 beforeEach(() => {
   runImpl = async query => ok({ type: "output", content: text(`results: ${query}`) });
   runDataSeen.length = 0;
+  runModelSeen.length = 0;
 });
 
 describe("trajectory", () => {
@@ -552,9 +568,9 @@ describe("trajectory", () => {
   it("reloads tools for a batch and reuses that runtime data for its response", async () => {
     let generation = 0;
     const { build, rec } = makeTrajectory({
-      loadTools: async signal => {
+      loadTools: async (signal, model) => {
         const loadedGeneration = ++generation;
-        const search = await searchTool({ signal, transport, data: { marker: "fresh" } });
+        const search = await searchTool({ signal, transport, model, data: { marker: "fresh" } });
         if (search == null) throw new Error("search tool failed to load");
         return ok({
           search: {
@@ -1022,11 +1038,14 @@ describe("trajectory", () => {
     async leafModel => {
       let marker = "data-0";
       const promptDataSeen: string[] = [];
+      const promptModelSeen: number[] = [];
+      const factoryModelSeen: number[] = [];
       const dataPrompt = (name: string) =>
         prompt.withData<{ marker: string }>().declare(async args => {
           expect(args.transport).toBe(transport);
           expect(args.signal).toBeInstanceOf(AbortSignal);
           promptDataSeen.push(`${name}:${args.data.marker}`);
+          promptModelSeen.push(args.model.contextWindow);
           return `${name} prompt`;
         });
       const leaf = definePermissionlessAgent({
@@ -1046,12 +1065,6 @@ describe("trajectory", () => {
       });
       const exit = new AbortController();
       exitControllers.push(exit);
-      const search = await searchTool({
-        signal: exit.signal,
-        transport,
-        data: { marker: "fresh" },
-      });
-      if (search == null) throw new Error("search tool failed to load");
       const queries: string[] = [];
       runImpl = async query => {
         queries.push(query);
@@ -1099,11 +1112,26 @@ describe("trajectory", () => {
           resolutions.push(invocation);
           return ok({
             model: invocation?.model ?? "default-model",
-            contextWindow: 10_000,
+            contextWindow:
+              invocation?.model === "middle-model"
+                ? 20_000
+                : invocation?.model === "leaf-model"
+                  ? 30_000
+                  : 10_000,
             modalities: null,
           });
         },
-        loadTools: async () => ok({ search }),
+        loadTools: async (signal, model) => {
+          factoryModelSeen.push(model.contextWindow);
+          const search = await searchTool({
+            signal,
+            transport,
+            model,
+            data: { marker: "fresh" },
+          });
+          if (search == null) throw new Error("search tool failed to load");
+          return ok({ search });
+        },
         toolContentTooLargeError: async () => "OUTPUT TOO LARGE",
         messages: [],
         getData: async () => ({ marker }),
@@ -1192,6 +1220,12 @@ describe("trajectory", () => {
         leafModel ?? "default-model",
         "middle-model",
         "default-model",
+      ]);
+      const leafContextWindow = leafModel == null ? 10_000 : 30_000;
+      expect(factoryModelSeen).toEqual([10_000, 10_000, 20_000, 20_000, 10_000]);
+      expect(promptModelSeen).toEqual([10_000, 20_000, leafContextWindow, 20_000, 10_000]);
+      expect(runModelSeen.map(model => model.contextWindow)).toEqual([
+        10_000, 20_000, 20_000, 10_000,
       ]);
       expect(resolutions).toHaveLength(7);
       expect(resolutions[0]).toBeNull();
@@ -2146,7 +2180,7 @@ describe("trajectory", () => {
       ]);
       expect(compilerCalls.length).toBe(2);
       expect(rec.modelCalls).toBe(3);
-      expect(rec.loadToolsCalls).toBe(3);
+      expect(rec.loadToolsCalls).toBe(2);
     },
   );
 
@@ -3310,6 +3344,7 @@ describe("trajectory", () => {
     const searchDef = await searchTool({
       signal: new AbortController().signal,
       transport,
+      model: { contextWindow: 10_000 },
       data: { marker: "fresh" },
     });
     if (searchDef == null) throw new Error("search tool failed to load");

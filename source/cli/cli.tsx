@@ -220,11 +220,11 @@ async function runMain(opts: {
         try {
           logger.log.info("Connecting to", server, "MCP server...");
           // Run the basic connection setup with logging enabled, so that first-time setup gets logged
-          const client = await connectMcpServer(server, config, true);
+          const client = await connectMcpServer(server, config.mcpServers, true);
           if (!client.success) throw new Error(client.error);
           await client.data.close();
           // Then run the cache setup codepath, so future results use a cached client with logging off
-          const cachedClient = await getMcpClient(server, config);
+          const cachedClient = await getMcpClient(server, config.mcpServers);
           if (!cachedClient.success) throw new Error(cachedClient.error);
           logger.log.info("Connected to", server, "MCP server");
         } catch (error) {
@@ -237,7 +237,7 @@ async function runMain(opts: {
       logger.log.info("MCP server initialization complete.");
     }
 
-    const skills = await discoverSkills(opts.transport, timeout(5000), config);
+    const skills = await discoverSkills(opts.transport, timeout(5000), config.skills?.paths);
     const cwd = opts.transport.cwd;
 
     const store = useAppStore.getState();

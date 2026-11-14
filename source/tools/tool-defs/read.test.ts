@@ -18,7 +18,8 @@ async function createReadTool(transport: Transport) {
   const tool = await readToolFactory({
     signal: new AbortController().signal,
     transport,
-    data: {} as never,
+    model: { contextWindow: 100_000 },
+    data: {},
   });
   if (!tool) throw new Error("read tool did not load");
   return tool;
@@ -28,7 +29,8 @@ async function createPartialReadTool(transport: Transport) {
   const tool = await partialReadToolFactory({
     signal: new AbortController().signal,
     transport,
-    data: {} as never,
+    model: { contextWindow: 100_000 },
+    data: {},
   });
   if (!tool) throw new Error("partial-read tool did not load");
   return tool;
@@ -71,8 +73,9 @@ describe("read tool", () => {
         await tool.run({
           signal: new AbortController().signal,
           transport,
+          model: { contextWindow: 100_000 },
           toolCall: readToolCall({ filePath: "read-error.txt" }),
-          data: {} as never,
+          data: {},
         }),
       ).toEqual(
         stage === "resolvePath"
@@ -100,8 +103,9 @@ describe("read tool", () => {
         await tool.run({
           signal: new AbortController().signal,
           transport,
+          model: { contextWindow: 100_000 },
           toolCall: readToolCall({ filePath }),
-          data: {} as never,
+          data: {},
         }),
       ).toEqual(err("Could not get modified time: EIO"));
     } finally {
@@ -127,8 +131,9 @@ describe("read tool", () => {
     const toolResult = await tool.run({
       signal,
       transport,
+      model: { contextWindow: 100_000 },
       toolCall: readToolCall({ filePath: "full.txt" }),
-      data: {} as never,
+      data: {},
     });
 
     const result = unwrap(toolResult);
@@ -159,8 +164,9 @@ describe("partial-read tool", () => {
         await tool.run({
           signal: new AbortController().signal,
           transport,
+          model: { contextWindow: 100_000 },
           toolCall: partialReadToolCall({ filePath: "partial-error.txt", offset: 1, limit: 1 }),
-          data: {} as never,
+          data: {},
         }),
       ).toEqual(
         stage === "resolvePath"
@@ -196,8 +202,9 @@ describe("partial-read tool", () => {
       await tool.run({
         signal,
         transport,
+        model: { contextWindow: 100_000 },
         toolCall: partialReadToolCall({ filePath: "notes.txt", offset: 2, limit: 2 }),
-        data: {} as never,
+        data: {},
       }),
     );
 
@@ -229,7 +236,8 @@ describe("partial-read tool", () => {
           offset: 1,
           limit: 1,
         }),
-        data: {} as never,
+        model: { contextWindow: 100_000 },
+        data: {},
       }),
     );
 
@@ -250,8 +258,9 @@ describe("partial-read tool", () => {
       await readTool.run({
         signal,
         transport,
+        model: { contextWindow: 100_000 },
         toolCall: readToolCall({ filePath: "already-full.txt" }),
-        data: {} as never,
+        data: {},
       }),
     );
 
@@ -259,8 +268,9 @@ describe("partial-read tool", () => {
       await partialReadTool.run({
         signal,
         transport,
+        model: { contextWindow: 100_000 },
         toolCall: partialReadToolCall({ filePath: "already-full.txt", offset: 2, limit: 1 }),
-        data: {} as never,
+        data: {},
       }),
     );
 

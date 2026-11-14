@@ -1,13 +1,14 @@
 import { t } from "structural";
 import { fileTracker } from "../file-tracker.ts";
-import { TOOL, fileMutateIR } from "../common.ts";
+import { fileMutateIR } from "../common.ts";
+import { TOOL_BUILDER } from "../../libocto/tool-def.ts";
 
 export const ArgumentsSchema = t.subtype({
   filePath: t.str.comment("Path where the file should be created"),
   content: t.str.comment("Content to write to the file"),
 });
 
-const create = TOOL.declare({
+const create = TOOL_BUILDER.withData<{}>().declare({
   name: "create",
   description: "Creates a new file with the specified content",
   ArgumentsSchema,

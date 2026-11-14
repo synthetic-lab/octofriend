@@ -1,11 +1,16 @@
 import { t } from "structural";
 import { unionAll } from "../../types.ts";
-import { TOOL } from "../common.ts";
+import { TOOL_BUILDER } from "../../libocto/tool-def.ts";
+import type { SkillToolData } from "../tool-data.ts";
 import { discoverSkills } from "../../skills/skills.ts";
 import { ok } from "../../libocto/result.ts";
 
-export default TOOL.dynamicDefineTool(async function ({ signal, transport, data }) {
-  const skills = await discoverSkills(transport, signal, data);
+export default TOOL_BUILDER.withData<SkillToolData>().dynamicDefineTool(async function ({
+  signal,
+  transport,
+  data,
+}) {
+  const skills = await discoverSkills(transport, signal, data.skillPaths);
   if (skills.length === 0) return null;
 
   const skillDescriptions = JSON.stringify(
@@ -15,23 +20,25 @@ export default TOOL.dynamicDefineTool(async function ({ signal, transport, data 
   const skillNameSchemas = skills.map(s => t.value(s.name));
   const description = `Loads and displays the instructions for a skill. Available skills: ${skillDescriptions}`;
 
-  return TOOL.declare({
-    name: "skill",
-    description,
-    ArgumentsSchema: t.subtype({
-      skillName: skillNameSchemas.length === 0 ? t.never : unionAll(skillNameSchemas),
-    }),
-  }).define(async () => ({
-    async run({ toolCall }) {
-      const { skillName } = toolCall.parsed.arguments;
-      const skill = skills.find(s => s.name === skillName)!;
+  return TOOL_BUILDER.withData<SkillToolData>()
+    .declare({
+      name: "skill",
+      description,
+      ArgumentsSchema: t.subtype({
+        skillName: skillNameSchemas.length === 0 ? t.never : unionAll(skillNameSchemas),
+      }),
+    })
+    .define(async () => ({
+      async run({ toolCall }) {
+        const { skillName } = toolCall.parsed.arguments;
+        const skill = skills.find(s => s.name === skillName)!;
 
-      const content = `
+        const content = `
 Skill name: ${skill.name}
 Skill directory: ${skill.path}
 Description: ${skill.description}
 
-${data.yourName} has set up a skill for you to use. Skills are:
+A skill has been set up for you to use. Skills are:
 
 1. A SKILL.md file containing instructions for you, in a directory.
 2. Optional scripts or assets stored in subdirectories of the skill's directory.
@@ -45,10 +52,10 @@ Here are the contents of the SKILL.md file stored at ${skill.skillFilePath}:
 ${skill.instructions}
 `.trim();
 
-      return ok({
-        type: "output",
-        content: [{ type: "text", content }],
-      });
-    },
-  }));
+        return ok({
+          type: "output",
+          content: [{ type: "text", content }],
+        });
+      },
+    }));
 });

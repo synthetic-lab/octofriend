@@ -1,5 +1,6 @@
 import { t } from "structural";
-import { TOOL, USER_ABORTED_ERROR_MESSAGE } from "../common.ts";
+import { USER_ABORTED_ERROR_MESSAGE } from "../common.ts";
+import { TOOL_BUILDER } from "../../libocto/tool-def.ts";
 import { ok, err } from "../../libocto/result.ts";
 import { MAX_SHELL_OUTPUT_MEMORY_LIMIT } from "../../libocto/transport.ts";
 import {
@@ -8,14 +9,15 @@ import {
   type BackgroundProcessStatus,
 } from "../../libocto/background-process.ts";
 
-export default TOOL.declare({
-  name: "manage-background-process",
-  description: `
+export default TOOL_BUILDER.withData<{}>()
+  .declare({
+    name: "manage-background-process",
+    description: `
 Manages background processes started with the background-process tool: check their status and
 output, kill them, or list the ones still running.
 `.trim(),
-  ArgumentsSchema: t.subtype({
-    action: t.value("poll").or(t.value("kill")).or(t.value("list")).comment(`
+    ArgumentsSchema: t.subtype({
+      action: t.value("poll").or(t.value("kill")).or(t.value("list")).comment(`
 "poll" returns the process's current status (running, or exited with its exit code/signal) plus
 any stdout/stderr appended since the last poll: output is drained each poll, so poll repeatedly to
 follow along. "kill" sends SIGTERM to the whole process group, escalating to SIGKILL after a grace
@@ -23,54 +25,55 @@ period, waits for the process to die, and returns its final status plus any rema
 "list" shows all currently-running background processes with their ids, labels, and commands.
 "poll" and "kill" require id and should repeat the process label; "list" ignores both.
 `),
-    id: t.optional(
-      t.str.comment("The background process id returned by the background-process tool"),
-    ),
-    label: t.optional(
-      t.str.comment(
-        "The background process label. Include it with poll and kill actions so it can be shown in the UI.",
+      id: t.optional(
+        t.str.comment("The background process id returned by the background-process tool"),
       ),
-    ),
-    timeout: t.optional(
-      t.num.comment(
-        'Optional, and only used by "poll": wait up to this many milliseconds for new output or exit before returning. If unset, poll returns immediately.',
+      label: t.optional(
+        t.str.comment(
+          "The background process label. Include it with poll and kill actions so it can be shown in the UI.",
+        ),
       ),
-    ),
-  }),
-}).define(async () => ({
-  async run({ signal, toolCall }) {
-    if (signal.aborted) return err(USER_ABORTED_ERROR_MESSAGE);
-    const { id, action, timeout } = toolCall.parsed.arguments;
-    const manager = backgroundProcesses.manager();
-    switch (action) {
-      case "list": {
-        return ok({
-          type: "output",
-          content: [{ type: "text", content: formatList(manager.list()) }],
-        });
+      timeout: t.optional(
+        t.num.comment(
+          'Optional, and only used by "poll": wait up to this many milliseconds for new output or exit before returning. If unset, poll returns immediately.',
+        ),
+      ),
+    }),
+  })
+  .define(async () => ({
+    async run({ signal, toolCall }) {
+      if (signal.aborted) return err(USER_ABORTED_ERROR_MESSAGE);
+      const { id, action, timeout } = toolCall.parsed.arguments;
+      const manager = backgroundProcesses.manager();
+      switch (action) {
+        case "list": {
+          return ok({
+            type: "output",
+            content: [{ type: "text", content: formatList(manager.list()) }],
+          });
+        }
+        case "poll": {
+          if (id == null) return err(`The id argument is required to poll a background process`);
+          const backgroundProcess = manager.poll(id);
+          if (backgroundProcess == null) return err(`No background process with id ${id}`);
+          if (timeout != null) await backgroundProcess.awaitActivity(timeout, signal);
+          return ok({
+            type: "output",
+            content: [{ type: "text", content: formatProcess(backgroundProcess) }],
+          });
+        }
+        case "kill": {
+          if (id == null) return err(`The id argument is required to kill a background process`);
+          const backgroundProcess = await manager.kill(id);
+          if (backgroundProcess == null) return err(`No background process with id ${id}`);
+          return ok({
+            type: "output",
+            content: [{ type: "text", content: formatProcess(backgroundProcess) }],
+          });
+        }
       }
-      case "poll": {
-        if (id == null) return err(`The id argument is required to poll a background process`);
-        const backgroundProcess = manager.poll(id);
-        if (backgroundProcess == null) return err(`No background process with id ${id}`);
-        if (timeout != null) await backgroundProcess.awaitActivity(timeout, signal);
-        return ok({
-          type: "output",
-          content: [{ type: "text", content: formatProcess(backgroundProcess) }],
-        });
-      }
-      case "kill": {
-        if (id == null) return err(`The id argument is required to kill a background process`);
-        const backgroundProcess = await manager.kill(id);
-        if (backgroundProcess == null) return err(`No background process with id ${id}`);
-        return ok({
-          type: "output",
-          content: [{ type: "text", content: formatProcess(backgroundProcess) }],
-        });
-      }
-    }
-  },
-}));
+    },
+  }));
 
 function formatList(entries: BackgroundProcess[]): string {
   const running = entries.filter(entry => entry.status.state === "running");

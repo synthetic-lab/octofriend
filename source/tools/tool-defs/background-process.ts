@@ -1,12 +1,14 @@
 import { t } from "structural";
-import { TOOL, USER_ABORTED_ERROR_MESSAGE } from "../common.ts";
+import { USER_ABORTED_ERROR_MESSAGE } from "../common.ts";
+import { TOOL_BUILDER } from "../../libocto/tool-def.ts";
 import { backgroundProcesses } from "../../libocto/background-process.ts";
 import { AbortError } from "../../libocto/transport.ts";
 import { ok, err } from "../../libocto/result.ts";
 
-export default TOOL.declare({
-  name: "background-process",
-  description: `
+export default TOOL_BUILDER.withData<{}>()
+  .declare({
+    name: "background-process",
+    description: `
 Runs a shell command in the background and returns immediately with a process id. Give each process
 a short, descriptive label that is unique among the currently-running background processes; this label will
 primarily be used by the human user and not by any future LLMs querying running background processes. The
@@ -20,40 +22,41 @@ stdout and stderr are captured; use the manage-background-process tool with the 
 poll output and status, or to kill the process. Once started, processes survive cancellation of the
 current tool batch. Background processes are killed when Octo exits.
 `.trim(),
-  ArgumentsSchema: t.subtype({
-    cmd: t.str.comment("The command to run in the background"),
-    label: t.str.comment(
-      `
+    ArgumentsSchema: t.subtype({
+      cmd: t.str.comment("The command to run in the background"),
+      label: t.str.comment(
+        `
 A short descriptive label unique among active background processes allowing the user to understand 
 the purpose of the background process, like "dev-server" or "test-watcher"',
 `.trim(),
-    ),
-  }),
-}).define(async () => ({
-  async run({ signal, transport, toolCall }) {
-    const { cmd, label } = toolCall.parsed.arguments;
-    const result = transport.backgroundShell({
-      command: cmd,
-      label,
-      signal,
-      backgroundProcessManager: backgroundProcesses.manager(),
-    });
-    if (!result.success) {
-      return err(
-        result.error instanceof AbortError ? USER_ABORTED_ERROR_MESSAGE : result.error.message,
-      );
-    }
-    const backgroundProcess = result.data;
-    return ok({
-      type: "output",
-      content: [
-        {
-          type: "text",
-          content:
-            `Started background process ${backgroundProcess.label} (${backgroundProcess.id}). ` +
-            `Poll its output and status, or kill it, with manage-background-process.`,
-        },
-      ],
-    });
-  },
-}));
+      ),
+    }),
+  })
+  .define(async () => ({
+    async run({ signal, transport, toolCall }) {
+      const { cmd, label } = toolCall.parsed.arguments;
+      const result = transport.backgroundShell({
+        command: cmd,
+        label,
+        signal,
+        backgroundProcessManager: backgroundProcesses.manager(),
+      });
+      if (!result.success) {
+        return err(
+          result.error instanceof AbortError ? USER_ABORTED_ERROR_MESSAGE : result.error.message,
+        );
+      }
+      const backgroundProcess = result.data;
+      return ok({
+        type: "output",
+        content: [
+          {
+            type: "text",
+            content:
+              `Started background process ${backgroundProcess.label} (${backgroundProcess.id}). ` +
+              `Poll its output and status, or kill it, with manage-background-process.`,
+          },
+        ],
+      });
+    },
+  }));
