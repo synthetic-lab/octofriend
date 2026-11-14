@@ -1,6 +1,5 @@
 import React from "react";
 import { marked, MarkedToken, Token, Tokens } from "marked";
-import stringWidth from "string-width";
 import {
   isImageToken,
   isLinkToken,
@@ -425,90 +424,86 @@ function StrongRenderer({ token }: { token: Tokens.Strong }) {
   );
 }
 function TableRenderer({ token }: { token: Tokens.Table }) {
-  // Calculate column widths by measuring display width of all content
-  const allRows = [token.header, ...token.rows];
-  const columnWidths = token.header.map((_, colIndex) => {
-    const maxWidth = Math.max(
-      ...allRows.map(row => {
-        const cell = row[colIndex];
-        if (cell) {
-          const cellText = renderTokensAsPlaintext(cell.tokens);
-          return stringWidth(cellText);
-        }
-        return 0;
-      }),
-    );
-    return Math.max(maxWidth, 3); // Minimum width of 3
-  });
-  const separator = "├" + columnWidths.map(w => "─".repeat(w + 2)).join("┼") + "┤";
   return (
     <TerminalFlex
       style={{
-        flexDirection: "column",
+        display: "grid",
+        gridTemplateColumns: token.header.map(() => "minmax(0, max-content)").join(" "),
+        gridAutoRows: "max-content",
+        justifyContent: "flex-start",
+        width: "100%",
+        minWidth: 0,
+        maxWidth: "100%",
         marginTop: 1,
         marginBottom: 1,
       }}
     >
-      <TableRowRenderer cells={token.header} columnWidths={columnWidths} isHeader={true} />
-      <Span
-        style={{
-          color: MARKDOWN_TABLE_BORDER_COLOR,
-        }}
-      >
-        {separator}
-      </Span>
-      {token.rows.map((row, index) => (
-        <TableRowRenderer key={index} cells={row} columnWidths={columnWidths} isHeader={false} />
+      {token.header.map((cell, columnIndex) => (
+        <TableCellRenderer
+          key={columnIndex}
+          cell={cell}
+          columnIndex={columnIndex}
+          rowIndex={0}
+          isHeader={true}
+          isLastColumn={columnIndex === token.header.length - 1}
+        />
       ))}
+      {token.rows.map((row, rowIndex) =>
+        row.map((cell, columnIndex) => (
+          <TableCellRenderer
+            key={columnIndex}
+            cell={cell}
+            columnIndex={columnIndex}
+            rowIndex={rowIndex + 1}
+            isHeader={false}
+            isLastColumn={columnIndex === row.length - 1}
+          />
+        )),
+      )}
     </TerminalFlex>
   );
 }
-function TableRowRenderer({
-  cells,
-  columnWidths,
+function TableCellRenderer({
+  cell,
+  columnIndex,
+  rowIndex,
   isHeader,
+  isLastColumn,
 }: {
-  cells: Tokens.TableCell[];
-  columnWidths: number[];
+  cell: Tokens.TableCell;
+  columnIndex: number;
+  rowIndex: number;
   isHeader: boolean;
+  isLastColumn: boolean;
 }) {
+  const justifyContent =
+    cell.align === "center" ? "center" : cell.align === "right" ? "flex-end" : "flex-start";
   return (
     <TerminalFlex
       style={{
-        flexDirection: "row",
+        gridColumn: columnIndex + 1,
+        gridRow: rowIndex + 1,
+        justifyContent,
+        minWidth: 0,
+        overflowWrap: "anywhere",
+        paddingLeft: 1,
+        paddingRight: 1,
+        borderTop: isHeader ? "solid" : undefined,
+        borderBottom: "solid",
+        borderLeft: "solid",
+        borderRight: isLastColumn ? "solid" : undefined,
+        borderColor: MARKDOWN_TABLE_BORDER_COLOR,
       }}
     >
       <Span
         style={{
-          color: MARKDOWN_TABLE_BORDER_COLOR,
+          color: isHeader ? MARKDOWN_TABLE_HEADER_COLOR : MARKDOWN_TABLE_CELL_COLOR,
+          fontWeight: isHeader ? "bold" : "normal",
+          minWidth: 0,
         }}
       >
-        │{" "}
+        {renderChildren(cell.tokens)}
       </Span>
-      {cells.map((cell, index) => {
-        const cellText = renderTokensAsPlaintext(cell.tokens);
-        const paddedText = cellText.padEnd(columnWidths[index]);
-        return (
-          <React.Fragment key={index}>
-            <Span
-              style={{
-                color: isHeader ? MARKDOWN_TABLE_HEADER_COLOR : MARKDOWN_TABLE_CELL_COLOR,
-                fontWeight: "bold",
-              }}
-            >
-              {paddedText}
-            </Span>
-            <Span
-              style={{
-                color: MARKDOWN_TABLE_BORDER_COLOR,
-              }}
-            >
-              {" "}
-              │{" "}
-            </Span>
-          </React.Fragment>
-        );
-      })}
     </TerminalFlex>
   );
 }
