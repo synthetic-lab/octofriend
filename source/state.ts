@@ -4,6 +4,7 @@ import {
   useConfig,
   getModelFromConfig,
   readAuthForModel,
+  readSearchConfig,
   runNotifyCommand,
 } from "./config.ts";
 import { ImageInfo } from "./libocto/images.ts";
@@ -56,7 +57,6 @@ import { estimateTokens } from "./ir/count-ir-tokens.ts";
 import { octoAgent, type OctoIR } from "./ir/octo-ir.ts";
 import { logger } from "./libocto/logger.ts";
 import { drain } from "./logger.ts";
-import { getOctoExecutionData } from "./octo-execution-data.ts";
 
 export const MAX_RETRY_COUNT = 20;
 
@@ -344,7 +344,15 @@ export const useAppStore = create<UiState>((set, get) => {
           `inspect them; here they are:\n${preview}`
         );
       },
-      getData: async () => getOctoExecutionData(currentConfig()),
+      getData: async () => {
+        const config = currentConfig();
+        return {
+          ...config,
+          searchConfig: await readSearchConfig(config),
+          skillPaths: config.skills?.paths,
+          lsp: config.lsp === false ? { disabled: true, config: {} } : { config: config.lsp ?? {} },
+        };
+      },
       runCompiler,
       lowerMessages,
       transport,

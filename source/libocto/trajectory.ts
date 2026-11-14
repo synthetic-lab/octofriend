@@ -349,6 +349,11 @@ export type RequestErrorRetriesConfig = {
   maxBackoffMs?: number;
 };
 
+// Everything a step resolves: tool data from every level of the tree, plus every prompt's data.
+export type TrajectoryData<A extends Agent<any, any, any, any>> = AgentToolData<A> &
+  AgentPromptData<A> &
+  TreeToolData<A>;
+
 export type TrajectoryParams<A extends Agent<any, any, any, any>, Provider> = Omit<
   TrajectoryAssistantRequestParams<A, Provider>,
   | "handler"
@@ -363,7 +368,7 @@ export type TrajectoryParams<A extends Agent<any, any, any, any>, Provider> = Om
   agent: A;
   // Re-resolved for each tool load, prompt evaluation, validation, correction, and tool execution
   // so clients can supply current configuration without replacing the trajectory.
-  getData: () => Promise<AgentToolData<A> & AgentPromptData<A> & TreeToolData<A>>;
+  getData: () => Promise<TrajectoryData<A>>;
   errorCorrection?: TreeErrorCorrection<A>;
   // null (or omission) means unlimited retries. Infinity is also accepted.
   validationRetries?: number | null;
