@@ -22,8 +22,8 @@ import type {
 import { definePermissionedAgent, definePermissionlessAgent, messageText } from "./llm-ir.ts";
 import { downconvert, lower, meaningfulTailIR } from "./ir-operations.ts";
 import type { ActiveHistory } from "./ir-operations.ts";
-import type { LoadedTools, ToolCall } from "./tool-def.ts";
-import { ToolBuilder } from "./tool-def.ts";
+import type { LoadedTools, ToolCall } from "./tools/tool-def.ts";
+import { ToolBuilder } from "./tools/tool-def.ts";
 import { ok } from "./result.ts";
 import type {
   Trajectory,

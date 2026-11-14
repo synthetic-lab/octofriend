@@ -43,10 +43,15 @@ import type {
 export type { SubagentTrajectoryInspection } from "./ir-operations.ts";
 import type { MultimodalConfig } from "./modalities.ts";
 import { subagentPrompt, userInterruptReason } from "./compilers/ir-prompts.ts";
-import type { LoadedTools, ToolCall, ToolExtensionIR, ToolReturn } from "./tool-def.ts";
+import type { LoadedTools, ToolCall, ToolExtensionIR, ToolReturn } from "./tools/tool-def.ts";
+import {
+  loadAgentTools,
+  type TrajectoryToolLoadError,
+  type TreeToolData,
+} from "./tools/load-tools.ts";
+export type { TrajectoryToolLoadError } from "./tools/load-tools.ts";
 import { combineSignals } from "./signals.ts";
 import { Input } from "./input.ts";
-import type { ExecutionModel } from "./execution.ts";
 import { err, ok, type Result } from "./result.ts";
 import { OwnershipLock, type OwnershipLockRef } from "./ownership-lock.ts";
 import { waitForPermissionDecision, type PermissionGate } from "./permissions.ts";
@@ -56,7 +61,6 @@ import {
   trajectoryAssistantRequest,
   type AgentToolData,
   type ErrorCorrection,
-  type ToolDataFor,
   type TrajectoryAssistantRequestEvents,
   type TrajectoryAssistantRequestParams,
 } from "./trajectory-assistant-request.ts";
@@ -315,8 +319,6 @@ export type TrajectoryHandler<A extends Agent<any, any, any, any>> = Partial<{
 // as an auth error without burning a doomed provider request.
 export type TrajectoryModelError = { type: "auth-error"; authError: string };
 
-export type TrajectoryToolLoadError = { type: "quit" } | { type: "fatal"; error: string };
-
 type RuntimeData<A extends Agent<any, any, any, any>, Model> = {
   model: Model;
   contextWindow: number;
@@ -353,13 +355,9 @@ export type TrajectoryParams<A extends Agent<any, any, any, any>, Model> = Omit<
   | "errorCorrection"
 > & {
   agent: A;
-  // Re-resolved for prompt evaluation, validation, correction, and each tool execution so
-  // clients can supply current configuration without replacing the trajectory.
-  getData: () => Promise<
-    AgentToolData<A> &
-      AgentPromptData<A> &
-      UnionToIntersection<ToolDataFor<AllToolsAcrossTree<A>[keyof AllToolsAcrossTree<A>]>>
-  >;
+  // Re-resolved for each tool load, prompt evaluation, validation, correction, and tool execution
+  // so clients can supply current configuration without replacing the trajectory.
+  getData: () => Promise<AgentToolData<A> & AgentPromptData<A> & TreeToolData<A>>;
   errorCorrection?: TreeErrorCorrection<A>;
   // null (or omission) means unlimited retries. Infinity is also accepted.
   validationRetries?: number | null;
@@ -377,12 +375,6 @@ export type TrajectoryParams<A extends Agent<any, any, any, any>, Model> = Omit<
       TrajectoryModelError
     >
   >;
-  // One loader for every tool in the tree (root + descendants), passed once: the runner
-  // filters each arc's subset from the merged map as it drives that arc's agent.
-  loadTools: (
-    signal: AbortSignal,
-    model: ExecutionModel,
-  ) => Promise<Result<Partial<AllToolsAcrossTree<A>>, TrajectoryToolLoadError>>;
   // The client's extension pass handles non-trajectory IR from every agent in the tree.
   // Libocto sends contiguous runs to this callback and handles trajectories and recursion
   // itself. Neither callback inputs nor outputs can contain subagent trajectories.
@@ -1135,8 +1127,11 @@ export class Trajectory<A extends Agent<any, any, any, any>, Model> {
   ): Promise<Result<RuntimeData<A, Model>, TrajectoryModelError | TrajectoryToolLoadError>> {
     const modelResult = await this.params.model(location.root ? null : location.invocation);
     if (!modelResult.success) return modelResult;
-    const toolsResult = await this.params.loadTools(signal, {
-      contextWindow: modelResult.data.contextWindow,
+    const toolsResult = await loadAgentTools(this.params.agent, {
+      signal,
+      transport: this.params.transport,
+      model: { contextWindow: modelResult.data.contextWindow },
+      data: await this.params.getData(),
     });
     if (!toolsResult.success) return toolsResult;
     return ok({ ...modelResult.data, tools: toolsResult.data });

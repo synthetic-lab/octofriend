@@ -1,7 +1,7 @@
 import { Transport } from "../libocto/transport.ts";
 import { ImageInfo } from "../libocto/images.ts";
 import { err, Result, ok } from "../libocto/result.ts";
-import { ToolCall } from "../libocto/tool-def.ts";
+import { ToolCall } from "../libocto/tools/tool-def.ts";
 
 export const USER_ABORTED_ERROR_MESSAGE = "Aborted by user";
 export const FILE_OUTDATED_ERROR_MESSAGE =

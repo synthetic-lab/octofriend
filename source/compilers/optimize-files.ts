@@ -5,7 +5,7 @@ import type {
   ToolRejectMessage,
   ToolSubagentInvoke,
 } from "../libocto/llm-ir.ts";
-import type { ToolCall } from "../libocto/tool-def.ts";
+import type { ToolCall } from "../libocto/tools/tool-def.ts";
 import * as irPrompts from "../prompts/octo-ir-prompts.ts";
 import { canDisplayImage } from "../providers.ts";
 import type { MultimodalConfig } from "../libocto/modalities.ts";

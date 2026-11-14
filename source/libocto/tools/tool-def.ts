@@ -1,9 +1,9 @@
 import { t } from "structural";
-import type { Transport } from "./transport.ts";
-import type { ExecutionArgs } from "./execution.ts";
-import { Result, ok } from "./result.ts";
-import type { BuiltinIRRole } from "./ir-roles.ts";
-import type { Content, UserMessage } from "./llm-ir.ts";
+import type { Transport } from "../transport.ts";
+import type { ExecutionArgs } from "../execution.ts";
+import { Result, ok } from "../result.ts";
+import type { BuiltinIRRole } from "../ir-roles.ts";
+import type { Content, UserMessage } from "../llm-ir.ts";
 
 /*
  * Tool definitions

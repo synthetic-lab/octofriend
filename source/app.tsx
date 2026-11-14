@@ -106,7 +106,7 @@ import { Markdown } from "./markdown/index.tsx";
 import { LINE_SPLIT_REGEX, excerpt } from "./str.ts";
 import { VimModeIndicator } from "./components/vim-mode.tsx";
 import { DEFAULT_INPUT_MODE, type InputMode, type VimMode } from "./components/input-mode.ts";
-import type { ToolCall } from "./libocto/tool-def.ts";
+import type { ToolCall } from "./libocto/tools/tool-def.ts";
 import { type OctoPermissionControl } from "./octo-permissions.ts";
 import type { Content, MalformedToolRequest } from "./libocto/llm-ir.ts";
 import {

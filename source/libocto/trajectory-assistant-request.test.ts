@@ -3,7 +3,7 @@ import { beforeEach, describe, expect, it } from "bun:test";
 import { t } from "structural";
 import { LocalTransport } from "../transports/local.ts";
 import { err, ok, type Result } from "./result.ts";
-import { ToolBuilder, type LoadedTools, type ToolCall } from "./tool-def.ts";
+import { ToolBuilder, type LoadedTools, type ToolCall } from "./tools/tool-def.ts";
 import {
   defineAgent,
   type Agent,

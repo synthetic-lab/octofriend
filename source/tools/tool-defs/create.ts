@@ -1,7 +1,7 @@
 import { t } from "structural";
 import { fileTracker } from "../file-tracker.ts";
 import { fileMutateIR } from "../common.ts";
-import { TOOL_BUILDER } from "../../libocto/tool-def.ts";
+import { TOOL_BUILDER } from "../../libocto/tools/tool-def.ts";
 
 export const ArgumentsSchema = t.subtype({
   filePath: t.str.comment("Path where the file should be created"),

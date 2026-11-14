@@ -12,18 +12,22 @@ import {
 } from "./llm-ir.ts";
 import { requestSnapshot } from "./request-snapshot.ts";
 import { ok } from "./result.ts";
-import { ToolBuilder, type ToolCall, type ToolMap } from "./tool-def.ts";
+import { ToolBuilder, type ToolCall, type ToolMap } from "./tools/tool-def.ts";
 import { Trajectory, type TrajectoryEvents, type TrajectoryMode } from "./trajectory.ts";
 
 type TestData = { calls: string[] };
 const workTool = new ToolBuilder<TestData>()
   .declare({ name: "work", description: "Work", ArgumentsSchema: t.subtype({}) })
-  .define(async () => ({
-    run: async ({ data }) => {
-      data.calls.push("tool");
-      return ok({ type: "output", content: text("result") });
-    },
-  }));
+  .define(async ({ data }) => {
+    expect(data.calls.at(-1)).toBe("model");
+    data.calls.push("loadTools");
+    return {
+      run: async ({ data }) => {
+        data.calls.push("tool");
+        return ok({ type: "output", content: text("result") });
+      },
+    };
+  });
 const delegateChild = new ToolBuilder<TestData>()
   .declare({
     name: "delegateChild",
@@ -173,13 +177,6 @@ function fixture(messages: TestIR[], exit = new AbortController()) {
     model: async () => {
       calls.push("model");
       return ok({ model: null, contextWindow: 100_000, modalities: null });
-    },
-    loadTools: async (signal, model) => {
-      expect(calls.at(-1)).toBe("model");
-      calls.push("loadTools");
-      const work = await workTool({ signal, transport, model, data: { calls } });
-      if (work == null) throw new Error("Could not load test tool");
-      return ok({ work });
     },
     runCompiler,
     lowerMessages: irs => irs.map(original => ({ original, converted: original })),

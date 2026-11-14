@@ -1,6 +1,6 @@
 import { t } from "structural";
 import { USER_ABORTED_ERROR_MESSAGE } from "../common.ts";
-import { TOOL_BUILDER } from "../../libocto/tool-def.ts";
+import { TOOL_BUILDER } from "../../libocto/tools/tool-def.ts";
 import { compile } from "html-to-text";
 import { AbortError } from "../../libocto/transport.ts";
 import { ok, err, toErrString } from "../../libocto/result.ts";

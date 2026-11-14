@@ -1,5 +1,5 @@
 import { t } from "structural";
-import { TOOL_BUILDER } from "../../libocto/tool-def.ts";
+import { TOOL_BUILDER } from "../../libocto/tools/tool-def.ts";
 import { ok } from "../../libocto/result.ts";
 
 export default TOOL_BUILDER.withData<{}>()

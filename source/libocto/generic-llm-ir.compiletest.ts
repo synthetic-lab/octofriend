@@ -1,7 +1,7 @@
 import { prompt } from "./system-prompt.ts";
 import { t } from "structural";
 import { defineAgent, LlmIR, trajectoryCond } from "./llm-ir.ts";
-import { TOOL_BUILDER, ToolBuilder, ToolCall } from "./tool-def.ts";
+import { TOOL_BUILDER, ToolBuilder, ToolCall } from "./tools/tool-def.ts";
 import { ok, err } from "./result.ts";
 
 const BUILDER = new ToolBuilder();

@@ -6,7 +6,7 @@ import {
   fileMutateIR,
   parseOriginalFile,
 } from "../common.ts";
-import { TOOL_BUILDER } from "../../libocto/tool-def.ts";
+import { TOOL_BUILDER } from "../../libocto/tools/tool-def.ts";
 import { Transport } from "../../libocto/transport.ts";
 import { ok, err } from "../../libocto/result.ts";
 

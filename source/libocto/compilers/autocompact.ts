@@ -1,5 +1,5 @@
 import { messageText, type Agent, type Content, type LoweredIR } from "../llm-ir.ts";
-import type { ToolMap } from "../tool-def.ts";
+import type { ToolMap } from "../tools/tool-def.ts";
 import type {
   CompilerError,
   CompilerIR,

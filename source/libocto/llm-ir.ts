@@ -10,7 +10,7 @@ import type {
   ToolFactoryRequirements,
   ToolMap,
   ToolSubagentNames,
-} from "./tool-def.ts";
+} from "./tools/tool-def.ts";
 
 /*
  * LLM IR
@@ -131,12 +131,12 @@ export type AllSubagentNames<A extends Agent<any, any, any, any>> =
 
 // The tool maps of every level in the tree, intersected into one. A key used at more than one
 // level must be the same factory, so one loaded entry serves every level declaring it.
-type TreeToolMap<A extends Agent<any, any, any, any>> = UnionToIntersection<
-  | A["tools"]
-  | {
+export type TreeToolMap<A extends Agent<any, any, any, any>> = A["tools"] &
+  UnionToIntersection<
+    {
       [K in keyof A["agents"]]: TreeToolMap<A["agents"][K]>;
     }[keyof A["agents"]]
->;
+  >;
 
 type UnionToIntersection<U> = (U extends U ? (x: U) => void : never) extends (x: infer I) => void
   ? I

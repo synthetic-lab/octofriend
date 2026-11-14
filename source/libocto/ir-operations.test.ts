@@ -12,8 +12,8 @@ import {
   pendingToolCalls,
 } from "./ir-operations.ts";
 import { ok } from "./result.ts";
-import { ToolBuilder } from "./tool-def.ts";
-import type { ToolCall } from "./tool-def.ts";
+import { ToolBuilder } from "./tools/tool-def.ts";
+import type { ToolCall } from "./tools/tool-def.ts";
 
 const searchTool = new ToolBuilder<unknown>()
   .declare({

@@ -6,7 +6,7 @@ import type {
 } from "../libocto/compilers/compiler-interface.ts";
 import type { LoweredIR } from "../libocto/llm-ir.ts";
 import type { Transport } from "../libocto/transport.ts";
-import type { LoadedTools as GenericLoadedTools } from "../libocto/tool-def.ts";
+import type { LoadedTools as GenericLoadedTools } from "../libocto/tools/tool-def.ts";
 import { octoAgent } from "../ir/octo-ir.ts";
 import { run } from "./run.ts";
 import type { ModelData } from "./run.ts";
