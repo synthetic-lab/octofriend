@@ -510,7 +510,7 @@ type DeclaredToolCall<
   Arguments,
   Parsed,
   SubagentNames extends string,
-> = ToolCall<DeclaredToolMap<Data, Name, Arguments, Parsed, SubagentNames, never>>;
+> = ToolCallFromToolMap<DeclaredToolMap<Data, Name, Arguments, Parsed, SubagentNames, never>>;
 
 type CustomIRData<Builders extends CustomIRBuilderMap, Call> = {
   [K in keyof Builders]: Builders[K] extends (toolCall: Call) => (args: any) => infer IR
@@ -547,7 +547,7 @@ type BoundCustomIRForTool<
 export type LoadedTools<T extends ToolMap<any, any>> = {
   [K in keyof T]: Exclude<Awaited<ReturnType<T[K]>>, null>;
 };
-export type ToolCall<T extends ToolMap<any, any>> = {
+export type ToolCallFromToolMap<T extends ToolMap<any, any>> = {
   [K in keyof LoadedTools<T>]: {
     type: "tool-call";
     name: LoadedTools<T>[K]["name"];

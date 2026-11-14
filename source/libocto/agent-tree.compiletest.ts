@@ -18,11 +18,12 @@ import type {
   IRConversion,
   PreLoweredIR,
   IsPermissioned,
+  OwnToolCall,
+  OwnToolRegistry,
 } from "./llm-ir.ts";
 import { agent, messageText } from "./llm-ir.ts";
 import { downconvert, lower, lowerMessages, meaningfulTailIR } from "./ir-operations.ts";
 import type { ActiveHistory, ClientLowerOutputIR } from "./ir-operations.ts";
-import type { LoadedTools, ToolCall } from "./toolkits/tool-def.ts";
 import { ToolBuilder } from "./toolkits/tool-def.ts";
 import { ok } from "./result.ts";
 import type {
@@ -161,9 +162,7 @@ type _noNames = Expect<Equal<AllSubagentNames<Single>, never>>;
 
 // The merged tool map: every level's keys, shared keys shared, values exact per key.
 type _treeKeys = Expect<Equal<keyof ToolRegistry<Root>, "search" | "note" | "delegate">>;
-expectType<Partial<ToolRegistry<Single>>>(
-  undefined as unknown as Partial<LoadedTools<Single["tools"]>>,
-);
+expectType<Partial<ToolRegistry<Single>>>(undefined as unknown as Partial<OwnToolRegistry<Single>>);
 
 // A declared key takes exactly the loaded definition of the tool declared under it — never
 // another tool's definition, even when that definition loaded perfectly fine.
@@ -429,7 +428,7 @@ type _childArguments = Expect<
       Extract<LowerOutputIR<ConversionRoot>["converted"], { role: "tool-output" }>["toolCall"],
       { name: "search" }
     >["parsed"],
-    Extract<ToolCall<Root["tools"]>, { name: "search" }>["parsed"]
+    Extract<OwnToolCall<Root>, { name: "search" }>["parsed"]
   >
 >;
 type _leafTreeIR = Expect<Equal<TreeIR<Single>, AgentIR<Single>>>;
@@ -529,7 +528,7 @@ function inspectMessageEvent(event: TrajectoryEvents<Root>["onMessages"]) {
 // that arc's own tool map, while only non-root modes carry path metadata.
 function inspectMode(mode: TrajectoryMode<Root>) {
   if (mode.root) {
-    if (mode.mode === "running-tool") expectType<ToolCall<Root["tools"]>>(mode.toolCall);
+    if (mode.mode === "running-tool") expectType<OwnToolCall<Root>>(mode.toolCall);
     // We expect an error here because the root needs no subagent routing metadata
     // @ts-expect-error
     mode.scope;
@@ -538,7 +537,7 @@ function inspectMode(mode: TrajectoryMode<Root>) {
 
   expectType<readonly { subagent: string; toolCallId: string }[]>(mode.scope.path);
   if (mode.subagent === "research" && mode.mode === "running-tool") {
-    expectType<ToolCall<(typeof _research)["tools"]>>(mode.toolCall);
+    expectType<OwnToolCall<typeof _research>>(mode.toolCall);
   }
 }
 

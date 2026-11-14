@@ -9,8 +9,7 @@ import {
   openAIStrictFunctionParameters,
 } from "./responses.ts";
 import { compilerUsage } from "./compiler-interface.ts";
-import type { LoweredIR } from "../llm-ir.ts";
-import type { ToolCall } from "../toolkits/tool-def.ts";
+import type { LoweredIR, OwnToolCall } from "../llm-ir.ts";
 
 describe("openAIStrictFunctionParameters", () => {
   it("closes object schemas for OpenAI strict function calling", () => {
@@ -188,7 +187,7 @@ describe("runResponsesAgent", () => {
   });
 });
 
-type ShellToolCall = Extract<ToolCall<typeof octoAgent.tools>, { name: "shell" }>;
+type ShellToolCall = Extract<OwnToolCall<typeof octoAgent>, { name: "shell" }>;
 type Ir = LoweredIR<typeof octoAgent.tools>;
 
 function shellCall(id: string, cmd: string): ShellToolCall {

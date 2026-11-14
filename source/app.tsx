@@ -106,9 +106,8 @@ import { Markdown } from "./markdown/index.tsx";
 import { LINE_SPLIT_REGEX, excerpt } from "./str.ts";
 import { VimModeIndicator } from "./components/vim-mode.tsx";
 import { DEFAULT_INPUT_MODE, type InputMode, type VimMode } from "./components/input-mode.ts";
-import type { ToolCall } from "./libocto/toolkits/tool-def.ts";
 import { type OctoPermissionControl } from "./octo-permissions.ts";
-import type { Content, MalformedToolRequest } from "./libocto/llm-ir.ts";
+import type { Content, MalformedToolRequest, OwnToolCall } from "./libocto/llm-ir.ts";
 import {
   InputPriorityProvider,
   usePriorityInput,
@@ -140,7 +139,7 @@ type ParsedToolSchemaFrom<T extends (...args: any) => any> = {
   name: LoadedToolFrom<T>["name"];
   arguments: t.GetType<LoadedToolFrom<T>["ParsedSchema"]>;
 };
-type ToolCallRequest = ToolCall<(typeof octoAgent)["tools"]>;
+type RootToolCallRequest = OwnToolCall<typeof octoAgent>;
 type AssistantDisplayItem = {
   content: string;
   reasoningContent?: string | null;
@@ -2504,7 +2503,7 @@ function ToolMessageRenderer({
   item,
   animate,
 }: {
-  item: ToolCallRequest | MalformedToolRequest;
+  item: RootToolCallRequest | MalformedToolRequest;
   animate: boolean;
 }) {
   if (item.type === "malformed-tool-request") {

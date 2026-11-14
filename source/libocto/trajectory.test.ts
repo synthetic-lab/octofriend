@@ -7,12 +7,7 @@ import { defaultCountTokens, type ExecutionModel } from "./execution.ts";
 import type { ImageInfo } from "./images.ts";
 import type { MultimodalConfig } from "./modalities.ts";
 import { err, ok, type Result } from "./result.ts";
-import {
-  ToolBuilder,
-  type LoadedTools,
-  type ToolCall,
-  type ToolReturn,
-} from "./toolkits/tool-def.ts";
+import { ToolBuilder, type ToolReturn } from "./toolkits/tool-def.ts";
 import {
   agent,
   type Agent,
@@ -21,6 +16,8 @@ import {
   type Checkpoint,
   type LoweredIR,
   type LowerOutputIR,
+  type OwnToolCall,
+  type OwnToolRegistry,
   type TreeIR,
   type UserMessage,
 } from "./llm-ir.ts";
@@ -164,11 +161,11 @@ function img(filePath: string): Extract<UserMessage["content"][number], { type: 
   return { type: "image", image };
 }
 
-function searchCall(query: string, toolCallId: string): ToolCall<TestAgent["tools"]> {
+function searchCall(query: string, toolCallId: string): OwnToolCall<TestAgent> {
   return { type: "tool-call", name: "search", toolCallId, original: { query }, parsed: { query } };
 }
 
-function shellCall(command: string, toolCallId: string): ToolCall<TestAgent["tools"]> {
+function shellCall(command: string, toolCallId: string): OwnToolCall<TestAgent> {
   return {
     type: "tool-call",
     name: "shell",
@@ -180,7 +177,7 @@ function shellCall(command: string, toolCallId: string): ToolCall<TestAgent["too
 
 function assistantMessage(opts: {
   content?: string;
-  toolCalls?: Array<ToolCall<TestAgent["tools"]>>;
+  toolCalls?: Array<OwnToolCall<TestAgent>>;
 }): AssistantMessage<TestAgent["tools"]> {
   return {
     role: "assistant",
@@ -232,7 +229,7 @@ function makeRunCompiler(queue: CompilerQueueItem[]) {
   }> = [];
   const runCompiler: Compiler<null> = async <
     A extends Agent<any, any, any, any>,
-    Tools extends Partial<LoadedTools<A["tools"]>> | undefined = undefined,
+    Tools extends Partial<OwnToolRegistry<A>> | undefined = undefined,
   >(
     params: CompilerParams<A, null, Tools>,
   ): Promise<CompilerResult<A, Tools>> => {
@@ -252,7 +249,7 @@ function makeRunCompiler(queue: CompilerQueueItem[]) {
 function makeTrajectory(opts?: {
   agent?: TestAgent;
   getData?: () => Promise<TestData>;
-  permission?: (toolCall: ToolCall<TestAgent["tools"]>) => Promise<PermissionDecision>;
+  permission?: (toolCall: OwnToolCall<TestAgent>) => Promise<PermissionDecision>;
   contextWindow?: number;
   modalities?: MultimodalConfig | null;
   maxToolOutput?: number;
@@ -1105,7 +1102,7 @@ describe("trajectory", () => {
       const models: string[] = [];
       const compiler: Compiler<string> = async <
         A extends Agent<any, any, any, any>,
-        Tools extends Partial<LoadedTools<A["tools"]>> | undefined = undefined,
+        Tools extends Partial<OwnToolRegistry<A>> | undefined = undefined,
       >(
         params: CompilerParams<A, string, Tools>,
       ): Promise<CompilerResult<A, Tools>> => {

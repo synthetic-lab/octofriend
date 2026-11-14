@@ -1,6 +1,6 @@
 import { toTypescript } from "structural";
 import type { JsonFixResponse } from "./compiler-interface.ts";
-import type { LoadedTools, ToolCall, ToolMap } from "../toolkits/tool-def.ts";
+import type { LoadedTools, ToolCallFromToolMap, ToolMap } from "../toolkits/tool-def.ts";
 import { Transport } from "../transport.ts";
 import { logger } from "../logger.ts";
 import { attemptSync } from "../result.ts";
@@ -8,7 +8,7 @@ import { attemptSync } from "../result.ts";
 export type ParsedToolCallResult<T extends ToolMap<any, any>> =
   | {
       status: "success";
-      tool: ToolCall<T>;
+      tool: ToolCallFromToolMap<T>;
     }
   | {
       status: "error";
@@ -78,7 +78,7 @@ Please try calling a valid tool.
           original: parsed.data.original,
           parsed: parsed.data.parsed,
           toolCallId: toolCall.toolCallId,
-        } as ToolCall<T>,
+        } as ToolCallFromToolMap<T>,
       };
     }
     return {

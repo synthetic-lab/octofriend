@@ -20,10 +20,12 @@ import {
   type LowerOutputIR,
   type LoweredIR,
   type MalformedToolRequest,
+  type OwnToolCall,
+  type OwnToolRegistry,
   type TreeIR,
 } from "./llm-ir.ts";
 import { err, ok, type Result } from "./result.ts";
-import { ToolBuilder, type LoadedTools, type ToolCall } from "./toolkits/tool-def.ts";
+import { ToolBuilder } from "./toolkits/tool-def.ts";
 import { Trajectory, type TrajectoryParams } from "./trajectory.ts";
 
 type ToolData = { executed: string[] };
@@ -107,7 +109,7 @@ function response(output: AssistantMessage<TestAgent["tools"]>): Response {
   return () => ok({ output, usage: compilerUsage(1, 1), curl: "curl", headers: new Headers() });
 }
 
-function searchCall(query: string): ToolCall<TestAgent["tools"]> {
+function searchCall(query: string): OwnToolCall<TestAgent> {
   return {
     type: "tool-call",
     name: "search",
@@ -151,7 +153,7 @@ async function fixture(
   const queue = [...responses];
   const runCompiler: Compiler<Scope> = async <
     A extends Agent<any, any, any, any>,
-    Tools extends Partial<LoadedTools<A["tools"]>> | undefined = undefined,
+    Tools extends Partial<OwnToolRegistry<A>> | undefined = undefined,
   >(
     params: CompilerParams<A, Scope, Tools>,
   ): Promise<CompilerResult<A, Tools>> => {

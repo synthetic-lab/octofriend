@@ -6,8 +6,9 @@ import type {
   AgentIR,
   AgentTrajectory,
   AllTrajectories,
+  OwnToolCall,
   TreeIR,
-  ToolCall,
+  TreeToolCall,
   LowerInputIR,
   LowerOutputIR,
   CompilerReadyIR,
@@ -28,7 +29,6 @@ import type { ScopeHop, ScopeRoot, ScopeSubagent } from "./trajectory.ts";
 import type { MultimodalConfig } from "./modalities.ts";
 import { lowerFileExtras, type FileReadIR, type FileMutateIR } from "./toolkits/file-ir.ts";
 import type { IRConversion } from "./llm-ir.ts";
-import type { ToolCall as ToolCallForTools } from "./toolkits/tool-def.ts";
 import { err, ok, type Result } from "./result.ts";
 import {
   retryable,
@@ -188,10 +188,7 @@ export function lowerMessages<IR extends { role: string }>(
 export type ClientLowerOutputIR<A extends Agent<any, any, any, any>> = IRConversion<
   LowerInputIR<A>,
   | LowerOutputIR<A>["converted"]
-  | Extract<
-      LowerInputIR<A>,
-      FileReadIR<ToolCallForTools<any>> | FileMutateIR<ToolCallForTools<any>>
-    >
+  | Extract<LowerInputIR<A>, FileReadIR<OwnToolCall<any>> | FileMutateIR<OwnToolCall<any>>>
 >;
 
 // Clients receive only contiguous non-trajectory runs. Libocto alone constructs trajectory
@@ -209,7 +206,7 @@ export function downconvert<A extends Agent<any, any, any, any>>(
     const flush = () => {
       if (pending.length === 0) return;
       output.push(
-        ...lowerFileExtras<LowerInputIR<A>, LowerOutputIR<A>["converted"], ToolCall<A>>(
+        ...lowerFileExtras<LowerInputIR<A>, LowerOutputIR<A>["converted"], TreeToolCall<A>>(
           lowerExtras(pending, modalities),
           modalities,
         ),
@@ -252,7 +249,7 @@ function isRawTrajectory<IR>(ir: IR): ir is IR & {
 // Answers stay local to that history; descendants' IDs never answer their parent's calls.
 export function pendingToolCalls<A extends Agent<any, any, any, any>>(
   history: readonly RecursiveLowered<A>[],
-): Array<ToolCall<A>> {
+): Array<TreeToolCall<A>> {
   while (true) {
     const tail = history.at(-1)?.converted;
     if (tail?.role !== "subagent-trajectory") break;
@@ -264,7 +261,7 @@ export function pendingToolCalls<A extends Agent<any, any, any, any>>(
 
 function scanPendingCalls<A extends Agent<any, any, any, any>>(
   history: readonly RecursiveLowered<A>[],
-): Array<ToolCall<A>> {
+): Array<TreeToolCall<A>> {
   const answered = new Set<string>();
   for (let index = history.length - 1; index >= 0; index--) {
     const ir = history[index].converted;
@@ -274,7 +271,7 @@ function scanPendingCalls<A extends Agent<any, any, any, any>>(
       const calls = (ir.toolCalls ?? []).filter(
         call => call.type === "tool-call" && !answered.has(call.toolCallId),
       );
-      return calls as Array<ToolCall<A>>;
+      return calls as Array<TreeToolCall<A>>;
     }
     if (ir.role === "user" || ir.role === "checkpoint") return [];
     if (ir.role === "subagent-trajectory") {
@@ -451,7 +448,7 @@ function errorMessage(ir: TerminalError): string {
 }
 
 export type HistoryInspection<A extends Agent<any, any, any, any>> = {
-  pendingCalls: Array<ToolCall<A>>;
+  pendingCalls: Array<TreeToolCall<A>>;
 } & (
   | {
       action: "rectify";
@@ -487,7 +484,7 @@ export type HistoryInspection<A extends Agent<any, any, any, any>> = {
       action: "run-tools";
       location: ActiveHistory<A>;
       tail: RecursiveLowered<A>["converted"];
-      pendingCalls: [ToolCall<A>, ...Array<ToolCall<A>>];
+      pendingCalls: [TreeToolCall<A>, ...Array<TreeToolCall<A>>];
     }
 );
 

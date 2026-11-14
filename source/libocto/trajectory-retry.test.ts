@@ -7,10 +7,11 @@ import {
   agent,
   type AgentIR,
   type LowerOutputIR,
+  type OwnToolCall,
   type RequestErrorIR,
   type RetryBudget,
 } from "./llm-ir.ts";
-import { ToolBuilder, type ToolCall } from "./toolkits/tool-def.ts";
+import { ToolBuilder } from "./toolkits/tool-def.ts";
 import { requestSnapshot } from "./request-snapshot.ts";
 import {
   countTransientErrors,
@@ -62,7 +63,7 @@ const requestError: RequestErrorIR = {
   requestError: "failed",
   curl: "curl",
 };
-const call: ToolCall<TestAgent["tools"]> = {
+const call: OwnToolCall<TestAgent> = {
   type: "tool-call",
   name: "report",
   toolCallId: "c1",

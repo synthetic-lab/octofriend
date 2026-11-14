@@ -1,7 +1,7 @@
 import { t } from "structural";
 import { ok } from "../result.ts";
 import { ToolBuilder } from "./tool-def.ts";
-import type { ToolCall } from "./tool-def.ts";
+import type { ToolCallFromToolMap } from "./tool-def.ts";
 
 function expectType<T>(_: T) {}
 
@@ -69,7 +69,7 @@ const automatic = builder
 
 const unavailable = parsedDeclaration.define(async () => null);
 const dynamic = builder.dynamicDefineTool(async () => parsed);
-type Calls = ToolCall<{
+type Calls = ToolCallFromToolMap<{
   parsed: typeof parsed;
   automatic: typeof automatic;
   dynamic: typeof dynamic;
@@ -82,5 +82,8 @@ type _automatic = Expect<
   Equal<Extract<Calls, { name: "automatic" }>["parsed"], t.GetType<typeof pathSchema>>
 >;
 type _unavailable = Expect<
-  Equal<ToolCall<{ parsed: typeof unavailable }>["parsed"], t.GetType<typeof countSchema>>
+  Equal<
+    ToolCallFromToolMap<{ parsed: typeof unavailable }>["parsed"],
+    t.GetType<typeof countSchema>
+  >
 >;

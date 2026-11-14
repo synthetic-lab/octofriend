@@ -38,10 +38,10 @@ import {
   type Agent,
   type AssistantMessage,
   type LoweredIR,
+  type OwnToolRegistry,
 } from "./libocto/llm-ir.ts";
 import type { TrajectoryMode } from "./libocto/trajectory.ts";
 import { meaningfulTailIR } from "./libocto/ir-operations.ts";
-import type { LoadedTools } from "./libocto/toolkits/tool-def.ts";
 import type { octoAgent, OctoIR } from "./ir/octo-ir.ts";
 import type { OctoToolCall } from "./tools/index.ts";
 import { LocalTransport } from "./transports/local.ts";
@@ -257,7 +257,7 @@ function makeRunCompiler(queue: CompilerQueueItem[]) {
   const calls: Array<{ irs: Array<LoweredIR<any>>; tools: string[]; model: string }> = [];
   const runCompiler: Compiler<Backend> = async <
     A extends Agent<any, any, any, any>,
-    Tools extends Partial<LoadedTools<A["tools"]>> | undefined = undefined,
+    Tools extends Partial<OwnToolRegistry<A>> | undefined = undefined,
   >(
     params: CompilerParams<A, Backend, Tools>,
   ): Promise<CompilerResult<A, Tools>> => {
