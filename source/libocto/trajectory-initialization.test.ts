@@ -4,7 +4,7 @@ import { t } from "structural";
 import { MockTransport } from "../transports/mock.ts";
 import { compilerUsage, type Compiler } from "./compilers/compiler-interface.ts";
 import {
-  definePermissionedAgent,
+  agent as agentBuilder,
   type AgentIR,
   type AssistantMessage,
   type RequestErrorIR,
@@ -50,17 +50,17 @@ const delegateLeaf = new ToolBuilder<TestData>()
   }));
 const testPrompt = prompt.declare(async () => "Test prompt");
 
-const leaf = definePermissionedAgent({
+const leaf = agentBuilder.definePermissioned({
   systemPrompt: testPrompt,
   tools: { work: workTool },
   agents: {},
 });
-const child = definePermissionedAgent({
+const child = agentBuilder.definePermissioned({
   systemPrompt: testPrompt,
   tools: { work: workTool, delegateLeaf },
   agents: { leaf },
 });
-const agent = definePermissionedAgent({
+const agent = agentBuilder.definePermissioned({
   systemPrompt: testPrompt,
   tools: { work: workTool, delegateChild },
   agents: { child },

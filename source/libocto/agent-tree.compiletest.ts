@@ -17,8 +17,9 @@ import type {
   LowerOutputIR,
   IRConversion,
   PreLoweredIR,
+  IsPermissioned,
 } from "./llm-ir.ts";
-import { definePermissionedAgent, definePermissionlessAgent, messageText } from "./llm-ir.ts";
+import { agent, messageText } from "./llm-ir.ts";
 import { downconvert, lower, lowerMessages, meaningfulTailIR } from "./ir-operations.ts";
 import type { ActiveHistory, ClientLowerOutputIR } from "./ir-operations.ts";
 import type { LoadedTools, ToolCall } from "./tools/tool-def.ts";
@@ -81,23 +82,23 @@ const delegateTool = builder
 // The capability is uniform down the tree: a permissioned tree's every subagent is
 // permissioned, and no permissionless agent's subagent is. Research and grandchild are both
 // permissioned because Root is.
-const _grandchild = definePermissionedAgent({
+const _grandchild = agent.definePermissioned({
   systemPrompt: testPrompt,
   tools: { search: searchTool },
   agents: {},
 });
-const _research = definePermissionedAgent({
+const _research = agent.definePermissioned({
   systemPrompt: testPrompt,
   tools: { search: searchTool },
   agents: { grandchild: _grandchild },
 });
-const _root = definePermissionedAgent({
+const _root = agent.definePermissioned({
   systemPrompt: testPrompt,
   tools: { search: searchTool, note: noteTool, delegate: delegateTool },
   agents: { research: _research },
 });
 type Root = typeof _root;
-const _single = definePermissionedAgent({
+const _single = agent.definePermissioned({
   systemPrompt: testPrompt,
   tools: { search: searchTool },
   agents: {},
@@ -108,12 +109,12 @@ const readTool = builder
   .declare({ name: "read", description: "Reads", ArgumentsSchema: t.subtype({ filePath: t.str }) })
   .withCustomIR({ fileReadIR })
   .define(async () => ({ run: async () => ok({ type: "output" as const, content: [] }) }));
-const fileChild = definePermissionedAgent({
+const fileChild = agent.definePermissioned({
   systemPrompt: testPrompt,
   tools: { read: readTool },
   agents: {},
 });
-const fileRoot = definePermissionedAgent({
+const fileRoot = agent.definePermissioned({
   systemPrompt: testPrompt,
   tools: { search: searchTool },
   agents: { child: fileChild },
@@ -180,8 +181,8 @@ expectType<typeof testPrompt>(_root.systemPrompt);
 expectType<typeof testPrompt>(_research.systemPrompt);
 expectType<typeof testPrompt>(_grandchild.systemPrompt);
 // @ts-expect-error Every agent definition must declare its system prompt.
-definePermissionlessAgent({ tools: { search: searchTool }, agents: {} });
-definePermissionlessAgent({
+agent.definePermissionless({ tools: { search: searchTool }, agents: {} });
+agent.definePermissionless({
   systemPrompt: testPrompt,
   tools: {},
   // @ts-expect-error Raw subagent definitions must declare prompts too.
@@ -192,17 +193,17 @@ const dataTool = builder
   .withData<{ tool: boolean }>()
   .declare({ name: "data", description: "Uses data", ArgumentsSchema: t.subtype({}) })
   .define(async () => ({ run: async () => ok({ type: "output" as const, content: [] }) }));
-const promptDataLeaf = definePermissionlessAgent({
+const promptDataLeaf = agent.definePermissionless({
   systemPrompt: prompt.withData<{ leaf: string }>().declare(async ({ data }) => data.leaf),
   tools: {},
   agents: {},
 });
-const promptDataMiddle = definePermissionlessAgent({
+const promptDataMiddle = agent.definePermissionless({
   systemPrompt: prompt.withData<{ middle: number }>().declare(async ({ data }) => `${data.middle}`),
   tools: {},
   agents: { leaf: promptDataLeaf },
 });
-const promptDataRoot = definePermissionlessAgent({
+const promptDataRoot = agent.definePermissionless({
   systemPrompt: prompt
     .withData<{ root: string }>()
     .withData<{ version: number }>()
@@ -227,7 +228,7 @@ const _missingPromptData: typeof resolvePromptData = async () => ({
   tool: true,
 });
 
-const noDataAgent = definePermissionlessAgent({
+const noDataAgent = agent.definePermissionless({
   systemPrompt: testPrompt,
   tools: {},
   agents: {},
@@ -235,11 +236,11 @@ const noDataAgent = definePermissionlessAgent({
 const resolveNoData: TrajectoryParams<typeof noDataAgent, null>["getData"] = async () => ({});
 expectType<Promise<{}>>(resolveNoData());
 
-const conflictingPromptData = definePermissionlessAgent({
+const conflictingPromptData = agent.definePermissionless({
   systemPrompt: prompt.withData<{ shared: string }>().declare(async ({ data }) => data.shared),
   tools: {},
   agents: {
-    child: definePermissionlessAgent({
+    child: agent.definePermissionless({
       systemPrompt: prompt
         .withData<{ shared: number }>()
         .declare(async ({ data }) => `${data.shared}`),
@@ -359,7 +360,7 @@ function inspectGenericChildLowering<A extends Agent<any, any, any, any>>(
   return lower(history);
 }
 
-const _conversionRoot = definePermissionedAgent({
+const _conversionRoot = agent.definePermissioned({
   systemPrompt: testPrompt,
   tools: {},
   agents: { child: _root },
@@ -541,53 +542,49 @@ function inspectMode(mode: TrajectoryMode<Root>) {
   }
 }
 
-// The permission capability is uniform down the tree — keeping the "permission" param's
-// presence the single source of truth — and both directions of a mix are rejected. Each
-// violation surfaces on the parent's agents line.
-definePermissionlessAgent({
+// The final builder call chooses the permission capability for the complete tree, rather than
+// retaining independently selected capabilities from its input fragments.
+const permissionlessTree = agent.definePermissionless({
   systemPrompt: testPrompt,
   tools: { search: searchTool },
-  // We expect an error here because a permissionless tree may not carry permissioned subagents
-  // @ts-expect-error
   agents: {
-    research: definePermissionedAgent({
+    research: agent.definePermissioned({
       systemPrompt: testPrompt,
       tools: { search: searchTool },
       agents: {},
     }),
   },
 });
+type _permissionlessRootChoice = Expect<Equal<IsPermissioned<typeof permissionlessTree>, false>>;
+type _permissionlessChildChoice = Expect<
+  Equal<IsPermissioned<(typeof permissionlessTree)["agents"]["research"]>, false>
+>;
 
-definePermissionedAgent({
+const permissionedTree = agent.definePermissioned({
   systemPrompt: testPrompt,
   tools: { search: searchTool },
-  // We expect an error here because a permissioned tree may not carry permissionless subagents
-  // @ts-expect-error
   agents: {
-    research: definePermissionlessAgent({
+    research: agent.definePermissionless({
       systemPrompt: testPrompt,
       tools: { search: searchTool },
       agents: {},
     }),
   },
 });
+type _permissionedRootChoice = Expect<Equal<IsPermissioned<typeof permissionedTree>, true>>;
+type _permissionedChildChoice = Expect<
+  Equal<IsPermissioned<(typeof permissionedTree)["agents"]["research"]>, true>
+>;
 
-// The uniformity rule applies at every depth. The violation surfaces twice — on the parent
-// of the offender (mid's agents map carries the mixed-tree flag) and on the offender itself
-// — so both spans carry a directive.
-definePermissionlessAgent({
+const nestedPermissionlessTree = agent.definePermissionless({
   systemPrompt: testPrompt,
   tools: { search: searchTool },
   agents: {
-    // We expect an error here because a permissionless tree may not carry permissioned subagents
-    // @ts-expect-error
-    mid: definePermissionlessAgent({
+    mid: agent.definePermissionless({
       systemPrompt: testPrompt,
       tools: { search: searchTool },
-      // We expect an error here because a permissionless tree may not carry permissioned subagents
-      // @ts-expect-error
       agents: {
-        bad: definePermissionedAgent({
+        bad: agent.definePermissioned({
           systemPrompt: testPrompt,
           tools: { search: searchTool },
           agents: {},
@@ -596,11 +593,14 @@ definePermissionlessAgent({
     }),
   },
 });
+type _nestedPermissionlessChoice = Expect<
+  Equal<IsPermissioned<(typeof nestedPermissionlessTree)["agents"]["mid"]["agents"]["bad"]>, false>
+>;
 
 // We expect an error here because the delegate tool declares a research subagent dependency
 // this agent does not satisfy
 // @ts-expect-error
-const _undeclaredSubagent = definePermissionlessAgent({
+const _undeclaredSubagent = agent.definePermissionless({
   systemPrompt: testPrompt,
   tools: { delegate: delegateTool },
   agents: {},

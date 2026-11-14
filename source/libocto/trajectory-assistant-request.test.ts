@@ -5,7 +5,7 @@ import { LocalTransport } from "../transports/local.ts";
 import { err, ok, type Result } from "./result.ts";
 import { ToolBuilder, type LoadedTools, type ToolCall } from "./tools/tool-def.ts";
 import {
-  defineAgent,
+  agent,
   type Agent,
   type AssistantMessage,
   type LlmIR,
@@ -46,7 +46,7 @@ const searchTool = new ToolBuilder()
   }));
 const testPrompt = prompt.declare(async () => "Test prompt");
 
-const _testAgent = defineAgent({
+const _testAgent = agent.definePermissionless({
   systemPrompt: testPrompt,
   tools: { search: searchTool },
   agents: {},

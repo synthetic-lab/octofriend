@@ -1,7 +1,7 @@
 import { describe, expect, it } from "bun:test";
 import { t } from "structural";
 import { LocalTransport } from "../../transports/local.ts";
-import { definePermissionlessAgent } from "../llm-ir.ts";
+import { agent as agentBuilder } from "../llm-ir.ts";
 import { err, ok } from "../result.ts";
 import { prompt } from "../system-prompt.ts";
 import { AbortError } from "../transport.ts";
@@ -29,12 +29,12 @@ const unavailableTool = new ToolBuilder<RootData>()
   .declare({ name: "unavailable", description: "Unavailable", ArgumentsSchema: t.subtype({}) })
   .define(async () => null);
 
-const child = definePermissionlessAgent({
+const child = agentBuilder.definePermissionless({
   systemPrompt: testPrompt,
   tools: { shared: sharedTool, child: childTool },
   agents: {},
 });
-const agent = definePermissionlessAgent({
+const agent = agentBuilder.definePermissionless({
   systemPrompt: testPrompt,
   tools: { shared: sharedTool, unavailable: unavailableTool },
   agents: { child },
@@ -85,7 +85,7 @@ describe("loadAgentTools", () => {
       .define(async () => {
         throw new Error("load failed");
       });
-    const root = definePermissionlessAgent({
+    const root = agentBuilder.definePermissionless({
       systemPrompt: testPrompt,
       tools: { failing },
       agents: {},
@@ -106,7 +106,7 @@ describe("loadAgentTools", () => {
         controller.abort();
         throw new AbortError();
       });
-    const root = definePermissionlessAgent({
+    const root = agentBuilder.definePermissionless({
       systemPrompt: testPrompt,
       tools: { failing },
       agents: {},
@@ -128,7 +128,7 @@ describe("loadAgentTools", () => {
         controller.abort();
         throw new Error("ordinary failure");
       });
-    const root = definePermissionlessAgent({
+    const root = agentBuilder.definePermissionless({
       systemPrompt: testPrompt,
       tools: { failing },
       agents: {},

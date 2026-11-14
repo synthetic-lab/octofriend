@@ -2,7 +2,7 @@ import { prompt } from "./system-prompt.ts";
 import { describe, expect, it } from "bun:test";
 import { t } from "structural";
 import type { AgentIR, Content, CompilerReadyIR, LowerOutputIR, TreeIR } from "./llm-ir.ts";
-import { definePermissionedAgent, definePermissionlessAgent } from "./llm-ir.ts";
+import { agent } from "./llm-ir.ts";
 import {
   activeHistory,
   downconvert,
@@ -28,14 +28,14 @@ const searchTool = new ToolBuilder<unknown>()
 // The capability is uniform down the tree, so this tree is permissioned to its leaves.
 const testPrompt = prompt.declare(async () => "Test prompt");
 
-const _grandchildAgent = definePermissionedAgent({
+const _grandchildAgent = agent.definePermissioned({
   systemPrompt: testPrompt,
   tools: { search: searchTool },
   agents: {},
 });
 type GrandchildAgent = typeof _grandchildAgent;
 
-const _researchAgent = definePermissionedAgent({
+const _researchAgent = agent.definePermissioned({
   systemPrompt: testPrompt,
   tools: { search: searchTool },
   agents: {
@@ -44,7 +44,7 @@ const _researchAgent = definePermissionedAgent({
 });
 type ResearchAgent = typeof _researchAgent;
 
-const _testAgent = definePermissionedAgent({
+const _testAgent = agent.definePermissioned({
   systemPrompt: testPrompt,
   tools: { search: searchTool },
   agents: {
@@ -674,17 +674,17 @@ describe("downconvert", () => {
       .define(async () => ({
         run: async ({ customIR }) => customIR.result({ text: "done", failed: false }),
       }));
-    const leaf = definePermissionlessAgent({
+    const leaf = agent.definePermissionless({
       systemPrompt: testPrompt,
       tools: { report: reportTool },
       agents: {},
     });
-    const child = definePermissionlessAgent({
+    const child = agent.definePermissionless({
       systemPrompt: testPrompt,
       tools: { search: searchTool },
       agents: { grandchild: leaf },
     });
-    const _root = definePermissionlessAgent({
+    const _root = agent.definePermissionless({
       systemPrompt: testPrompt,
       tools: { search: searchTool },
       agents: { research: child },

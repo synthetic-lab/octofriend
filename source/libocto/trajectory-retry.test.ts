@@ -4,7 +4,7 @@ import { t } from "structural";
 import { compilerUsage } from "./compilers/compiler-interface.ts";
 import { downconvert, lower } from "./ir-operations.ts";
 import {
-  definePermissionedAgent,
+  agent,
   type AgentIR,
   type LowerOutputIR,
   type RequestErrorIR,
@@ -34,12 +34,12 @@ const reportTool = new ToolBuilder<unknown>()
   .define(async () => ({
     run: async ({ customIR }) => customIR.result({ error: "report failed" }),
   }));
-const childAgent = definePermissionedAgent({
+const childAgent = agent.definePermissioned({
   systemPrompt: testPrompt,
   tools: { report: reportTool },
   agents: {},
 });
-const _testAgent = definePermissionedAgent({
+const _testAgent = agent.definePermissioned({
   systemPrompt: testPrompt,
   tools: { report: reportTool },
   agents: { child: childAgent },

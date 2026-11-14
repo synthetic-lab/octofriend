@@ -8,13 +8,13 @@ import { runAnthropicAgent } from "./compilers/anthropic.ts";
 import type { Compiler } from "./compilers/compiler-interface.ts";
 import { runResponsesAgent } from "./compilers/responses.ts";
 import { runAgent } from "./compilers/standard.ts";
-import { definePermissionlessAgent, type AgentIR } from "./llm-ir.ts";
+import { agent as agentBuilder, type AgentIR } from "./llm-ir.ts";
 import { err, ok, type Result } from "./result.ts";
 import { Trajectory } from "./trajectory.ts";
 
 const providers = ["standard", "responses", "anthropic"] as const;
 type Provider = (typeof providers)[number];
-const agent = definePermissionlessAgent({ systemPrompt, tools: {}, agents: {} });
+const agent = agentBuilder.definePermissionless({ systemPrompt, tools: {}, agents: {} });
 
 function fixture(provider: Provider, transport: MockTransport) {
   let networkCalls = 0;
