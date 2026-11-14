@@ -20,6 +20,7 @@ import type { LoadedTools, ToolCall, ToolDef } from "./tools/tool-def.ts";
 import type { AutofixJsonFn, Compiler, CompilerError } from "./compilers/compiler-interface.ts";
 import { compilerUsage } from "./compilers/compiler-interface.ts";
 import { userInterruptReason } from "./compilers/ir-prompts.ts";
+import type { ExecutionModel } from "./execution.ts";
 
 const SKIP_INVALID_REASON = "One of your other tool calls was invalid, so no tool calls were run";
 const SKIP_ABORTED_REASON = "The user aborted the response, so this tool was skipped";
@@ -56,7 +57,9 @@ export type ToolCallForTools<A extends Agent<any, any, any, any>> = {
 }[ToolNames<A>];
 
 export type ToolDataFor<Def> =
-  Def extends ToolDef<infer Data, infer _N, infer _A, infer _P, infer _S, infer _E> ? Data : never;
+  Def extends ToolDef<infer Data, infer _Provider, infer _N, infer _A, infer _P, infer _S, infer _E>
+    ? Data
+    : never;
 
 export type AgentToolData<A extends Agent<any, any, any, any>> = UnionToIntersection<
   ToolDataFor<LoadedToolsByName<A>[ToolNames<A>]>
@@ -106,12 +109,12 @@ export type ErrorCorrection<A extends Agent<any, any, any, any>> = {
   tools?: ToolCorrections<A>;
 };
 
-export type TrajectoryAssistantRequestParams<A extends Agent<any, any, any, any>, Model> = {
-  model: Model;
+export type TrajectoryAssistantRequestParams<A extends Agent<any, any, any, any>, Provider> = {
+  model: ExecutionModel<Provider>;
   messages: Array<AgentIR<A>>;
   tools: Partial<LoadedTools<A["tools"]>>;
   data: AgentToolData<A>;
-  runCompiler: Compiler<Model>;
+  runCompiler: Compiler<Provider>;
   lowerMessages: (messages: Array<TreeIR<A>>) => Array<CompilerReadyIR<A>>;
   systemPrompt?: (signal: AbortSignal) => Promise<string>;
   transport: Transport;
@@ -177,6 +180,7 @@ async function assistantRequestAttempt<A extends Agent<any, any, any, any>, Mode
   const buffer: AssistantBuffer<TrajectoryAssistantRequestTokenTypes> = {};
   const result = await runCompiler<A, Partial<LoadedTools<A["tools"]>>>({
     model,
+    backend: model.provider,
     irs: lowerMessages(messages).map(({ converted }) => converted),
     abortSignal,
     transport,

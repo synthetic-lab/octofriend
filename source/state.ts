@@ -28,18 +28,18 @@ import { create } from "zustand";
 import { useShallow } from "zustand/shallow";
 import { toLlmIR } from "./ir/convert-history-ir.ts";
 import { Transport } from "./libocto/transport.ts";
-import { run, type ModelData } from "./compilers/run.ts";
+import { run, type Backend } from "./compilers/run.ts";
 import type { Compiler } from "./libocto/compilers/compiler-interface.ts";
-import type { MultimodalConfig } from "./libocto/modalities.ts";
 import { lowerMessages } from "./libocto/ir-operations.ts";
 import { autofixEdit, makeAutofixJson } from "./compilers/autofix.ts";
 import { messageText, type UserMessage } from "./libocto/llm-ir.ts";
-import { err, ok, type Result } from "./libocto/result.ts";
+import { err, ok } from "./libocto/result.ts";
+import type { ExecutionModel } from "./libocto/execution.ts";
 import {
   Trajectory,
   DEFAULT_MAX_TOOL_OUTPUT_FRACTION,
   type TrajectoryMode,
-  type TrajectoryModelError,
+  type TrajectoryModelResult,
 } from "./libocto/trajectory.ts";
 import {
   octoPermissionGate,
@@ -77,7 +77,7 @@ export type LiveMirror = {
 };
 
 export type LiveTrajectory = {
-  instance: Trajectory<typeof octoAgent, ModelData>;
+  instance: Trajectory<typeof octoAgent, Backend>;
   exitController: AbortController;
   finished: Promise<void>;
 };
@@ -85,7 +85,7 @@ export type LiveTrajectory = {
 export type BootEnv = {
   config: Config;
   transport: Transport;
-  runCompiler?: Compiler<ModelData>;
+  runCompiler?: Compiler<Backend>;
 };
 
 type SessionControls = {
@@ -247,7 +247,7 @@ export const useAppStore = create<UiState>((set, get) => {
     history: readonly HistoryNode[];
     config: Config;
     transport: Transport;
-    runCompiler: Compiler<ModelData>;
+    runCompiler: Compiler<Backend>;
   }): LiveTrajectory => {
     const { session, history, config, transport, runCompiler } = args;
     const exitController = new AbortController();
@@ -287,16 +287,14 @@ export const useAppStore = create<UiState>((set, get) => {
       }
     };
 
+    const countTokens: ExecutionModel<Backend>["countTokens"] = async irs =>
+      irs.reduce((tokens, ir) => tokens + estimateTokens(messageText(ir)), 0);
+
     const instance = new Trajectory({
       agent: octoAgent,
       messages: toLlmIR([...history]),
       abortSignal: exitController.signal,
-      model: async (): Promise<
-        Result<
-          { model: ModelData; contextWindow: number; modalities: MultimodalConfig | null },
-          TrajectoryModelError
-        >
-      > => {
+      model: async (): Promise<TrajectoryModelResult<Backend>> => {
         const model = currentModel();
         if (model.type === "codex") {
           const authResult = await readAuthForModel(model, currentConfig());
@@ -304,9 +302,11 @@ export const useAppStore = create<UiState>((set, get) => {
             return err({ type: "auth-error", authError: authResult.error.message });
           }
           return ok({
-            model: { type: "codex", auth: authResult.auth, model },
+            provider: { type: "codex", auth: authResult.auth, model },
+            model: model.model,
             contextWindow: model.context,
             modalities: model.modalities ?? null,
+            countTokens,
           });
         }
         const authResult = await readAuthForModel(model, currentConfig());
@@ -314,13 +314,14 @@ export const useAppStore = create<UiState>((set, get) => {
           return err({ type: "auth-error", authError: authResult.error.message });
         }
         return ok({
-          model: { type: "api", auth: authResult.auth, model },
+          provider: { type: "api", auth: authResult.auth, model },
+          model: model.model,
           contextWindow: model.context,
           modalities: model.modalities ?? null,
+          countTokens,
         });
       },
-      countTokens: irs => irs.reduce((tokens, ir) => tokens + estimateTokens(messageText(ir)), 0),
-      toolContentTooLargeError: async ir => {
+      toolContentTooLargeError: async (ir, tokens, model) => {
         let text = "";
         if (ir.role === "tool-output") {
           for (const part of ir.content) {
@@ -331,13 +332,11 @@ export const useAppStore = create<UiState>((set, get) => {
         } else if (ir.role === "tool-runtime-error") {
           text = ir.error;
         }
-        const model = currentModel();
-        const tokens = estimateTokens(text);
         const preview = text.slice(0, PREVIEW_CHARS);
         return (
           `Tool output was too large: approximately ${tokens} tokens, which is ` +
           `${DEFAULT_MAX_TOOL_OUTPUT_FRACTION * 100}% or more of the model's ` +
-          `${model.context}-token context window. The output was discarded to protect the ` +
+          `${model.contextWindow}-token context window. The output was discarded to protect the ` +
           `context window. Retry with a more targeted approach: page through the file with ` +
           `partial-read using offset/limit, narrow searches with tighter patterns or ` +
           `maxResults, or limit shell output (e.g. pipe through head/tail/grep). Before it ` +
@@ -643,7 +642,7 @@ export const useAppStore = create<UiState>((set, get) => {
       history: repairedHistory,
       config: args.config,
       transport: args.transport,
-      runCompiler: args.runCompiler ?? (run as Compiler<ModelData>),
+      runCompiler: args.runCompiler ?? (run as Compiler<Backend>),
     });
     set(state => ({
       sessionMode: makeLive({

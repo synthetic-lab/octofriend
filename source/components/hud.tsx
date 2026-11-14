@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useState } from "react";
 import { Span, useApp } from "paintcannon-react";
 import type { TerminalResizeEvent } from "paintcannon";
 import { TerminalFlex } from "./terminal-flex.tsx";
@@ -65,11 +65,17 @@ export function useHudLayout(syntheticModels: SyntheticModel[]): HudLayout {
   const sessionMode = useAppStore(state => state.sessionMode);
   const history = useAppStore(state => state.history);
 
-  const percentUsed = useMemo(() => {
-    if (sessionMode.mode !== "live") return null;
-    const used = sessionMode.trajectory.instance.primaryAgentApproximateContext();
-    return Math.min(1, used / model.context);
-  }, [sessionMode, history, model]);
+  const [percentUsed, setPercentUsed] = useState<number | null>(null);
+  useEffect(() => {
+    if (sessionMode.mode !== "live") return;
+    let current = true;
+    void sessionMode.trajectory.instance.primaryAgentApproximateContext().then(used => {
+      if (current) setPercentUsed(Math.min(1, used / model.context));
+    });
+    return () => {
+      current = false;
+    };
+  }, [sessionMode, history, model.context]);
 
   const allSections: Section[] = [];
   allSections.push({

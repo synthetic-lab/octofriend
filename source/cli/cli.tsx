@@ -22,7 +22,7 @@ import { DockerTransport, manageContainer } from "../transports/docker.ts";
 import { readUpdates, markUpdatesSeen } from "../update-notifs/update-notifs.ts";
 import { migrate } from "../db/migrate.ts";
 import { run } from "../compilers/run.ts";
-import type { ModelData } from "../compilers/run.ts";
+import type { Backend } from "../compilers/run.ts";
 import { octoAgent } from "../ir/octo-ir.ts";
 import { loadInputHistory } from "../input-history/index.ts";
 import { makeAutofixJson } from "../compilers/autofix.ts";
@@ -393,26 +393,27 @@ bench
   .action(async opts => {
     const { config } = await loadConfigWithoutReauth(undefined, null);
     const transport = new LocalTransport();
-    const model = opts.model
+    const maybeModel = opts.model
       ? config.models.find(m => m.nickname === opts.model)
       : config.models[0];
 
-    if (model == null) {
+    if (maybeModel == null) {
       logger.log.error(`No model with the nickname ${opts.model} found. Did you add it to Octo?`);
       logger.log.error("The available models are:");
       logger.log.error("- " + config.models.map(m => m.nickname).join("\n- "));
-      process.exit(1);
+      return process.exit(1);
     }
+    const model = maybeModel;
 
     const concurrency = Math.max(1, parseInt(opts.concurrency ?? "1", 10));
-    let modelData: ModelData;
+    let backend: Backend;
     if (model.type === "codex") {
       const authResult = await readAuthForModel(model, config);
       if (!authResult.ok) {
         logger.log.error(authResult.error.message);
         process.exit(1);
       }
-      modelData = {
+      backend = {
         type: "codex",
         auth: authResult.auth,
         model,
@@ -423,7 +424,7 @@ bench
         logger.log.error(authResult.error.message);
         process.exit(1);
       }
-      modelData = {
+      backend = {
         type: "api",
         auth: authResult.auth,
         model,
@@ -460,7 +461,13 @@ bench
       const tokenTimestamps: Date[] = [];
 
       const result = await run<typeof octoAgent>({
-        model: modelData,
+        model: {
+          provider: backend,
+          model: model.model,
+          contextWindow: model.context,
+          modalities: model.modalities ?? null,
+        },
+        backend,
         autofixJson,
         irs: [
           {
@@ -618,7 +625,7 @@ cli
       process.exit(1);
     }
 
-    let modelData: ModelData;
+    let backend: Backend;
     if (model.type === "codex") {
       const authResult = await readAuthForModel(model, config);
       if (!authResult.ok) {
@@ -641,7 +648,7 @@ cli
 
         process.exit(1);
       }
-      modelData = {
+      backend = {
         type: "codex",
         auth: authResult.auth,
         model,
@@ -671,7 +678,7 @@ cli
 
         process.exit(1);
       }
-      modelData = {
+      backend = {
         type: "api",
         auth: authResult.auth,
         model,
@@ -701,7 +708,13 @@ cli
     let seenReasoning = false;
     let seenContent = false;
     const result = await run<typeof octoAgent>({
-      model: modelData,
+      model: {
+        provider: backend,
+        model: model.model,
+        contextWindow: model.context,
+        modalities: model.modalities ?? null,
+      },
+      backend,
       systemPrompt,
       irs: messages,
       autofixJson,

@@ -3,9 +3,16 @@ import rewriteToolFactory from "./index.ts";
 import { fileTracker } from "../file-tracker.ts";
 import { err, ok, unwrap } from "../../result.ts";
 import { MockTransport } from "../../../transports/mock.ts";
+import { defaultCountTokens } from "../../execution.ts";
 
 const config = {};
-const model = { contextWindow: 100_000 };
+const model = {
+  provider: null,
+  model: "test-model",
+  contextWindow: 100_000,
+  modalities: null,
+  countTokens: defaultCountTokens,
+};
 
 async function createRewriteTool(transport: MockTransport) {
   const tool = await rewriteToolFactory({

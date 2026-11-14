@@ -23,7 +23,7 @@ import {
   trees,
 } from "./session-history/schema/session-history-schema.ts";
 import { err, ok, type Result } from "./libocto/result.ts";
-import type { ModelData } from "./compilers/run.ts";
+import type { Backend } from "./compilers/run.ts";
 import {
   compilerUsage,
   type Compiler,
@@ -254,17 +254,17 @@ const QUEUE_EXHAUSTED: CompilerQueueItem = () =>
   });
 
 function makeRunCompiler(queue: CompilerQueueItem[]) {
-  const calls: Array<{ irs: Array<LoweredIR<any>>; tools: string[]; model: ModelData }> = [];
-  const runCompiler: Compiler<ModelData> = async <
+  const calls: Array<{ irs: Array<LoweredIR<any>>; tools: string[]; model: string }> = [];
+  const runCompiler: Compiler<Backend> = async <
     A extends Agent<any, any, any, any>,
     Tools extends Partial<LoadedTools<A["tools"]>> | undefined = undefined,
   >(
-    params: CompilerParams<A, ModelData, Tools>,
+    params: CompilerParams<A, Backend, Tools>,
   ): Promise<CompilerResult<A, Tools>> => {
     calls.push({
       irs: [...params.irs] as Array<LoweredIR<any>>,
       tools: Object.keys(params.tools ?? {}),
-      model: params.model,
+      model: params.model.model,
     });
     const next = queue.shift() ?? QUEUE_EXHAUSTED;
     const result = await next(params.onTokens, params);
@@ -506,7 +506,7 @@ describe("boot and response mirror", () => {
       await waitTrajectoryMode("ready-for-request");
 
       expect(compilerCalls).toHaveLength(1);
-      expect(compilerCalls[0].model.model).toEqual(selectedModel);
+      expect(compilerCalls[0].model).toEqual(selectedModel.model);
       expect(compilerCalls[0].irs).toEqual([
         { role: "user", content: [{ type: "text", content: "first request" }] },
       ]);

@@ -5,7 +5,6 @@ import type {
   CompilerError,
   CompilerImplementationParams,
   CompilerIR,
-  CompilerModalities,
 } from "./compiler-interface.ts";
 import { compilerUsage, defineCompiler } from "./compiler-interface.ts";
 import { parseToolCall } from "./parse-tool-call.ts";
@@ -19,8 +18,9 @@ import type { LoadedTools, ToolCall } from "../tools/tool-def.ts";
 import { errorToString, err, type Result } from "../result.ts";
 import * as irPrompts from "./ir-prompts.ts";
 import { tagged } from "./ir-prompts.ts";
-import type { OpenAICompilerModel } from "./openai-shared.ts";
+import type { OpenAIBackend } from "./openai-shared.ts";
 import { openAIRequestError } from "./openai-shared.ts";
+import type { MultimodalConfig } from "../modalities.ts";
 
 type ToolCallRequest<A extends Agent<any, any, any, any>> = ToolCall<A["tools"]>;
 type LoadedTool<A extends Agent<any, any, any, any>> = LoadedTools<A["tools"]>[keyof LoadedTools<
@@ -91,7 +91,7 @@ function imagePlaceholderContent(): string {
 
 function openaiContentParts(
   content: IRContent["content"],
-  modalities?: CompilerModalities,
+  modalities?: MultimodalConfig | null,
 ): UserContent {
   const output: UserContent = [];
   for (const part of content) {
@@ -99,7 +99,7 @@ function openaiContentParts(
       output.push({ type: "text", text: part.content });
       continue;
     }
-    if (modalities?.includes("vision")) {
+    if (modalities?.image?.enabled) {
       output.push({
         type: "image_url",
         image_url: { url: part.image.dataUrl },
@@ -140,7 +140,7 @@ JSON`;
 export async function toLlmMessages<A extends Agent<any, any, any, any>>(
   messages: Array<CompilerIR<A>>,
   systemPrompt?: () => Promise<string>,
-  modalities?: CompilerModalities,
+  modalities?: MultimodalConfig | null,
 ): Promise<Array<ChatCompletionMessageParam>> {
   const output: LlmMessage[] = [];
 
@@ -161,7 +161,7 @@ export async function toLlmMessages<A extends Agent<any, any, any, any>>(
 
 function llmFromIr<A extends Agent<any, any, any, any>>(
   ir: CompilerIR<A>,
-  modalities?: CompilerModalities,
+  modalities?: MultimodalConfig | null,
 ): LlmMessage {
   if (ir.role === "assistant") {
     const { toolCalls } = ir;
@@ -282,11 +282,11 @@ async function handleKnownErrors<T>(
   }
 }
 
-export const runAgent: Compiler<OpenAICompilerModel> = defineCompiler(
+export const runAgent: Compiler<OpenAIBackend> = defineCompiler(
   async <A extends Agent<any, any, any, any>>(
-    params: CompilerImplementationParams<A, OpenAICompilerModel>,
+    params: CompilerImplementationParams<A, OpenAIBackend>,
   ) => {
-    const { model, irs, abortSignal, transport, systemPrompt, autofixJson } = params;
+    const { model, backend, irs, abortSignal, transport, systemPrompt, autofixJson } = params;
     const messages = await toLlmMessages(irs, systemPrompt, model.modalities);
 
     const toolDefs = params.tools || {};
@@ -318,7 +318,7 @@ export const runAgent: Compiler<OpenAICompilerModel> = defineCompiler(
           };
 
     const curl = generateCurlFrom({
-      baseURL: model.client.baseURL,
+      baseURL: backend.client.baseURL,
       model: model.model,
       messages,
       ...toolsParam,
@@ -327,10 +327,10 @@ export const runAgent: Compiler<OpenAICompilerModel> = defineCompiler(
       const reasoning: {
         reasoning_effort?: "low" | "medium" | "high";
       } = {};
-      if (model.reasoningEffort)
-        reasoning.reasoning_effort = model.reasoningEffort as "low" | "medium" | "high";
+      if (backend.reasoningEffort)
+        reasoning.reasoning_effort = backend.reasoningEffort as "low" | "medium" | "high";
 
-      const { data: res, response } = await model.client.chat.completions
+      const { data: res, response } = await backend.client.chat.completions
         .create(
           {
             ...reasoning,

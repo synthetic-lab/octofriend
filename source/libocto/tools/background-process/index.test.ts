@@ -5,13 +5,20 @@ import { MockTransport } from "../../../transports/mock.ts";
 import { unwrap } from "../../result.ts";
 import backgroundProcessTool from "./index.ts";
 import manageBackgroundProcessTool from "../manage-background-process/index.ts";
+import { defaultCountTokens } from "../../execution.ts";
 
 async function createTools(controller: AbortController) {
   const transport = new MockTransport({});
   const context = {
     signal: controller.signal,
     transport,
-    model: { contextWindow: 100_000 },
+    model: {
+      provider: null,
+      model: "test-model",
+      contextWindow: 100_000,
+      modalities: null,
+      countTokens: defaultCountTokens,
+    },
     data: {},
   };
   const start = await backgroundProcessTool(context);

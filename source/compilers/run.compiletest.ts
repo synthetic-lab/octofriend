@@ -9,13 +9,15 @@ import type { Transport } from "../libocto/transport.ts";
 import type { LoadedTools as GenericLoadedTools } from "../libocto/tools/tool-def.ts";
 import { octoAgent } from "../ir/octo-ir.ts";
 import { run } from "./run.ts";
-import type { ModelData } from "./run.ts";
+import type { Backend } from "./run.ts";
+import type { ExecutionModel } from "../libocto/execution.ts";
 
 function expectType<T>(_: T) {}
 
 type LoadedTools = GenericLoadedTools<typeof octoAgent.tools>;
 
-declare const modelData: ModelData;
+declare const backend: Backend;
+declare const model: Omit<ExecutionModel<Backend>, "countTokens">;
 declare const messages: Array<LoweredIR<typeof octoAgent.tools>>;
 declare const signal: AbortSignal;
 declare const transport: Transport;
@@ -23,7 +25,8 @@ declare const autofixJson: (badJson: string, signal: AbortSignal) => Promise<Jso
 declare const tools: Partial<LoadedTools>;
 
 const noToolsResult = run<typeof octoAgent>({
-  model: modelData,
+  model,
+  backend,
   irs: messages,
   abortSignal: signal,
   transport,
@@ -43,7 +46,8 @@ noToolsResult.then(result => {
 });
 
 const withToolsResult = run<typeof octoAgent, Partial<LoadedTools>>({
-  model: modelData,
+  model,
+  backend,
   irs: messages,
   abortSignal: signal,
   transport,
@@ -57,7 +61,8 @@ const withToolsResult = run<typeof octoAgent, Partial<LoadedTools>>({
 expectType<Promise<CompilerResult<typeof octoAgent, Partial<LoadedTools>>>>(withToolsResult);
 
 run<typeof octoAgent>({
-  model: modelData,
+  model,
+  backend,
   irs: messages,
   abortSignal: signal,
   transport,

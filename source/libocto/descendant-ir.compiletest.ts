@@ -18,7 +18,14 @@ type ReadAgent = PermissionedAgent<
   never,
   {},
   {
-    read: ToolFactory<unknown, { name: "read"; arguments: { path: string } }, string, never, never>;
+    read: ToolFactory<
+      unknown,
+      unknown,
+      { name: "read"; arguments: { path: string } },
+      string,
+      never,
+      never
+    >;
   },
   {}
 >;
@@ -27,6 +34,7 @@ type WriteAgent = PermissionedAgent<
   {},
   {
     write: ToolFactory<
+      unknown,
       unknown,
       { name: "write"; arguments: { text: string } },
       number,

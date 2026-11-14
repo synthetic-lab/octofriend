@@ -7,6 +7,7 @@ import { prompt } from "../system-prompt.ts";
 import { AbortError } from "../transport.ts";
 import { ToolBuilder } from "./tool-def.ts";
 import { loadAgentTools } from "./load-tools.ts";
+import { defaultCountTokens } from "../execution.ts";
 
 type RootData = { root: string };
 type ChildData = { child: number };
@@ -43,7 +44,13 @@ function args(data: RootData & ChildData = { root: "root", child: 1 }) {
   return {
     signal: new AbortController().signal,
     transport: new LocalTransport(),
-    model: { contextWindow: 10_000 },
+    model: {
+      provider: null,
+      model: "test-model",
+      contextWindow: 10_000,
+      modalities: null,
+      countTokens: defaultCountTokens,
+    },
     data,
   };
 }

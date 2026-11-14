@@ -4,8 +4,16 @@ import { compilerUsage, defineCompiler } from "./compilers/compiler-interface.ts
 import { userInterruptReason } from "./compilers/ir-prompts.ts";
 import { err } from "./result.ts";
 import { trajectoryCompaction } from "./trajectory-compaction.ts";
+import { defaultCountTokens, type ExecutionModel } from "./execution.ts";
 
 const transport = new LocalTransport();
+const model: ExecutionModel<null> = {
+  provider: null,
+  model: "test-model",
+  contextWindow: 100_000,
+  modalities: null,
+  countTokens: defaultCountTokens,
+};
 const interrupted = { role: "interrupted-by-user", reason: userInterruptReason() };
 const summaryCompiler = defineCompiler<null>(async ({ finish }) => {
   const output = {
@@ -31,7 +39,7 @@ describe("trajectoryCompaction", () => {
       let starts = 0;
       if (when === "before-start") interrupt.abort();
       const outcome = await trajectoryCompaction.run({
-        model: null,
+        model,
         messages: [],
         transport,
         abortSignal: interrupt.signal,
@@ -59,7 +67,7 @@ describe("trajectoryCompaction", () => {
       const interrupt = new AbortController();
       const progress: string[] = [];
       const outcome = await trajectoryCompaction.run({
-        model: null,
+        model,
         messages: [],
         transport,
         abortSignal: interrupt.signal,
@@ -86,7 +94,7 @@ describe("trajectoryCompaction", () => {
 
   it("returns a completed checkpoint as IR", async () => {
     const outcome = await trajectoryCompaction.run({
-      model: null,
+      model,
       messages: [],
       transport,
       abortSignal: new AbortController().signal,
@@ -104,7 +112,7 @@ describe("trajectoryCompaction", () => {
 
   it("returns a request failure as compaction IR", async () => {
     const outcome = await trajectoryCompaction.run({
-      model: null,
+      model,
       messages: [],
       transport,
       abortSignal: new AbortController().signal,
@@ -126,7 +134,7 @@ describe("trajectoryCompaction", () => {
       quit.abort();
     }
     const outcome = await trajectoryCompaction.run({
-      model: null,
+      model,
       messages: [],
       transport,
       abortSignal: interrupt.signal,
@@ -145,7 +153,7 @@ describe("trajectoryCompaction", () => {
   it("propagates exceptions when the signal is not aborted", async () => {
     await expect(
       trajectoryCompaction.run({
-        model: null,
+        model,
         messages: [],
         transport,
         abortSignal: new AbortController().signal,

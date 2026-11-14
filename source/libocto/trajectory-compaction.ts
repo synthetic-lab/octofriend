@@ -15,6 +15,7 @@ import type {
 import { userInterruptReason } from "./compilers/ir-prompts.ts";
 import { err, ok, type Result } from "./result.ts";
 import { combineSignals } from "./signals.ts";
+import type { ExecutionModel } from "./execution.ts";
 
 export type AutocompactionStream = {
   type: "autocompaction-stream";
@@ -33,10 +34,10 @@ export type TrajectoryCompactionIR =
   | InterruptedByUserIR
   | ModelErrorIR;
 
-export type TrajectoryCompactionParams<A extends Agent<any, any, any, any>, Model> = {
-  model: Model;
+export type TrajectoryCompactionParams<A extends Agent<any, any, any, any>, Provider> = {
+  model: ExecutionModel<Provider>;
   messages: Array<CompilerIR<A>>;
-  runCompiler: Compiler<Model>;
+  runCompiler: Compiler<Provider>;
   transport: Transport;
   abortSignal: AbortSignal;
   quitSignal: AbortSignal;
@@ -92,6 +93,7 @@ async function compactionAttempt<A extends Agent<any, any, any, any>, Model>({
     run: compactionMessages => {
       return runCompiler<A, undefined>({
         model,
+        backend: model.provider,
         irs: compactionMessages,
         abortSignal,
         transport,

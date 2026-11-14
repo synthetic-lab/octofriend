@@ -2,6 +2,7 @@ import { err, ok, type Result } from "../result.ts";
 import type { Agent, AssistantMessage, LoweredIR } from "../llm-ir.ts";
 import type { LoadedTools, ToolMap } from "../tools/tool-def.ts";
 import { Transport } from "../transport.ts";
+import type { ExecutionModel } from "../execution.ts";
 
 export type CompilerIR<A extends Agent<any, any, any, any>> = LoweredIR<A["tools"]>;
 export type CompilerTokenType<Tools = unknown> = [Tools] extends [undefined]
@@ -132,9 +133,10 @@ export type CompilerSuccessData<A extends Agent<any, any, any, any>> = {
   usage: CompilerUsage;
 };
 
-type CompilerParamsBase<A extends Agent<any, any, any, any>, Model> = {
+type CompilerParamsBase<A extends Agent<any, any, any, any>, Backend> = {
   systemPrompt?: () => Promise<string>;
-  model: Model;
+  model: Omit<ExecutionModel<unknown>, "countTokens">;
+  backend: Backend;
   irs: Array<CompilerIR<A>>;
   abortSignal: AbortSignal;
   transport: Transport;
@@ -143,33 +145,33 @@ type CompilerParamsBase<A extends Agent<any, any, any, any>, Model> = {
 
 export type CompilerParams<
   A extends Agent<any, any, any, any>,
-  Model,
+  Backend,
   Tools extends Partial<LoadedTools<A["tools"]>> | undefined = undefined,
-> = CompilerParamsBase<A, Model> & {
+> = CompilerParamsBase<A, Backend> & {
   onTokens: (t: string, type: CompilerTokenType<Tools>) => Promise<void>;
   tools?: Tools;
 };
 
 export type CompilerParamsWithoutTools<
   A extends Agent<any, any, any, any>,
-  Model,
-> = CompilerParamsBase<A, Model> & {
+  Backend,
+> = CompilerParamsBase<A, Backend> & {
   onTokens: (t: string, type: CompilerTokenType<undefined>) => Promise<void>;
   tools?: undefined;
 };
 
 export type CompilerParamsWithTools<
   A extends Agent<any, any, any, any>,
-  Model,
+  Backend,
   Tools extends Partial<LoadedTools<A["tools"]>> = Partial<LoadedTools<A["tools"]>>,
-> = CompilerParamsBase<A, Model> & {
+> = CompilerParamsBase<A, Backend> & {
   onTokens: (t: string, type: "reasoning" | "content" | "tool") => Promise<void>;
   tools: Tools;
 };
 
-export type CompilerParamsImplementation<A extends Agent<any, any, any, any>, Model> =
-  | CompilerParamsWithoutTools<A, Model>
-  | CompilerParamsWithTools<A, Model>;
+export type CompilerParamsImplementation<A extends Agent<any, any, any, any>, Backend> =
+  | CompilerParamsWithoutTools<A, Backend>
+  | CompilerParamsWithTools<A, Backend>;
 
 const compilerFinished = Symbol("compilerFinished");
 type CompilerFinishedData<A extends Agent<any, any, any, any>> = CompilerSuccessData<A> & {
@@ -180,14 +182,14 @@ type CompilerImplementationResult<A extends Agent<any, any, any, any>> = Result<
   CompilerError
 >;
 
-export function compilerParamsHaveTools<A extends Agent<any, any, any, any>, Model>(
-  params: CompilerParamsImplementation<A, Model>,
-): params is CompilerParamsWithTools<A, Model> {
+export function compilerParamsHaveTools<A extends Agent<any, any, any, any>, Backend>(
+  params: CompilerParamsImplementation<A, Backend>,
+): params is CompilerParamsWithTools<A, Backend> {
   return params.tools !== undefined;
 }
 
-export type CompilerImplementationParams<A extends Agent<any, any, any, any>, Model> = Omit<
-  CompilerParamsImplementation<A, Model>,
+export type CompilerImplementationParams<A extends Agent<any, any, any, any>, Backend> = Omit<
+  CompilerParamsImplementation<A, Backend>,
   "onTokens"
 > & {
   onTokens: (t: string, type: "reasoning" | "content" | "tool") => Promise<void>;
@@ -200,12 +202,12 @@ export type CompilerImplementationParams<A extends Agent<any, any, any, any>, Mo
   }) => Promise<CompilerImplementationResult<A>>;
 };
 
-type CompilerImplementation<Model> = <A extends Agent<any, any, any, any>>(
-  params: CompilerImplementationParams<A, Model>,
+type CompilerImplementation<Backend> = <A extends Agent<any, any, any, any>>(
+  params: CompilerImplementationParams<A, Backend>,
 ) => Promise<CompilerImplementationResult<A>>;
 
-function compilerSuccess<A extends Agent<any, any, any, any>, Model>(
-  params: CompilerParamsImplementation<A, Model>,
+function compilerSuccess<A extends Agent<any, any, any, any>, Backend>(
+  params: CompilerParamsImplementation<A, Backend>,
   data: CompilerSuccessData<A>,
 ): CompilerResult<A, undefined> | CompilerResult<A> {
   if (
@@ -227,11 +229,11 @@ function compilerSuccess<A extends Agent<any, any, any, any>, Model>(
   return ok(data);
 }
 
-export type Compiler<Model> = <
+export type Compiler<Backend> = <
   A extends Agent<any, any, any, any>,
   Tools extends Partial<LoadedTools<A["tools"]>> | undefined = undefined,
 >(
-  params: CompilerParams<A, Model, Tools>,
+  params: CompilerParams<A, Backend, Tools>,
 ) => Promise<CompilerResult<A, Tools>>;
 
 // defineCompiler keeps the "were tools offered?" bookkeeping local to libocto. Concrete compiler
@@ -242,20 +244,20 @@ export type Compiler<Model> = <
 // every tool parsing path. finish(...) also skips the parsedOutput callback after aborts, because
 // compiler parsedOutput callbacks are where expensive or invalid-on-abort tool parsing usually
 // happens.
-export function defineCompiler<Model>(
-  implementation: CompilerImplementation<Model>,
-): Compiler<Model> {
+export function defineCompiler<Backend>(
+  implementation: CompilerImplementation<Backend>,
+): Compiler<Backend> {
   async function compiler<A extends Agent<any, any, any, any>>(
-    params: CompilerParamsWithoutTools<A, Model>,
+    params: CompilerParamsWithoutTools<A, Backend>,
   ): Promise<CompilerResult<A, undefined>>;
   async function compiler<A extends Agent<any, any, any, any>>(
-    params: CompilerParamsWithTools<A, Model>,
+    params: CompilerParamsWithTools<A, Backend>,
   ): Promise<CompilerResult<A>>;
   async function compiler<A extends Agent<any, any, any, any>>(
-    params: CompilerParamsImplementation<A, Model>,
+    params: CompilerParamsImplementation<A, Backend>,
   ): Promise<CompilerResult<A, undefined> | CompilerResult<A>> {
     let unexpectedToolCall = false;
-    const onTokens: CompilerImplementationParams<A, Model>["onTokens"] = async (tokens, type) => {
+    const onTokens: CompilerImplementationParams<A, Backend>["onTokens"] = async (tokens, type) => {
       if (type === "tool") {
         if (!compilerParamsHaveTools(params)) {
           unexpectedToolCall = true;
@@ -269,7 +271,7 @@ export function defineCompiler<Model>(
       await params.onTokens(tokens, type);
     };
 
-    const finish: CompilerImplementationParams<A, Model>["finish"] = async ({
+    const finish: CompilerImplementationParams<A, Backend>["finish"] = async ({
       curl,
       headers,
       usage,

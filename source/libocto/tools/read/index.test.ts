@@ -7,6 +7,15 @@ import readToolFactory from "./index.ts";
 import { err, unwrap } from "../../result.ts";
 import { MockTransport } from "../../../transports/mock.ts";
 import type { Transport } from "../../transport.ts";
+import { defaultCountTokens } from "../../execution.ts";
+
+const model = {
+  provider: null,
+  model: "test-model",
+  contextWindow: 100_000,
+  modalities: null,
+  countTokens: defaultCountTokens,
+};
 
 function createTransport(files: Record<string, string>): Transport {
   return new MockTransport({ cwd: "/repo", files });
@@ -16,7 +25,7 @@ async function createReadTool(transport: Transport) {
   const tool = await readToolFactory({
     signal: new AbortController().signal,
     transport,
-    model: { contextWindow: 100_000 },
+    model,
     data: {},
   });
   if (!tool) throw new Error("read tool did not load");
@@ -52,7 +61,7 @@ describe("read tool", () => {
         await tool.run({
           signal: new AbortController().signal,
           transport,
-          model: { contextWindow: 100_000 },
+          model,
           toolCall: readToolCall({ filePath: "read-error.txt" }),
           data: {},
         }),
@@ -82,7 +91,7 @@ describe("read tool", () => {
         await tool.run({
           signal: new AbortController().signal,
           transport,
-          model: { contextWindow: 100_000 },
+          model,
           toolCall: readToolCall({ filePath }),
           data: {},
         }),
@@ -110,7 +119,7 @@ describe("read tool", () => {
     const toolResult = await tool.run({
       signal,
       transport,
-      model: { contextWindow: 100_000 },
+      model,
       toolCall: readToolCall({ filePath: "full.txt" }),
       data: {},
     });

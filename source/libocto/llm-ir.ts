@@ -34,7 +34,7 @@ export type Agent<
   Tools extends ToolMap<Extract<keyof SubagentDirectory, string>, Extra>,
   PromptData,
 > = {
-  systemPrompt: SystemPrompt<PromptData>;
+  systemPrompt: SystemPrompt<PromptData, any>;
   tools: Tools;
   agents: SubagentDirectory;
 };
@@ -87,13 +87,21 @@ export type PermissionlessAgent<
 // Helper functions to define agents with compile-time safety guarantees. They're identity functions
 // that run compile-time validation on the passed-in agent and assign the correct type + branding.
 export function definePermissionedAgent<
-  A extends { systemPrompt: SystemPrompt<any>; tools: ToolMap<any, any>; agents: AgentDirectory },
+  A extends {
+    systemPrompt: SystemPrompt<any, any>;
+    tools: ToolMap<any, any>;
+    agents: AgentDirectory;
+  },
 >(a: A & ValidateAgentSubagents<A, true>): A & PermissionedBrand {
   return a as unknown as A & PermissionedBrand;
 }
 
 export function definePermissionlessAgent<
-  A extends { systemPrompt: SystemPrompt<any>; tools: ToolMap<any, any>; agents: AgentDirectory },
+  A extends {
+    systemPrompt: SystemPrompt<any, any>;
+    tools: ToolMap<any, any>;
+    agents: AgentDirectory;
+  },
 >(a: A & ValidateAgentSubagents<A, false>): A {
   return a;
 }
@@ -150,12 +158,13 @@ type UnionToIntersection<U> = (U extends U ? (x: U) => void : never) extends (x:
 export type AllToolsAcrossTree<A extends Agent<any, any, any, any>> = {
   [K in keyof TreeToolMap<A>]: TreeToolMap<A>[K] extends ToolFactory<
     infer D,
+    infer Provider,
     infer S,
     infer P,
     infer Subs,
     infer E
   >
-    ? Exclude<Awaited<ReturnType<ToolFactory<D, S, P, Subs, E>>>, null>
+    ? Exclude<Awaited<ReturnType<ToolFactory<D, Provider, S, P, Subs, E>>>, null>
     : never;
 };
 
@@ -591,7 +600,7 @@ type DescendantPreLoweredIR<Agents extends AgentDirectory> = AgentPreLoweredIR<
 // the exact descendant schemas when intersected; any would erase their literal types.
 type InspectionTools = Record<
   string,
-  ToolFactory<unknown, { name: string; arguments: unknown }, unknown, string, never>
+  ToolFactory<unknown, unknown, { name: string; arguments: unknown }, unknown, string, never>
 >;
 
 // Expanding the fields prevents TypeScript from comparing agents/tool factories instead of
