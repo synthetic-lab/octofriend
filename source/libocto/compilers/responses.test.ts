@@ -10,7 +10,7 @@ import {
 } from "./responses.ts";
 import { compilerUsage } from "./compiler-interface.ts";
 import type { LoweredIR } from "../llm-ir.ts";
-import type { ToolCall } from "../tools/tool-def.ts";
+import type { ToolCall } from "../toolkits/tool-def.ts";
 
 describe("openAIStrictFunctionParameters", () => {
   it("closes object schemas for OpenAI strict function calling", () => {

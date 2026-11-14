@@ -1,6 +1,6 @@
 import { err, ok, type Result } from "../result.ts";
 import type { Agent, AssistantMessage, LoweredIR } from "../llm-ir.ts";
-import type { LoadedTools, ToolMap } from "../tools/tool-def.ts";
+import type { LoadedTools, ToolMap } from "../toolkits/tool-def.ts";
 import { Transport } from "../transport.ts";
 import type { ExecutionModel } from "../execution.ts";
 

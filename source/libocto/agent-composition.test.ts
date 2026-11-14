@@ -3,7 +3,7 @@ import { t } from "structural";
 import { agent } from "./llm-ir.ts";
 import { ok } from "./result.ts";
 import { prompt } from "./system-prompt.ts";
-import { ToolBuilder } from "./tools/tool-def.ts";
+import { ToolBuilder } from "./toolkits/tool-def.ts";
 
 const testPrompt = prompt.declare(async () => "Test prompt");
 const builder = new ToolBuilder<unknown>();
@@ -24,12 +24,12 @@ const secondChild = agent.definePermissionless({
   tools: { second: secondTool },
   agents: {},
 });
-const fragmentTools = { first: firstTool };
-const base = agent.use({ tools: fragmentTools, agents: { firstChild } });
+const toolkitTools = { first: firstTool };
+const base = agent.use({ tools: toolkitTools, agents: { firstChild } });
 const extended = base.use({ tools: { second: secondTool }, agents: { secondChild } });
 
 describe("agent composition", () => {
-  it("accumulates fragments immutably and returns plain agents with unchanged children", () => {
+  it("accumulates toolkits immutably and returns plain agents with unchanged children", () => {
     const baseResult = base.definePermissionless({
       systemPrompt: testPrompt,
       tools: {},
@@ -56,18 +56,18 @@ describe("agent composition", () => {
     expect(result.tools.second === secondTool).toBe(true);
     expect(result.agents.firstChild === firstChild).toBe(true);
     expect(result.agents.secondChild === secondChild).toBe(true);
-    expect(fragmentTools).toEqual({ first: firstTool });
+    expect(toolkitTools).toEqual({ first: firstTool });
   });
 
   it("rejects duplicate tools and duplicate subagents at use and final definition", () => {
     expect(() =>
       // @ts-expect-error Deliberately bypass compile-time rejection to test runtime behavior.
       base.use({ tools: { first: secondTool } }),
-    ).toThrow('Cannot use fragment: tool "first" is already defined');
+    ).toThrow('Cannot use toolkit: tool "first" is already defined');
     expect(() =>
       // @ts-expect-error Deliberately bypass compile-time rejection to test runtime behavior.
       base.use({ agents: { firstChild: secondChild } }),
-    ).toThrow('Cannot use fragment: subagent "firstChild" is already defined');
+    ).toThrow('Cannot use toolkit: subagent "firstChild" is already defined');
     expect(() =>
       // @ts-expect-error Deliberately bypass compile-time rejection to test runtime behavior.
       base.definePermissionless({
@@ -75,7 +75,7 @@ describe("agent composition", () => {
         tools: { first: firstTool },
         agents: {},
       }),
-    ).toThrow('Cannot use fragment: tool "first" is already defined');
+    ).toThrow('Cannot use toolkit: tool "first" is already defined');
     expect(() =>
       // @ts-expect-error Deliberately bypass compile-time rejection to test runtime behavior.
       base.definePermissionless({
@@ -83,7 +83,7 @@ describe("agent composition", () => {
         tools: {},
         agents: { firstChild },
       }),
-    ).toThrow('Cannot use fragment: subagent "firstChild" is already defined');
+    ).toThrow('Cannot use toolkit: subagent "firstChild" is already defined');
   });
 
   it("allows the same name in the tool and subagent namespaces", () => {

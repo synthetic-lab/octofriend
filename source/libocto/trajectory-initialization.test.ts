@@ -12,7 +12,7 @@ import {
 } from "./llm-ir.ts";
 import { requestSnapshot } from "./request-snapshot.ts";
 import { ok } from "./result.ts";
-import { ToolBuilder, type ToolCall, type ToolMap } from "./tools/tool-def.ts";
+import { ToolBuilder, type ToolCall, type ToolMap } from "./toolkits/tool-def.ts";
 import { Trajectory, type TrajectoryEvents, type TrajectoryMode } from "./trajectory.ts";
 
 type TestData = { calls: string[] };

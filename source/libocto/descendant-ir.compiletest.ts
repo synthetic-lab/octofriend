@@ -12,7 +12,7 @@ import type {
   TreeToolCall,
 } from "./llm-ir.ts";
 import type { ActiveHistory } from "./ir-operations.ts";
-import type { ToolCall, ToolFactory } from "./tools/tool-def.ts";
+import type { ToolCall, ToolFactory } from "./toolkits/tool-def.ts";
 
 // The optimized traversal must project directory entries, not individual members of a
 // union-valued entry. Nor may an any entry swallow its typed siblings before projection.

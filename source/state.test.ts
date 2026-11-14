@@ -41,7 +41,7 @@ import {
 } from "./libocto/llm-ir.ts";
 import type { TrajectoryMode } from "./libocto/trajectory.ts";
 import { meaningfulTailIR } from "./libocto/ir-operations.ts";
-import type { LoadedTools, ToolCall } from "./libocto/tools/tool-def.ts";
+import type { LoadedTools, ToolCall } from "./libocto/toolkits/tool-def.ts";
 import type { octoAgent, OctoIR } from "./ir/octo-ir.ts";
 import type toolMap from "./tools/tool-defs/index.ts";
 import { LocalTransport } from "./transports/local.ts";

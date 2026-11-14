@@ -10,7 +10,7 @@ import type {
   ToolFactoryRequirements,
   ToolMap,
   ToolSubagentNames,
-} from "./tools/tool-def.ts";
+} from "./toolkits/tool-def.ts";
 
 /*
  * LLM IR
@@ -90,15 +90,15 @@ type AgentDefinition = {
   agents: AgentDirectory;
 };
 
-// A partial top-level agent directory. Child agents remain complete definitions; composition only
-// shallow-merges each node's own tool and child directories and never combines child trees.
-export type AgentFragment = {
+// A reusable toolkit contributes tools and complete child-agent definitions to one agent node.
+// Composition only shallow-merges those directories and never combines child trees.
+export type AgentToolkit = {
   tools?: ToolMap<any, any>;
   agents?: AgentDirectory;
 };
 
-type FragmentTools<Fragment extends AgentFragment> = NonNullable<Fragment["tools"]>;
-type FragmentAgents<Fragment extends AgentFragment> = NonNullable<Fragment["agents"]>;
+type ToolkitTools<Toolkit extends AgentToolkit> = NonNullable<Toolkit["tools"]>;
+type ToolkitAgents<Toolkit extends AgentToolkit> = NonNullable<Toolkit["agents"]>;
 
 type MergeAgentDefinition<Definition extends AgentDefinition, Tools, Agents> = Definition & {
   tools: Tools;
@@ -121,22 +121,22 @@ type ValidateComposedAgent<AgentType> =
 declare const conflictingUseTools: unique symbol;
 declare const conflictingUseAgents: unique symbol;
 
-type RejectUseConflicts<Tools, Agents, Incoming extends AgentFragment> = [
-  Extract<keyof Tools, keyof FragmentTools<Incoming>>,
+type RejectUseConflicts<Tools, Agents, Incoming extends AgentToolkit> = [
+  Extract<keyof Tools, keyof ToolkitTools<Incoming>>,
 ] extends [never]
-  ? [Extract<keyof Agents, keyof FragmentAgents<Incoming>>] extends [never]
+  ? [Extract<keyof Agents, keyof ToolkitAgents<Incoming>>] extends [never]
     ? unknown
     : {
-        readonly [conflictingUseAgents]: Extract<keyof Agents, keyof FragmentAgents<Incoming>>;
+        readonly [conflictingUseAgents]: Extract<keyof Agents, keyof ToolkitAgents<Incoming>>;
       }
   : {
-      readonly [conflictingUseTools]: Extract<keyof Tools, keyof FragmentTools<Incoming>>;
+      readonly [conflictingUseTools]: Extract<keyof Tools, keyof ToolkitTools<Incoming>>;
     };
 
 type AgentComposer<Tools, Agents> = {
-  use<const Fragment extends AgentFragment>(
-    fragment: Fragment & RejectUseConflicts<Tools, Agents, Fragment>,
-  ): AgentComposer<Tools & FragmentTools<Fragment>, Agents & FragmentAgents<Fragment>>;
+  use<const Toolkit extends AgentToolkit>(
+    toolkit: Toolkit & RejectUseConflicts<Tools, Agents, Toolkit>,
+  ): AgentComposer<Tools & ToolkitTools<Toolkit>, Agents & ToolkitAgents<Toolkit>>;
 
   definePermissioned<const Definition extends AgentDefinition>(
     definition: Definition &
@@ -158,7 +158,7 @@ function mergeRecords<Left extends object, Right extends object>(
 ): Left & Right {
   for (const name of Object.keys(right)) {
     if (Object.keys(left).includes(name)) {
-      throw new Error(`Cannot use fragment: ${kind} "${name}" is already defined`);
+      throw new Error(`Cannot use toolkit: ${kind} "${name}" is already defined`);
     }
   }
   return { ...left, ...right };
@@ -168,12 +168,12 @@ function createAgentComposer<Tools extends ToolMap<any, any>, Agents extends Age
   tools: Tools,
   agents: Agents,
 ): AgentComposer<Tools, Agents> {
-  function use<const Fragment extends AgentFragment>(
-    fragment: Fragment & RejectUseConflicts<Tools, Agents, Fragment>,
-  ): AgentComposer<Tools & FragmentTools<Fragment>, Agents & FragmentAgents<Fragment>> {
+  function use<const Toolkit extends AgentToolkit>(
+    toolkit: Toolkit & RejectUseConflicts<Tools, Agents, Toolkit>,
+  ): AgentComposer<Tools & ToolkitTools<Toolkit>, Agents & ToolkitAgents<Toolkit>> {
     return createAgentComposer(
-      mergeRecords("tool", tools, fragment.tools ?? {}),
-      mergeRecords("subagent", agents, fragment.agents ?? {}),
+      mergeRecords("tool", tools, toolkit.tools ?? {}),
+      mergeRecords("subagent", agents, toolkit.agents ?? {}),
     );
   }
 

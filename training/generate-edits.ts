@@ -1,7 +1,7 @@
 import { t } from "structural";
 import parseGitDiff from "parse-git-diff";
 import { getAllCommits, getCommitDiff, getFileContentsBeforeAfter } from "./git.ts";
-import { DiffEditSchema } from "../source/libocto/tools/edit/index.ts";
+import { DiffEditSchema } from "../source/libocto/toolkits/edit/index.ts";
 import { parseLines } from "./parse.ts";
 import { attempt } from "../source/libocto/result.ts";
 

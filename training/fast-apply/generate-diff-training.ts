@@ -1,7 +1,7 @@
 import { t } from "structural";
 import path from "path";
 import fs from "fs/promises";
-import { DiffEditSchema } from "../../source/libocto/tools/edit/index.ts";
+import { DiffEditSchema } from "../../source/libocto/toolkits/edit/index.ts";
 import { fileURLToPath } from "url";
 import { fixEditPrompt, DiffApplySuccess, DiffApplyFailure } from "../../source/prompts/autofix-prompts.ts";
 import { parseLines } from "../parse.ts";

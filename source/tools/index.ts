@@ -2,7 +2,7 @@ import toolMap from "./tool-defs/index.ts";
 import {
   LoadedTools as GenericLoadedTools,
   ToolCall as GenericToolCall,
-} from "../libocto/tools/tool-def.ts";
+} from "../libocto/toolkits/tool-def.ts";
 
 export type LoadedTools = GenericLoadedTools<typeof toolMap>;
 export type ToolCall = GenericToolCall<typeof toolMap>;

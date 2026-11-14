@@ -23,7 +23,7 @@ import {
   type TreeIR,
 } from "./llm-ir.ts";
 import { err, ok, type Result } from "./result.ts";
-import { ToolBuilder, type LoadedTools, type ToolCall } from "./tools/tool-def.ts";
+import { ToolBuilder, type LoadedTools, type ToolCall } from "./toolkits/tool-def.ts";
 import { Trajectory, type TrajectoryParams } from "./trajectory.ts";
 
 type ToolData = { executed: string[] };

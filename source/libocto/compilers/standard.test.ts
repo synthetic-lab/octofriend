@@ -2,7 +2,7 @@ import { describe, expect, it } from "bun:test";
 import OpenAI from "openai";
 import { MockTransport } from "../../transports/mock.ts";
 import { t } from "structural";
-import { ToolBuilder } from "../tools/tool-def.ts";
+import { ToolBuilder } from "../toolkits/tool-def.ts";
 import { ok } from "../result.ts";
 import type {
   ChatCompletionAssistantMessageParam,
@@ -12,7 +12,7 @@ import { octoAgent } from "../../ir/octo-ir.ts";
 import { compilerUsage } from "./compiler-interface.ts";
 import { runAgent, toLlmMessages } from "./standard.ts";
 import type { LoweredIR, MalformedToolRequest } from "../llm-ir.ts";
-import type { ToolCall } from "../tools/tool-def.ts";
+import type { ToolCall } from "../toolkits/tool-def.ts";
 import { defaultCountTokens } from "../execution.ts";
 
 type Ir = LoweredIR<typeof octoAgent.tools>;
