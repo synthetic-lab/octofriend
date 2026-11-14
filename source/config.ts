@@ -521,7 +521,27 @@ function sanitizeConfig(c: Config): Config {
   return sanitized;
 }
 
+// Resolving a search key can read auth over the network or shell, and a trajectory re-resolves
+// its data several times per step, so a successful resolution is reused for the process lifetime
+// and concurrent calls share one lookup rather than racing to resolve auth twice.
+let cachedSearchConfig: { url: string; key: string } | null = null;
+let inFlightSearchConfig: Promise<{ url: string; key: string } | null> | null = null;
+
 export async function readSearchConfig(config: Config | null) {
+  if (cachedSearchConfig != null) return cachedSearchConfig;
+  const pending = (inFlightSearchConfig ??= resolveSearchConfig(config).then(resolved => {
+    // Cache before the in-flight slot clears, so a caller arriving in between still sees it.
+    if (resolved != null) cachedSearchConfig = resolved;
+    return resolved;
+  }));
+  try {
+    return await pending;
+  } finally {
+    if (inFlightSearchConfig === pending) inFlightSearchConfig = null;
+  }
+}
+
+async function resolveSearchConfig(config: Config | null) {
   if (config?.search) {
     const search = config.search;
     const url = config.search.url;
