@@ -1,7 +1,7 @@
 import path from "path";
 import { parse as parseYaml } from "yaml";
-import { Transport, getEnvVar } from "../libocto/transport.ts";
-import { logger } from "../libocto/logger.ts";
+import { Transport, getEnvVar } from "../../transport.ts";
+import { logger } from "../../logger.ts";
 
 const SKILL_FILE_NAME = "SKILL.md";
 const MAX_NAME_LENGTH = 64;

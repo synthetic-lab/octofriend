@@ -8,8 +8,8 @@ import { DockerTransport, manageContainer } from "./docker.ts";
 import { logger } from "../libocto/logger.ts";
 import { BackgroundProcessManager } from "../libocto/background-process.ts";
 import { ProcessManager, processes } from "../process-manager.ts";
-import backgroundProcessTool from "../tools/tool-defs/background-process.ts";
-import manageBackgroundProcessTool from "../tools/tool-defs/manage-background-process.ts";
+import backgroundProcessTool from "../libocto/tools/background-process/index.ts";
+import manageBackgroundProcessTool from "../libocto/tools/manage-background-process/index.ts";
 import type { ProcessExecFileCallback } from "../libocto/transport.ts";
 
 class FakeChild extends EventEmitter {

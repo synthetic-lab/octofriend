@@ -1,13 +1,13 @@
 import { t } from "structural";
-import { USER_ABORTED_ERROR_MESSAGE } from "../../libocto/tools/common.ts";
-import { TOOL_BUILDER } from "../../libocto/tools/tool-def.ts";
-import { ok, err } from "../../libocto/result.ts";
-import { MAX_SHELL_OUTPUT_MEMORY_LIMIT } from "../../libocto/transport.ts";
+import { USER_ABORTED_ERROR_MESSAGE } from "../common.ts";
+import { TOOL_BUILDER } from "../tool-def.ts";
+import { ok, err } from "../../result.ts";
+import { MAX_SHELL_OUTPUT_MEMORY_LIMIT } from "../../transport.ts";
 import {
   backgroundProcesses,
   type BackgroundProcess,
   type BackgroundProcessStatus,
-} from "../../libocto/background-process.ts";
+} from "../../background-process.ts";
 
 export default TOOL_BUILDER.withData<{}>()
   .declare({

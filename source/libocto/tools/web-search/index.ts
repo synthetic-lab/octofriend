@@ -1,7 +1,15 @@
 import { t } from "structural";
-import { TOOL_BUILDER } from "../../libocto/tools/tool-def.ts";
-import type { WebSearchData } from "../tool-data.ts";
-import { ok, attempt } from "../../libocto/result.ts";
+import { TOOL_BUILDER } from "../tool-def.ts";
+import { ok, attempt } from "../../result.ts";
+
+export type ResolvedSearchConfig = {
+  url: string;
+  key: string;
+};
+
+export type WebSearchData = {
+  searchConfig: ResolvedSearchConfig | null;
+};
 
 const SearchResultsSchema = t.subtype({
   results: t.array(

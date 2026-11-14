@@ -1,6 +1,6 @@
 import { describe, expect, it } from "bun:test";
 import { MockTransport } from "../../transports/mock.ts";
-import webSearchTool from "./web-search.ts";
+import webSearchTool from "../../libocto/tools/web-search/index.ts";
 import webResearchTool from "./web-research.ts";
 
 function args(searchConfig: { url: string; key: string } | null) {

@@ -1,10 +1,10 @@
 import { t } from "structural";
-import { fileTracker } from "../../libocto/tools/file-tracker.ts";
-import { attemptUntrackedStat } from "../../libocto/tools/common.ts";
-import { TOOL_BUILDER } from "../../libocto/tools/tool-def.ts";
-import { isImagePath } from "../../libocto/images.ts";
-import { err, ok } from "../../libocto/result.ts";
-import { LINE_NUMBER_PROMPT, withLineNumbers } from "../../libocto/tools/line-numbers.ts";
+import { fileTracker } from "../file-tracker.ts";
+import { attemptUntrackedStat } from "../common.ts";
+import { TOOL_BUILDER } from "../tool-def.ts";
+import { isImagePath } from "../../images.ts";
+import { err, ok } from "../../result.ts";
+import { LINE_NUMBER_PROMPT, withLineNumbers } from "../line-numbers.ts";
 
 const ArgumentsSchema = t.subtype({
   filePath: t.str.comment("Path to text file to read"),

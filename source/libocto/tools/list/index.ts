@@ -1,7 +1,7 @@
 import { t } from "structural";
-import { TOOL_BUILDER } from "../../libocto/tools/tool-def.ts";
-import { Transport } from "../../libocto/transport.ts";
-import { ok, err } from "../../libocto/result.ts";
+import { TOOL_BUILDER } from "../tool-def.ts";
+import { Transport } from "../../transport.ts";
+import { ok, err } from "../../result.ts";
 
 const ArgumentsSchema = t.subtype({
   dirPath: t.optional(t.str.comment("Path to the directory")),
