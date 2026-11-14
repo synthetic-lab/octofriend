@@ -3,6 +3,7 @@ import type {
   Agent,
   AgentDirectory,
   AgentIR,
+  AgentPromptData,
   TreeIR,
   TreeToolCall,
   LowerInputIR,
@@ -88,7 +89,7 @@ export type ClearControl = {
   clear(): void;
 };
 
-export type EditControl<A extends Agent<any, any, any>> = {
+export type EditControl<A extends Agent<any, any, any, any>> = {
   // Trims history from `target` onwards and fires rewind with the removed span; when the
   // target is a user message, its content rides along so the client can offer it for editing.
   rewindTo(target: AgentIR<A>): Promise<void>;
@@ -118,7 +119,7 @@ type SubagentScopes<Agents extends AgentDirectory> = string extends keyof Agents
 
 // Any scope such a tree's arcs can identify with: the root conversation, or a delegation.
 // Payloads that don't vary by arc still narrow on subagent exactly, like the modes do.
-export type ArcScope<A extends Agent<any, any, any>> = ScopeRoot | SubagentScopes<A["agents"]>;
+export type ArcScope<A extends Agent<any, any, any, any>> = ScopeRoot | SubagentScopes<A["agents"]>;
 
 /*
  * What the trajectory is doing right now. Modes carry control objects: the only actions a client
@@ -171,7 +172,7 @@ type SharedArcModes<Call, Permissioned extends boolean> =
 
 // Arms only the root arc can be in: children never await input, and inside a trajectory
 // request/compaction failures are terminal records, so they never park for rectification.
-type RootOnlyModes<A extends Agent<any, any, any>> =
+type RootOnlyModes<A extends Agent<any, any, any, any>> =
   | { mode: "ready-for-request"; control: InputControl & EditControl<A> & PausedControl }
   | {
       mode: "request-error";
@@ -216,7 +217,7 @@ type SubagentModeUnion<Agents extends AgentDirectory> = string extends keyof Age
         | SubagentModeUnion<Agents[K]["agents"]>;
     }[keyof Agents & string];
 
-export type TrajectoryMode<A extends Agent<any, any, any>> =
+export type TrajectoryMode<A extends Agent<any, any, any, any>> =
   | WithArcScope<
       ScopeRoot,
       RootOnlyModes<A> | SharedArcModes<ToolCall<A["tools"]>, IsPermissioned<A>>
@@ -231,8 +232,8 @@ export type TrajectoryMode<A extends Agent<any, any, any>> =
 // received the append and the top-level trajectory that contains it; persisting clients
 // overwrite that one root-history object once for the whole group.
 type ScopedSubagentMessages<
-  Root extends Agent<any, any, any>,
-  Parent extends Agent<any, any, any>,
+  Root extends Agent<any, any, any, any>,
+  Parent extends Agent<any, any, any, any>,
 > = string extends keyof Parent["agents"]
   ? ScopeSubagent<string> & {
       irs: Array<AgentIR<Parent["agents"][string]>>;
@@ -258,7 +259,7 @@ type ScopedSubagentMessages<
         | ScopedSubagentMessages<Root, Parent["agents"][K]>;
     }[keyof Parent["agents"] & string];
 
-type ScopedMessages<A extends Agent<any, any, any>> =
+type ScopedMessages<A extends Agent<any, any, any, any>> =
   | (ScopeRoot & { irs: Array<AgentIR<A>> })
   | ScopedSubagentMessages<A, A>;
 
@@ -275,7 +276,7 @@ type OperationEvents = TrajectoryAssistantRequestEvents &
     };
   };
 
-type ScopedArcEvents<A extends Agent<any, any, any>> = {
+type ScopedArcEvents<A extends Agent<any, any, any, any>> = {
   [K in keyof OperationEvents]: ArcScope<A> & {
     payload: OperationEvents[K];
   };
@@ -288,7 +289,7 @@ type ScopedArcEvents<A extends Agent<any, any, any>> = {
  * happen at the root, where children never park for rectification (inside a trajectory,
  * request/compaction failures are terminal) and never consume steering at all.
  */
-export type TrajectoryEvents<A extends Agent<any, any, any>> = ScopedArcEvents<A> & {
+export type TrajectoryEvents<A extends Agent<any, any, any, any>> = ScopedArcEvents<A> & {
   onMessages: ScopedMessages<A>;
   modeChange: { mode: TrajectoryMode<A> };
   rewind: { removed: readonly AgentIR<A>[]; content: UserMessage["content"] | null };
@@ -305,7 +306,7 @@ export type TrajectoryEvents<A extends Agent<any, any, any>> = ScopedArcEvents<A
   interrupted: { droppedSteering: readonly UserMessage["content"][] };
 };
 
-export type TrajectoryHandler<A extends Agent<any, any, any>> = Partial<{
+export type TrajectoryHandler<A extends Agent<any, any, any, any>> = Partial<{
   [K in keyof TrajectoryEvents<A>]: (event: TrajectoryEvents<A>[K]) => void | Promise<void>;
 }>;
 
@@ -315,34 +316,19 @@ export type TrajectoryModelError = { type: "auth-error"; authError: string };
 
 export type TrajectoryToolLoadError = { type: "quit" } | { type: "fatal"; error: string };
 
-type RuntimeData<A extends Agent<any, any, any>, Model> = {
+type RuntimeData<A extends Agent<any, any, any, any>, Model> = {
   model: Model;
   contextWindow: number;
   modalities: MultimodalConfig | null;
   tools: Partial<AllToolsAcrossTree<A>>;
 };
 
-// One system prompt per subagent anywhere in the tree, keyed by subagent name; the root's is
-// systemPrompt, as today. Declaration stays cheap: each level's own child names are a direct
-// keyof, while descendant levels fold in through the intersection of their subtrees'
-// catalogues — the same shape the tree's merged tool map uses.
-export type SubagentPromptCatalogue<A extends Agent<any, any, any>> = {
-  [K in Extract<keyof A["agents"], string>]: (signal: AbortSignal) => Promise<string>;
-} & DescendantCatalogues<A["agents"]>;
-
-type DescendantCatalogues<Agents extends AgentDirectory> = UnionToIntersection<
-  | {}
-  | {
-      [K in keyof Agents]: SubagentPromptCatalogue<Agents[K]>;
-    }[keyof Agents]
->;
-
 type UnionToIntersection<U> = (U extends U ? (x: U) => void : never) extends (x: infer I) => void
   ? I
   : never;
 
 // Correction maps and data are shared by every arc, just like the loaded tool catalogue.
-type TreeErrorCorrection<A extends Agent<any, any, any>> = ErrorCorrection<A> &
+type TreeErrorCorrection<A extends Agent<any, any, any, any>> = ErrorCorrection<A> &
   UnionToIntersection<
     {} | { [K in keyof A["agents"]]: TreeErrorCorrection<A["agents"][K]> }[keyof A["agents"]]
   >;
@@ -354,7 +340,7 @@ export type RequestErrorRetriesConfig = {
   maxBackoffMs?: number;
 };
 
-export type TrajectoryParams<A extends Agent<any, any, any>, Model> = Omit<
+export type TrajectoryParams<A extends Agent<any, any, any, any>, Model> = Omit<
   TrajectoryAssistantRequestParams<A, Model>,
   | "handler"
   | "abortSignal"
@@ -362,12 +348,17 @@ export type TrajectoryParams<A extends Agent<any, any, any>, Model> = Omit<
   | "model"
   | "tools"
   | "lowerMessages"
-  | "toolData"
+  | "data"
   | "errorCorrection"
 > & {
   agent: A;
-  toolData: AgentToolData<A> &
-    UnionToIntersection<ToolDataFor<AllToolsAcrossTree<A>[keyof AllToolsAcrossTree<A>]>>;
+  // Re-resolved for prompt evaluation, validation, correction, and each tool execution so
+  // clients can supply current configuration without replacing the trajectory.
+  getData: () => Promise<
+    AgentToolData<A> &
+      AgentPromptData<A> &
+      UnionToIntersection<ToolDataFor<AllToolsAcrossTree<A>[keyof AllToolsAcrossTree<A>]>>
+  >;
   errorCorrection?: TreeErrorCorrection<A>;
   // null (or omission) means unlimited retries. Infinity is also accepted.
   validationRetries?: number | null;
@@ -399,8 +390,6 @@ export type TrajectoryParams<A extends Agent<any, any, any>, Model> = Omit<
     messages: Array<LowerInputIR<A>>,
     modalities: MultimodalConfig | null,
   ) => Array<LowerOutputIR<A>>;
-  // A system prompt for every other agent in the tree; the root's is systemPrompt, as today.
-  subagentPrompts: SubagentPromptCatalogue<A>;
   // Caps any single tool output, counted after lowering; defaults to 20% of the context window
   // so one huge result can't push history past autocompaction's reach.
   maxToolOutput?: number;
@@ -534,7 +523,7 @@ function rectifiable(exit: AbortSignal): {
 
 // Each operation receives only the tools declared by its selected agent. The catalogue
 // stays tree-wide; filtering changes neither the loaded definitions nor their schemas.
-function arcTools<A extends Agent<any, any, any>>(
+function arcTools<A extends Agent<any, any, any, any>>(
   agent: { tools: object },
   all: Partial<AllToolsAcrossTree<A>>,
 ): Partial<AllToolsAcrossTree<A>> {
@@ -546,7 +535,7 @@ function arcTools<A extends Agent<any, any, any>>(
   return tools;
 }
 
-export class Trajectory<A extends Agent<any, any, any>, Model> {
+export class Trajectory<A extends Agent<any, any, any, any>, Model> {
   private readonly history: Array<AgentIR<A>>;
   private _mode: TrajectoryMode<A>;
   private turnController = new AbortController();
@@ -889,24 +878,26 @@ export class Trajectory<A extends Agent<any, any, any>, Model> {
     const params = this.params;
     const scope = this.scope(location);
     const lowerMessages = this.lowerForLocation(location, modalities);
+    const data = await params.getData();
     let receivedTokens = false;
-    const isMainAgent = location.root;
-    const systemPrompt = isMainAgent
-      ? params.systemPrompt
-      : params.subagentPrompts[location.subagent as keyof SubagentPromptCatalogue<A>];
 
     // The selected agent B is in A's tree. Narrow the shared catalogues to B at this boundary;
     // the request still uses B's history and tools, never with a child retyped as the root.
-    const run = <B extends Agent<any, any, any>>(agent: B, history: Array<AgentIR<B>>) =>
+    const run = <B extends Agent<any, any, any, any>>(agent: B, history: Array<AgentIR<B>>) =>
       trajectoryAssistantRequest.run<B, Model>({
         model,
         tools: arcTools<A>(agent, allTools) as Partial<LoadedTools<B["tools"]>>,
         messages: history,
-        toolData: params.toolData as AgentToolData<B>,
+        data: data as AgentToolData<B>,
         runCompiler: params.runCompiler,
         lowerMessages: irs =>
           lowerMessages(irs as Array<TreeIR<A>>) as Array<CompilerReadyIR<A> & CompilerReadyIR<B>>,
-        systemPrompt,
+        systemPrompt: async signal =>
+          agent.systemPrompt({
+            signal,
+            transport: params.transport,
+            data: (await params.getData()) as Parameters<B["systemPrompt"]>[0]["data"],
+          }),
         transport: params.transport,
         errorCorrection: params.errorCorrection as ErrorCorrection<B> | undefined,
         abortSignal: this.turnController.signal,
@@ -955,7 +946,9 @@ export class Trajectory<A extends Agent<any, any, any>, Model> {
           },
         },
       });
-    return run(location.agent, location.history);
+    // Inspection proves this is the active agent in A's tree; retaining that generic
+    // correlation through the recursive location union requires an explicit narrowing.
+    return run(location.agent as A, location.history);
   }
 
   private async startSubagent({
@@ -1357,7 +1350,7 @@ export class Trajectory<A extends Agent<any, any, any>, Model> {
         original: { name: toolCall.name, arguments: toolCall.original },
         parsed: { name: toolCall.name, arguments: toolCall.parsed },
       },
-      data: this.params.toolData,
+      data: await this.params.getData(),
     } as RunArgsFor<typeof def>);
     let ir: TreeIR<A>;
     if (!output.success) {

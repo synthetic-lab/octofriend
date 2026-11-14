@@ -54,8 +54,8 @@ export function* meaningfulTailIR<IR extends LlmIR<any> | ToolRejectMessage<any>
 // Temporary references derived from the IR, never a saved execution frame. Each named child
 // retains its own agent/history types and the raw objects needed by scoped append events.
 type ChildHistory<
-  Root extends Agent<any, any, any>,
-  Parent extends Agent<any, any, any>,
+  Root extends Agent<any, any, any, any>,
+  Parent extends Agent<any, any, any, any>,
   Name extends keyof Parent["agents"] & string,
 > = ScopeSubagent<Name> & {
   agent: Parent["agents"][Name];
@@ -69,8 +69,8 @@ type ChildHistory<
 };
 
 type DescendantHistories<
-  Root extends Agent<any, any, any>,
-  Parent extends Agent<any, any, any>,
+  Root extends Agent<any, any, any, any>,
+  Parent extends Agent<any, any, any, any>,
 > = (string extends keyof Parent["agents"]
   ? ChildHistory<Root, Parent, keyof Parent["agents"] & string>
   : {
@@ -91,13 +91,13 @@ type DescendantHistories<
     };
   };
 
-export type ActiveHistory<A extends Agent<any, any, any>> =
+export type ActiveHistory<A extends Agent<any, any, any, any>> =
   | (ScopeRoot & { agent: A; history: Array<AgentIR<A>> })
   | DescendantHistories<A, A>;
 
 // Inspect a recursively downconverted view, but return only references into the live raw tree.
 // The result is temporary: call again after appending rather than saving execution frames.
-export function activeHistory<A extends Agent<any, any, any>>(
+export function activeHistory<A extends Agent<any, any, any, any>>(
   agent: A,
   history: Array<AgentIR<A>>,
   converted: readonly RecursiveLowered<A>[],
@@ -105,7 +105,7 @@ export function activeHistory<A extends Agent<any, any, any>>(
   return walkHistory(agent, history, converted).location;
 }
 
-function walkHistory<A extends Agent<any, any, any>>(
+function walkHistory<A extends Agent<any, any, any, any>>(
   agent: A,
   history: Array<AgentIR<A>>,
   converted: readonly RecursiveLowered<A>[],
@@ -168,7 +168,7 @@ function walkHistory<A extends Agent<any, any, any>>(
 
 // Clients receive only contiguous non-trajectory runs. Libocto alone constructs trajectory
 // pairs, retaining the live original while recursively converting a separate inspection view.
-export function downconvert<A extends Agent<any, any, any>>(
+export function downconvert<A extends Agent<any, any, any, any>>(
   lowerExtras: (messages: Array<LowerInputIR<A>>) => Array<LowerOutputIR<A>>,
 ): (messages: Array<TreeIR<A>>) => Array<RecursiveLowered<A>> {
   const convert = (messages: Array<TreeIR<A>>): Array<RecursiveLowered<A>> => {
@@ -213,7 +213,7 @@ function isRawTrajectory<IR>(ir: IR): ir is IR & {
 
 // Select the active branch from the whole converted tree before scanning its latest batch.
 // Answers stay local to that history; descendants' IDs never answer their parent's calls.
-export function pendingToolCalls<A extends Agent<any, any, any>>(
+export function pendingToolCalls<A extends Agent<any, any, any, any>>(
   history: readonly RecursiveLowered<A>[],
 ): Array<TreeToolCall<A>> {
   while (true) {
@@ -225,7 +225,7 @@ export function pendingToolCalls<A extends Agent<any, any, any>>(
   return scanPendingCalls(history);
 }
 
-function scanPendingCalls<A extends Agent<any, any, any>>(
+function scanPendingCalls<A extends Agent<any, any, any, any>>(
   history: readonly RecursiveLowered<A>[],
 ): Array<TreeToolCall<A>> {
   const answered = new Set<string>();
@@ -252,7 +252,7 @@ function scanPendingCalls<A extends Agent<any, any, any>>(
   return [];
 }
 
-export function lower<A extends Agent<any, any, any>>(
+export function lower<A extends Agent<any, any, any, any>>(
   messages: Array<RecursiveLowered<A>>,
 ): Array<CompilerReadyIR<A>> {
   const sliced = sliceFromMostRecentCheckpoint(messages);
@@ -273,7 +273,7 @@ export function lower<A extends Agent<any, any, any>>(
   return lowered<A>(sliced);
 }
 
-function lowered<A extends Agent<any, any, any>>(
+function lowered<A extends Agent<any, any, any, any>>(
   messages: Array<RecursiveLowered<A>>,
 ): Array<CompilerReadyIR<A>> {
   return messages.flatMap<CompilerReadyIR<A>>(({ original, converted }, index) => {
@@ -326,7 +326,7 @@ function lowered<A extends Agent<any, any, any>>(
   });
 }
 
-function loweredTrajectory<A extends Agent<any, any, any>>(
+function loweredTrajectory<A extends Agent<any, any, any, any>>(
   original: TreeIR<A>,
   trajectory: RecursiveLowered<A>["converted"] & { role: "subagent-trajectory" },
   isLast: boolean,
@@ -413,7 +413,7 @@ function errorMessage(ir: TerminalError): string {
   }
 }
 
-export type HistoryInspection<A extends Agent<any, any, any>> = {
+export type HistoryInspection<A extends Agent<any, any, any, any>> = {
   pendingCalls: Array<TreeToolCall<A>>;
 } & (
   | {
@@ -454,7 +454,7 @@ export type HistoryInspection<A extends Agent<any, any, any>> = {
     }
 );
 
-export function inspectHistory<A extends Agent<any, any, any>>(
+export function inspectHistory<A extends Agent<any, any, any, any>>(
   agent: A,
   history: Array<AgentIR<A>>,
   converted: readonly RecursiveLowered<A>[],
@@ -527,7 +527,7 @@ export type SubagentTrajectoryInspection =
   | { type: "aborted" };
 
 /** @internal Clients should use Trajectory.inspectSubagentTrajectory with its bound lowering. */
-export function inspectSubagentTrajectory<A extends Agent<any, any, any>>(
+export function inspectSubagentTrajectory<A extends Agent<any, any, any, any>>(
   converted: readonly RecursiveLowered<A>[],
 ): SubagentTrajectoryInspection {
   if (retryable(converted)) return { type: "in-progress" };

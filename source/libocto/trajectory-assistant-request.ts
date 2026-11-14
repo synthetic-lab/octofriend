@@ -35,15 +35,15 @@ export type AssistantDelta<AllowedType extends string> = {
 };
 
 // Associate loaded tool definitions with the names used in model requests.
-export type LoadedToolsByName<A extends Agent<any, any, any>> = {
+export type LoadedToolsByName<A extends Agent<any, any, any, any>> = {
   [K in keyof LoadedTools<A["tools"]> as LoadedTools<A["tools"]>[K]["name"]]: LoadedTools<
     A["tools"]
   >[K];
 };
 
-export type ToolNames<A extends Agent<any, any, any>> = keyof LoadedToolsByName<A> & string;
+export type ToolNames<A extends Agent<any, any, any, any>> = keyof LoadedToolsByName<A> & string;
 
-export type ToolCallByName<A extends Agent<any, any, any>, Name extends ToolNames<A>> = {
+export type ToolCallByName<A extends Agent<any, any, any, any>, Name extends ToolNames<A>> = {
   type: "tool-call";
   name: Name;
   toolCallId: string;
@@ -51,14 +51,14 @@ export type ToolCallByName<A extends Agent<any, any, any>, Name extends ToolName
   parsed: t.GetType<LoadedToolsByName<A>[Name]["ParsedSchema"]>;
 };
 
-export type ToolCallForTools<A extends Agent<any, any, any>> = {
+export type ToolCallForTools<A extends Agent<any, any, any, any>> = {
   [Name in ToolNames<A>]: ToolCallByName<A, Name>;
 }[ToolNames<A>];
 
 export type ToolDataFor<Def> =
   Def extends ToolDef<infer Data, infer _N, infer _A, infer _P, infer _S, infer _E> ? Data : never;
 
-export type AgentToolData<A extends Agent<any, any, any>> = UnionToIntersection<
+export type AgentToolData<A extends Agent<any, any, any, any>> = UnionToIntersection<
   ToolDataFor<LoadedToolsByName<A>[ToolNames<A>]>
 >;
 
@@ -66,7 +66,7 @@ type UnionToIntersection<U> = (U extends U ? (x: U) => void : never) extends (x:
   ? I
   : never;
 
-export type TrajectoryAssistantRequestIR<A extends Agent<any, any, any>> =
+export type TrajectoryAssistantRequestIR<A extends Agent<any, any, any, any>> =
   | AssistantMessage<A["tools"]>
   | ToolParseErrorMessage
   | ToolValidationErrorMessage<A["tools"]>
@@ -95,22 +95,22 @@ export type ToolCorrectionArgs<Call, Data> = {
   data: Data;
 };
 
-export type ToolCorrections<A extends Agent<any, any, any>> = Partial<{
+export type ToolCorrections<A extends Agent<any, any, any, any>> = Partial<{
   [Name in ToolNames<A>]: (
     args: ToolCorrectionArgs<ToolCallByName<A, Name>, AgentToolData<A>>,
   ) => Promise<t.GetType<LoadedToolsByName<A>[Name]["ParsedSchema"]> | null>;
 }>;
 
-export type ErrorCorrection<A extends Agent<any, any, any>> = {
+export type ErrorCorrection<A extends Agent<any, any, any, any>> = {
   json?: AutofixJsonFn;
   tools?: ToolCorrections<A>;
 };
 
-export type TrajectoryAssistantRequestParams<A extends Agent<any, any, any>, Model> = {
+export type TrajectoryAssistantRequestParams<A extends Agent<any, any, any, any>, Model> = {
   model: Model;
   messages: Array<AgentIR<A>>;
   tools: Partial<LoadedTools<A["tools"]>>;
-  toolData: AgentToolData<A>;
+  data: AgentToolData<A>;
   runCompiler: Compiler<Model>;
   lowerMessages: (messages: Array<TreeIR<A>>) => Array<CompilerReadyIR<A>>;
   systemPrompt?: (signal: AbortSignal) => Promise<string>;
@@ -129,7 +129,7 @@ export type TrajectoryAssistantRequestParams<A extends Agent<any, any, any>, Mod
 // emitted in flight; the supervisor commits the finalized group and owns all retries.
 export const trajectoryAssistantRequest = registry({ run: runTrajectoryAssistantRequest });
 
-async function runTrajectoryAssistantRequest<A extends Agent<any, any, any>, Model>(
+async function runTrajectoryAssistantRequest<A extends Agent<any, any, any, any>, Model>(
   params: TrajectoryAssistantRequestParams<A, Model>,
 ): Promise<Result<Array<TrajectoryAssistantRequestIR<A>>, "quit">> {
   if (params.quitSignal.aborted) return err("quit");
@@ -146,11 +146,11 @@ async function runTrajectoryAssistantRequest<A extends Agent<any, any, any>, Mod
   }
 }
 
-async function assistantRequestAttempt<A extends Agent<any, any, any>, Model>({
+async function assistantRequestAttempt<A extends Agent<any, any, any, any>, Model>({
   model,
   messages,
   tools,
-  toolData,
+  data,
   runCompiler,
   lowerMessages,
   systemPrompt,
@@ -249,7 +249,7 @@ async function assistantRequestAttempt<A extends Agent<any, any, any>, Model>({
       abortSignal,
       transport,
       defsByName,
-      toolData,
+      data,
       toolCall,
     );
     if (!validation.success && !abortSignal.aborted) {
@@ -261,7 +261,7 @@ async function assistantRequestAttempt<A extends Agent<any, any, any>, Model>({
           validationError: validation.error,
           abortSignal,
           transport,
-          data: toolData,
+          data,
         });
         if (fixed != null && !abortSignal.aborted) {
           const corrected = { ...toolCall, parsed: fixed };
@@ -269,7 +269,7 @@ async function assistantRequestAttempt<A extends Agent<any, any, any>, Model>({
             abortSignal,
             transport,
             defsByName,
-            toolData,
+            data,
             corrected,
           );
           if (correctedValidation.success) {
@@ -326,11 +326,11 @@ function compilerErrorIR(error: CompilerError): RequestErrorIR | ModelErrorIR {
   }
 }
 
-async function validate<A extends Agent<any, any, any>, Name extends ToolNames<A>>(
+async function validate<A extends Agent<any, any, any, any>, Name extends ToolNames<A>>(
   abortSignal: AbortSignal,
   transport: Transport,
   defsByName: Partial<Record<ToolNames<A>, LoadedToolsByName<A>[ToolNames<A>]>>,
-  toolData: AgentToolData<A>,
+  data: AgentToolData<A>,
   toolCall: ToolCallByName<A, Name>,
 ): Promise<Result<null, string>> {
   const def = defsByName[toolCall.name] as LoadedToolsByName<A>[Name] | undefined;
@@ -339,7 +339,7 @@ async function validate<A extends Agent<any, any, any>, Name extends ToolNames<A
     original: { name: toolCall.name, arguments: toolCall.original },
     parsed: { name: toolCall.name, arguments: toolCall.parsed },
   } as ValidateSchemaPair<LoadedToolsByName<A>[Name]>;
-  return def.validate(abortSignal, transport, schemaPair, toolData as ToolDataFor<typeof def>);
+  return def.validate(abortSignal, transport, schemaPair, data as ToolDataFor<typeof def>);
 }
 
 type ValidateSchemaPair<Def> = Def extends {
@@ -347,14 +347,14 @@ type ValidateSchemaPair<Def> = Def extends {
     abortSignal: AbortSignal,
     transport: Transport,
     schemaPair: infer Pair,
-    toolData: never,
+    data: never,
   ) => Promise<Result<null, string>>;
 }
   ? Pair
   : never;
 
 // Re-associate tool names with their definitions without changing their payloads.
-function toToolCallForTools<A extends Agent<any, any, any>>(
+function toToolCallForTools<A extends Agent<any, any, any, any>>(
   toolCall: ToolCall<A["tools"]>,
 ): ToolCallForTools<A> {
   return toolCall as ToolCall<A["tools"]> & ToolCallForTools<A>;

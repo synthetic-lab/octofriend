@@ -256,7 +256,7 @@ const QUEUE_EXHAUSTED: CompilerQueueItem = () =>
 function makeRunCompiler(queue: CompilerQueueItem[]) {
   const calls: Array<{ irs: Array<LoweredIR<any>>; tools: string[]; model: ModelData }> = [];
   const runCompiler: Compiler<ModelData> = async <
-    A extends Agent<any, any, any>,
+    A extends Agent<any, any, any, any>,
     Tools extends Partial<LoadedTools<A["tools"]>> | undefined = undefined,
   >(
     params: CompilerParams<A, ModelData, Tools>,

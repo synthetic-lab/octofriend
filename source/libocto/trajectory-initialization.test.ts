@@ -1,3 +1,4 @@
+import { prompt } from "./system-prompt.ts";
 import { afterEach, describe, expect, it } from "bun:test";
 import { t } from "structural";
 import { MockTransport } from "../transports/mock.ts";
@@ -43,12 +44,20 @@ const delegateLeaf = new ToolBuilder<TestData>()
   .define(async () => ({
     run: async () => ok({ type: "invoke-subagent", name: "leaf", message: text("leaf task") }),
   }));
-const leaf = definePermissionedAgent({ tools: { work: workTool }, agents: {} });
+const testPrompt = prompt.declare(async () => "Test prompt");
+
+const leaf = definePermissionedAgent({
+  systemPrompt: testPrompt,
+  tools: { work: workTool },
+  agents: {},
+});
 const child = definePermissionedAgent({
+  systemPrompt: testPrompt,
   tools: { work: workTool, delegateLeaf },
   agents: { leaf },
 });
 const agent = definePermissionedAgent({
+  systemPrompt: testPrompt,
   tools: { work: workTool, delegateChild },
   agents: { child },
 });
@@ -160,7 +169,7 @@ function fixture(messages: TestIR[], exit = new AbortController()) {
     messages,
     abortSignal: exit.signal,
     transport,
-    toolData: { calls },
+    getData: async () => ({ calls }),
     model: async () => {
       calls.push("model");
       return ok({ model: null, contextWindow: 100_000, modalities: null });
@@ -173,7 +182,6 @@ function fixture(messages: TestIR[], exit = new AbortController()) {
     },
     runCompiler,
     lowerMessages: irs => irs.map(original => ({ original, converted: original })),
-    subagentPrompts: { child: async () => "child", leaf: async () => "leaf" },
     toolContentTooLargeError: async () => "Too large",
     permission: async () => {
       calls.push("permission");

@@ -62,7 +62,7 @@ export const run: Compiler<ModelData> = async params => {
   return result;
 };
 
-function trackCompilerResultUsage<A extends Agent<any, any, any>, Tools>(
+function trackCompilerResultUsage<A extends Agent<any, any, any, any>, Tools>(
   model: string,
   result: CompilerResult<A, Tools>,
 ): void {
@@ -72,7 +72,7 @@ function trackCompilerResultUsage<A extends Agent<any, any, any>, Tools>(
   trackTokens(model, "output", usage.output);
 }
 
-function compilerResultUsage<A extends Agent<any, any, any>, Tools>(
+function compilerResultUsage<A extends Agent<any, any, any, any>, Tools>(
   result: CompilerResult<A, Tools>,
 ): CompilerUsage | undefined {
   if (result.success) return result.data.usage;

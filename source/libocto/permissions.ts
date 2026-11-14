@@ -6,7 +6,7 @@ export type PermissionDecision =
   | { decision: "reject"; steering: UserMessage["content"] };
 
 // The gate handles calls from every agent, including descendant-only tools.
-export type PermissionGate<A extends Agent<any, any, any>> = (
+export type PermissionGate<A extends Agent<any, any, any, any>> = (
   toolCall: TreeToolCall<A>,
 ) => Promise<PermissionDecision>;
 

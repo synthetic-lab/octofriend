@@ -1,3 +1,4 @@
+import { prompt } from "./system-prompt.ts";
 import { describe, expect, it } from "bun:test";
 import { t } from "structural";
 import type { AgentIR, Content, CompilerReadyIR, LowerOutputIR, TreeIR } from "./llm-ir.ts";
@@ -25,13 +26,17 @@ const searchTool = new ToolBuilder<unknown>()
   }));
 
 // The capability is uniform down the tree, so this tree is permissioned to its leaves.
+const testPrompt = prompt.declare(async () => "Test prompt");
+
 const _grandchildAgent = definePermissionedAgent({
+  systemPrompt: testPrompt,
   tools: { search: searchTool },
   agents: {},
 });
 type GrandchildAgent = typeof _grandchildAgent;
 
 const _researchAgent = definePermissionedAgent({
+  systemPrompt: testPrompt,
   tools: { search: searchTool },
   agents: {
     grandchild: _grandchildAgent,
@@ -40,6 +45,7 @@ const _researchAgent = definePermissionedAgent({
 type ResearchAgent = typeof _researchAgent;
 
 const _testAgent = definePermissionedAgent({
+  systemPrompt: testPrompt,
   tools: { search: searchTool },
   agents: {
     research: _researchAgent,
@@ -665,12 +671,18 @@ describe("downconvert", () => {
       .define(async () => ({
         run: async ({ customIR }) => customIR.result({ text: "done", failed: false }),
       }));
-    const leaf = definePermissionlessAgent({ tools: { report: reportTool }, agents: {} });
+    const leaf = definePermissionlessAgent({
+      systemPrompt: testPrompt,
+      tools: { report: reportTool },
+      agents: {},
+    });
     const child = definePermissionlessAgent({
+      systemPrompt: testPrompt,
       tools: { search: searchTool },
       agents: { grandchild: leaf },
     });
     const _root = definePermissionlessAgent({
+      systemPrompt: testPrompt,
       tools: { search: searchTool },
       agents: { research: child },
     });

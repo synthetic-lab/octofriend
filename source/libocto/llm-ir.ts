@@ -2,6 +2,7 @@ import { ImageInfo } from "./images.ts";
 import { BUILTIN_IR_ROLES } from "./ir-roles.ts";
 import type { BuiltinIRRole } from "./ir-roles.ts";
 import type { CompilerUsage } from "./compilers/compiler-interface.ts";
+import type { SystemPrompt, SystemPromptData } from "./system-prompt.ts";
 import type {
   ToolCall,
   ToolExtensionIR,
@@ -31,14 +32,16 @@ export type Agent<
   Extra extends ToolExtensionIR<any>,
   SubagentDirectory extends AgentDirectory,
   Tools extends ToolMap<Extract<keyof SubagentDirectory, string>, Extra>,
+  PromptData,
 > = {
+  systemPrompt: SystemPrompt<PromptData>;
   tools: Tools;
   agents: SubagentDirectory;
 };
 
 // A named directory of agents
 export type AgentDirectory = {
-  [name: string]: Agent<any, any, any>;
+  [name: string]: Agent<any, any, any, any>;
 };
 
 /*
@@ -63,7 +66,7 @@ export type PermissionedBrand = {
   readonly [permissionedAgentBrand]: true;
 };
 
-export type IsPermissioned<A extends Agent<any, any, any>> = A extends PermissionedBrand
+export type IsPermissioned<A extends Agent<any, any, any, any>> = A extends PermissionedBrand
   ? true
   : false;
 
@@ -71,24 +74,26 @@ export type PermissionedAgent<
   Extra extends ToolExtensionIR<any>,
   SubagentDirectory extends AgentDirectory,
   Tools extends ToolMap<Extract<keyof SubagentDirectory, string>, Extra>,
-> = Agent<Extra, SubagentDirectory, Tools> & PermissionedBrand;
+  PromptData,
+> = Agent<Extra, SubagentDirectory, Tools, PromptData> & PermissionedBrand;
 
 export type PermissionlessAgent<
   Extra extends ToolExtensionIR<any>,
   SubagentDirectory extends AgentDirectory,
   Tools extends ToolMap<Extract<keyof SubagentDirectory, string>, Extra>,
-> = Agent<Extra, SubagentDirectory, Tools>;
+  PromptData,
+> = Agent<Extra, SubagentDirectory, Tools, PromptData>;
 
 // Helper functions to define agents with compile-time safety guarantees. They're identity functions
 // that run compile-time validation on the passed-in agent and assign the correct type + branding.
 export function definePermissionedAgent<
-  A extends { tools: ToolMap<any, any>; agents: AgentDirectory },
+  A extends { systemPrompt: SystemPrompt<any>; tools: ToolMap<any, any>; agents: AgentDirectory },
 >(a: A & ValidateAgentSubagents<A, true>): A & PermissionedBrand {
   return a as unknown as A & PermissionedBrand;
 }
 
 export function definePermissionlessAgent<
-  A extends { tools: ToolMap<any, any>; agents: AgentDirectory },
+  A extends { systemPrompt: SystemPrompt<any>; tools: ToolMap<any, any>; agents: AgentDirectory },
 >(a: A & ValidateAgentSubagents<A, false>): A {
   return a;
 }
@@ -116,9 +121,9 @@ export type AllTrajectories<Agents extends AgentDirectory, Tools extends ToolMap
   [K in keyof Agents]: AgentTrajectory<Agents, K, Tools>;
 }[keyof Agents];
 
-// Every subagent name anywhere in the agent tree, as one flat union: tree-wide params
-// (e.g. the system prompt catalogue) key off this rather than a single level's directory.
-export type AllSubagentNames<A extends Agent<any, any, any>> =
+// Every subagent name anywhere in the agent tree, as one flat union for clients that
+// need tree-wide name metadata rather than a single level's directory.
+export type AllSubagentNames<A extends Agent<any, any, any, any>> =
   | Extract<keyof A["agents"], string>
   | {
       [K in keyof A["agents"]]: AllSubagentNames<A["agents"][K]>;
@@ -126,7 +131,7 @@ export type AllSubagentNames<A extends Agent<any, any, any>> =
 
 // The tool maps of every level in the tree, intersected into one. A key used at more than one
 // level must be the same factory, so one loaded entry serves every level declaring it.
-type TreeToolMap<A extends Agent<any, any, any>> = UnionToIntersection<
+type TreeToolMap<A extends Agent<any, any, any, any>> = UnionToIntersection<
   | A["tools"]
   | {
       [K in keyof A["agents"]]: TreeToolMap<A["agents"][K]>;
@@ -142,7 +147,7 @@ type UnionToIntersection<U> = (U extends U ? (x: U) => void : never) extends (x:
 // deferred so no ToolMap constraint has to be proven through the opaque intersection above —
 // LoadedTools needs the same per-key formula, but can rely on its ToolMap constraint instead.
 // The runner filters each arc's subset out of this merged map.
-export type AllToolsAcrossTree<A extends Agent<any, any, any>> = {
+export type AllToolsAcrossTree<A extends Agent<any, any, any, any>> = {
   [K in keyof TreeToolMap<A>]: TreeToolMap<A>[K] extends ToolFactory<
     infer D,
     infer S,
@@ -449,11 +454,11 @@ export type CheckpointedIR<T extends ToolMap<any, any>> =
  * This is the shape callers should produce after lowering their custom IR extensions, but before
  * deciding how to represent nested subagent trajectories for a concrete compiler.
  */
-export type LoweredIRWithTrajectories<A extends Agent<any, any, any>> =
+export type LoweredIRWithTrajectories<A extends Agent<any, any, any, any>> =
   | LoweredIR<A["tools"]>
   | AllTrajectories<A["agents"], A["tools"]>;
 
-export type CheckpointedIRWithTrajectories<A extends Agent<any, any, any>> =
+export type CheckpointedIRWithTrajectories<A extends Agent<any, any, any, any>> =
   | CheckpointedIR<A["tools"]>
   | AllTrajectories<A["agents"], A["tools"]>
   | ToolSubagentInvoke<A["tools"], Extract<keyof A["agents"], string>>;
@@ -467,9 +472,11 @@ export type CheckpointedIRWithTrajectories<A extends Agent<any, any, any>> =
 type ToolExtra<T> = T extends ToolFactoryRequirements<any, infer Extra> ? Extra : never;
 // The extension IRs an agent's tools can produce: the extra-IR leg of LlmIR, which client
 // lowering passes convert and libocto never interprets.
-export type AgentExtra<A extends Agent<any, any, any>> = ToolExtra<A["tools"][keyof A["tools"]]>;
+export type AgentExtra<A extends Agent<any, any, any, any>> = ToolExtra<
+  A["tools"][keyof A["tools"]]
+>;
 
-export type LlmIR<A extends Agent<any, any, any>> =
+export type LlmIR<A extends Agent<any, any, any, any>> =
   | CheckpointedIRWithTrajectories<A>
   | AgentExtra<A>;
 
@@ -481,19 +488,19 @@ export type LlmIR<A extends Agent<any, any, any>> =
  * AgentIR resolves whichever one applies to a given agent type, so arc/loop signatures written in
  * terms of AgentIR stay exact for both kinds of agent.
  */
-export type PermissionlessIR<A extends Agent<any, any, any>> = LlmIR<A>;
+export type PermissionlessIR<A extends Agent<any, any, any, any>> = LlmIR<A>;
 
-export type PermissionedIR<A extends Agent<any, any, any>> =
+export type PermissionedIR<A extends Agent<any, any, any, any>> =
   | LlmIR<A>
   | ToolRejectMessage<A["tools"]>;
 
-export type AgentIR<A extends Agent<any, any, any>> =
+export type AgentIR<A extends Agent<any, any, any, any>> =
   | LlmIR<A>
   | (A extends PermissionedBrand ? ToolRejectMessage<A["tools"]> : never);
 
 // Messages from any direct subagent, for consumers such as child-history renderers.
 // Each child's tools and extensions stay exact; deeper histories remain nested in trajectories.
-export type SubagentIR<A extends Agent<any, any, any>> = {
+export type SubagentIR<A extends Agent<any, any, any, any>> = {
   [K in keyof A["agents"]]: AgentIR<A["agents"][K]>;
 }[keyof A["agents"]];
 
@@ -502,7 +509,7 @@ export type SubagentIR<A extends Agent<any, any, any>> = {
  * lower(...) converts to tool-skip-outputs. Neither raw checkpoints (converted to
  * LoweredCheckpoint) nor rejects survive lowering, so compilers only ever see LoweredIR.
  */
-export type PreLoweredIR<A extends Agent<any, any, any>> =
+export type PreLoweredIR<A extends Agent<any, any, any, any>> =
   | CheckpointedIR<A["tools"]>
   | PreLoweredTrajectories<A["agents"], A["tools"]>
   | ToolSubagentInvoke<A["tools"], Extract<keyof A["agents"], string>>
@@ -520,7 +527,7 @@ export type PreLoweredTrajectories<
 }[keyof Agents];
 
 type PreLoweredTrajectory<
-  Child extends Agent<any, any, any>,
+  Child extends Agent<any, any, any, any>,
   Name extends string,
   Tools extends ToolMap<any, any>,
 > = {
@@ -535,7 +542,7 @@ type PreLoweredTrajectory<
  * Built-in output of the client's extension pass. Trajectories never enter this pass:
  * libocto preserves them and recursively converts their child histories itself.
  */
-export type ShallowLoweredIR<A extends Agent<any, any, any>> =
+export type ShallowLoweredIR<A extends Agent<any, any, any, any>> =
   | CheckpointedIR<A["tools"]>
   | ToolSubagentInvoke<A["tools"], Extract<keyof A["agents"], string>>
   | ([IsPermissioned<A>] extends [true] ? ToolRejectMessage<A["tools"]> : never);
@@ -556,14 +563,24 @@ type DescendantAgentNodes<Agents extends AgentDirectory> = string extends keyof 
       [K in keyof Agents]: [Agents[K]] | DescendantAgentNodes<Agents[K]["agents"]>;
     }[keyof Agents];
 
-type AgentShallowIR<Node> = Node extends [infer A extends Agent<any, any, any>]
+type AgentPromptDataForNode<Node> = Node extends [infer A extends Agent<any, any, any, any>]
+  ? SystemPromptData<A["systemPrompt"]>
+  : never;
+
+// Every prompt in the tree shares the tool-data bag. Boxed descendant traversal preserves
+// concrete requirements through union-valued and abstract directories.
+export type AgentPromptData<A extends Agent<any, any, any, any>> = UnionToIntersection<
+  SystemPromptData<A["systemPrompt"]> | AgentPromptDataForNode<DescendantAgentNodes<A["agents"]>>
+>;
+
+type AgentShallowIR<Node> = Node extends [infer A extends Agent<any, any, any, any>]
   ? ShallowLoweredIR<A>
   : never;
 type DescendantShallowIR<Agents extends AgentDirectory> = AgentShallowIR<
   DescendantAgentNodes<Agents>
 >;
 
-type AgentPreLoweredIR<Node> = Node extends [infer A extends Agent<any, any, any>]
+type AgentPreLoweredIR<Node> = Node extends [infer A extends Agent<any, any, any, any>]
   ? PreLoweredIR<A>
   : never;
 type DescendantPreLoweredIR<Agents extends AgentDirectory> = AgentPreLoweredIR<
@@ -591,17 +608,17 @@ type DescendantMessages<Agents extends AgentDirectory> = DescendantShallowIR<Age
 
 // Client conversion excludes trajectories on both sides. No factory, brand, or
 // trajectory-specific pairing logic is needed in extension-lowering functions.
-export type LowerInputIR<A extends Agent<any, any, any>> = Exclude<
+export type LowerInputIR<A extends Agent<any, any, any, any>> = Exclude<
   TreeIR<A>,
   { role: "subagent-trajectory" }
 >;
 
-export type LowerOutputIR<A extends Agent<any, any, any>> = IRConversion<
+export type LowerOutputIR<A extends Agent<any, any, any, any>> = IRConversion<
   LowerInputIR<A>,
   ShallowLoweredIR<A> | DescendantMessages<A["agents"]>
 >;
 
-export type RecursiveLowered<A extends Agent<any, any, any>> = IRConversion<
+export type RecursiveLowered<A extends Agent<any, any, any, any>> = IRConversion<
   TreeIR<A>,
   | PreLoweredIR<A>
   | DescendantMessages<A["agents"]>
@@ -615,29 +632,31 @@ export type RecursiveLowered<A extends Agent<any, any, any>> = IRConversion<
 >;
 
 // A tree-wide consumer can see any agent's IR without widening that agent's own history.
-type AgentOriginals<Node> = Node extends [infer A extends Agent<any, any, any>]
+type AgentOriginals<Node> = Node extends [infer A extends Agent<any, any, any, any>]
   ? AgentIR<A>
   : never;
 type DescendantOriginals<Agents extends AgentDirectory> = AgentOriginals<
   DescendantAgentNodes<Agents>
 >;
 
-export type TreeIR<A extends Agent<any, any, any>> = AgentIR<A> | DescendantOriginals<A["agents"]>;
+export type TreeIR<A extends Agent<any, any, any, any>> =
+  | AgentIR<A>
+  | DescendantOriginals<A["agents"]>;
 
 // Runnable calls from any level, without widening an individual agent's tool map.
-export type TreeToolCall<A extends Agent<any, any, any>> =
+export type TreeToolCall<A extends Agent<any, any, any, any>> =
   | ToolCall<A["tools"]>
   | ((string extends keyof A["agents"]
       ? ToolCall<A["agents"][string]["tools"]>
       : { [K in keyof A["agents"]]: TreeToolCall<A["agents"][K]> }[keyof A["agents"]]) &
       ToolCall<InspectionTools>);
 
-export type CompilerReadyIR<A extends Agent<any, any, any>> = IRConversion<
+export type CompilerReadyIR<A extends Agent<any, any, any, any>> = IRConversion<
   TreeIR<A>,
   LoweredIR<A["tools"]> | DescendantOutputs<A["agents"]>
 >;
 
-type AgentOutputs<Node> = Node extends [infer A extends Agent<any, any, any>]
+type AgentOutputs<Node> = Node extends [infer A extends Agent<any, any, any, any>]
   ? LoweredIR<A["tools"]>
   : never;
 type DescendantOutputs<Agents extends AgentDirectory> = AgentOutputs<DescendantAgentNodes<Agents>> &

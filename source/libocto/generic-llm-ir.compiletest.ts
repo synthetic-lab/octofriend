@@ -1,3 +1,4 @@
+import { prompt } from "./system-prompt.ts";
 import { t } from "structural";
 import { defineAgent, LlmIR, trajectoryCond } from "./llm-ir.ts";
 import { TOOL_BUILDER, ToolBuilder, ToolCall } from "./tool-def.ts";
@@ -166,31 +167,31 @@ const reviewTools = {
   list,
 };
 
-const viewAgent = defineAgent({
-  tools: {},
-  agents: {},
-});
+const testPrompt = prompt.declare(async () => "Test prompt");
+
+const viewAgent = defineAgent({ systemPrompt: testPrompt, tools: {}, agents: {} });
 const dynamicSuccessAgent = defineAgent({
+  systemPrompt: testPrompt,
   tools: dynamicTools,
   agents: {
     view: viewAgent,
   },
 });
 const successAgent = defineAgent({
+  systemPrompt: testPrompt,
   tools: allTools,
 
   agents: {
     explore: {
+      systemPrompt: testPrompt,
       tools: exploreTools,
       agents: {
-        nested: {
-          tools: [],
-          agents: {},
-        },
+        nested: { systemPrompt: testPrompt, tools: [], agents: {} },
         view: viewAgent,
       },
     },
     review: {
+      systemPrompt: testPrompt,
       tools: reviewTools,
       agents: {
         view: viewAgent,
@@ -297,20 +298,20 @@ if (a.role === "subagent-trajectory") {
 // We expect an error here because the main agent doesn't define a view subagent
 // @ts-expect-error
 const missingSubagent = defineAgent({
+  systemPrompt: testPrompt,
   tools: allTools,
 
   agents: {
     explore: {
+      systemPrompt: testPrompt,
       tools: exploreTools,
       agents: {
-        nested: {
-          tools: [],
-          agents: {},
-        },
+        nested: { systemPrompt: testPrompt, tools: [], agents: {} },
         view: viewAgent,
       },
     },
     review: {
+      systemPrompt: testPrompt,
       tools: reviewTools,
       agents: {
         view: viewAgent,
@@ -320,21 +321,21 @@ const missingSubagent = defineAgent({
 });
 
 const _missingNestedSubagent = defineAgent({
+  systemPrompt: testPrompt,
   tools: allTools,
 
   agents: {
     // We expect an error here because explore does not define the view subagent
     // @ts-expect-error
     explore: {
+      systemPrompt: testPrompt,
       tools: exploreTools,
       agents: {
-        nested: {
-          tools: [],
-          agents: {},
-        },
+        nested: { systemPrompt: testPrompt, tools: [], agents: {} },
       },
     },
     review: {
+      systemPrompt: testPrompt,
       tools: reviewTools,
       agents: {
         view: viewAgent,
@@ -347,6 +348,7 @@ const _missingNestedSubagent = defineAgent({
 // We expect an error here because the dynamic tool requires a view subagent
 // @ts-expect-error
 const _missingDynamicSubagent = defineAgent({
+  systemPrompt: testPrompt,
   tools: dynamicTools,
   agents: {},
 });

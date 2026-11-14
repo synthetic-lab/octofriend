@@ -22,8 +22,8 @@ import { tagged } from "./ir-prompts.ts";
 import type { OpenAICompilerModel } from "./openai-shared.ts";
 import { openAIRequestError } from "./openai-shared.ts";
 
-type ToolCallRequest<A extends Agent<any, any, any>> = ToolCall<A["tools"]>;
-type LoadedTool<A extends Agent<any, any, any>> = LoadedTools<A["tools"]>[keyof LoadedTools<
+type ToolCallRequest<A extends Agent<any, any, any, any>> = ToolCall<A["tools"]>;
+type LoadedTool<A extends Agent<any, any, any, any>> = LoadedTools<A["tools"]>[keyof LoadedTools<
   A["tools"]
 >];
 
@@ -137,7 +137,7 @@ ${JSON.stringify(requestBody)}
 JSON`;
 }
 
-export async function toLlmMessages<A extends Agent<any, any, any>>(
+export async function toLlmMessages<A extends Agent<any, any, any, any>>(
   messages: Array<CompilerIR<A>>,
   systemPrompt?: () => Promise<string>,
   modalities?: CompilerModalities,
@@ -159,7 +159,7 @@ export async function toLlmMessages<A extends Agent<any, any, any>>(
   return output as ChatCompletionCompatibleMessage[] as ChatCompletionMessageParam[];
 }
 
-function llmFromIr<A extends Agent<any, any, any>>(
+function llmFromIr<A extends Agent<any, any, any, any>>(
   ir: CompilerIR<A>,
   modalities?: CompilerModalities,
 ): LlmMessage {
@@ -283,7 +283,7 @@ async function handleKnownErrors<T>(
 }
 
 export const runAgent: Compiler<OpenAICompilerModel> = defineCompiler(
-  async <A extends Agent<any, any, any>>(
+  async <A extends Agent<any, any, any, any>>(
     params: CompilerImplementationParams<A, OpenAICompilerModel>,
   ) => {
     const { model, irs, abortSignal, transport, systemPrompt, autofixJson } = params;

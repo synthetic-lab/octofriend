@@ -3,7 +3,7 @@ import { err, ok, type Result } from "./result.ts";
 
 // Snapshots are non-nested, atomic attempt groups. A legacy error or an incomplete
 // group is not evidence that an automatic retry remains to be performed.
-function snapshotStart<A extends Agent<any, any, any>>(
+function snapshotStart<A extends Agent<any, any, any, any>>(
   history: readonly RecursiveLowered<A>[],
   end: number,
 ): Result<number, string> {
@@ -16,7 +16,7 @@ function snapshotStart<A extends Agent<any, any, any>>(
   return err("No snapshot start found");
 }
 
-export function latestRequestSnapshot<A extends Agent<any, any, any>>(
+export function latestRequestSnapshot<A extends Agent<any, any, any, any>>(
   history: readonly RecursiveLowered<A>[],
 ): { retryBudget: RetryBudget; irs: readonly RecursiveLowered<A>[] } | null {
   const end = history.length - 1;
@@ -29,7 +29,7 @@ export function latestRequestSnapshot<A extends Agent<any, any, any>>(
   return { retryBudget: begin.retryBudget, irs: history.slice(start + 1, end) };
 }
 
-export function retryable<A extends Agent<any, any, any>>(
+export function retryable<A extends Agent<any, any, any, any>>(
   history: readonly RecursiveLowered<A>[],
 ): boolean {
   const snapshot = latestRequestSnapshot(history);
@@ -48,7 +48,7 @@ export function retryable<A extends Agent<any, any, any>>(
   );
 }
 
-export function transientError<A extends Agent<any, any, any>>({
+export function transientError<A extends Agent<any, any, any, any>>({
   converted: ir,
 }: RecursiveLowered<A>): boolean {
   switch (ir.role) {
@@ -83,7 +83,7 @@ export function transientError<A extends Agent<any, any, any>>({
   }
 }
 
-export function validationFailure<A extends Agent<any, any, any>>(
+export function validationFailure<A extends Agent<any, any, any, any>>(
   snapshot: readonly RecursiveLowered<A>[],
 ): boolean {
   return snapshot.some(({ converted: ir }) => {
@@ -91,7 +91,7 @@ export function validationFailure<A extends Agent<any, any, any>>(
   });
 }
 
-function snapshotHasFailure<A extends Agent<any, any, any>>(
+function snapshotHasFailure<A extends Agent<any, any, any, any>>(
   snapshot: readonly RecursiveLowered<A>[],
 ): boolean {
   return snapshot.some(({ converted: ir }) => {
@@ -130,7 +130,7 @@ function snapshotHasFailure<A extends Agent<any, any, any>>(
 
 // Iterate completed failed attempts in this branch, stopping at a successful snapshot
 // or explicit reset. Do not include legacy errors or descend into children.
-function* recentlyFailedSnapshots<A extends Agent<any, any, any>>(
+function* recentlyFailedSnapshots<A extends Agent<any, any, any, any>>(
   history: readonly RecursiveLowered<A>[],
 ) {
   for (let index = history.length - 1; index >= 0; index--) {
@@ -178,7 +178,7 @@ function* recentlyFailedSnapshots<A extends Agent<any, any, any>>(
   }
 }
 
-export function countValidationErrors<A extends Agent<any, any, any>>(
+export function countValidationErrors<A extends Agent<any, any, any, any>>(
   history: readonly RecursiveLowered<A>[],
 ): number {
   let count = 0;
@@ -188,7 +188,7 @@ export function countValidationErrors<A extends Agent<any, any, any>>(
   return count;
 }
 
-export function countTransientErrors<A extends Agent<any, any, any>>(
+export function countTransientErrors<A extends Agent<any, any, any, any>>(
   history: readonly RecursiveLowered<A>[],
 ): number {
   let count = 0;

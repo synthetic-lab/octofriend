@@ -12,10 +12,12 @@ type ScratchModel = {
   model: string;
 };
 
-type ScratchAgent = Agent<never, {}, {}>;
+type ScratchAgent = Agent<never, {}, {}, {}>;
 
 const scratchCompiler: Compiler<ScratchModel> = defineCompiler(
-  async <A extends Agent<any, any, any>>(params: CompilerImplementationParams<A, ScratchModel>) => {
+  async <A extends Agent<any, any, any, any>>(
+    params: CompilerImplementationParams<A, ScratchModel>,
+  ) => {
     await params.onTokens("hello", "content");
     await params.onTokens("{}", "tool");
 

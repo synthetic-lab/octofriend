@@ -14,7 +14,7 @@ import { Trajectory } from "./trajectory.ts";
 
 const providers = ["standard", "responses", "anthropic"] as const;
 type Provider = (typeof providers)[number];
-const agent = definePermissionlessAgent({ tools: {}, agents: {} });
+const agent = definePermissionlessAgent({ systemPrompt, tools: {}, agents: {} });
 
 function fixture(provider: Provider, transport: MockTransport) {
   let networkCalls = 0;
@@ -47,14 +47,10 @@ function fixture(provider: Provider, transport: MockTransport) {
     messages,
     model: async () => ok({ model: null, contextWindow: 100_000, modalities: null }),
     loadTools: async () => ok({}),
-    toolData: undefined,
+    getData: async () => ({ yourName: "Test", models: [] }),
     toolContentTooLargeError: async () => "Unexpected oversized output",
     runCompiler,
-    systemPrompt: signal => {
-      return systemPrompt({ config: { yourName: "Test", models: [] }, transport, signal });
-    },
     lowerMessages: irs => irs.map(original => ({ original, converted: original })),
-    subagentPrompts: {},
     transport,
     abortSignal: new AbortController().signal,
     loopController: async step => {

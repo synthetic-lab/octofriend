@@ -48,7 +48,7 @@ export function shouldAutoCompactHistory<T extends ToolMap<any, any>>(
   return currentTokens >= maxAllowedTokens;
 }
 
-export async function generateCompactionCheckpointContent<A extends Agent<any, any, any>>({
+export async function generateCompactionCheckpointContent<A extends Agent<any, any, any, any>>({
   messages,
   run,
 }: {
@@ -92,7 +92,7 @@ export async function generateCompactionCheckpointContent<A extends Agent<any, a
   ]);
 }
 
-export function processCompactedHistory<A extends Agent<any, any, any>>(
+export function processCompactedHistory<A extends Agent<any, any, any, any>>(
   compactSummaryResult: CompilerResultWithoutToolCalls<A>,
 ): string | undefined {
   if (!compactSummaryResult.success) {

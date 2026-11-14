@@ -1,3 +1,4 @@
+import { prompt } from "./system-prompt.ts";
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import { t } from "structural";
 import { LocalTransport } from "../transports/local.ts";
@@ -46,6 +47,7 @@ type TestData = { marker: string };
 type RunResult = Result<ToolReturn<"research", never>, string>;
 
 let runImpl: (query: string) => Promise<RunResult>;
+const runDataSeen: TestData[] = [];
 
 const searchTool = new ToolBuilder<TestData>()
   .declare({
@@ -59,7 +61,8 @@ const searchTool = new ToolBuilder<TestData>()
       if (toolCall.parsed.arguments.query === "invalid") return err("invalid query");
       return ok(null);
     },
-    run: async ({ toolCall }) => {
+    run: async ({ toolCall, data }) => {
+      runDataSeen.push(data);
       return runImpl(toolCall.parsed.arguments.query);
     },
   }));
@@ -83,10 +86,21 @@ const shellTool = new ToolBuilder<TestData>()
 
 // The capability is uniform down the tree, so each fixture's tree stays uniform: the
 // permissioned test agent and the plain agent each own their own research subagent.
-const researchAgent = definePermissionedAgent({ tools: { shell: shellTool }, agents: {} });
-const plainResearchAgent = definePermissionlessAgent({ tools: {}, agents: {} });
+const testPrompt = prompt.declare(async () => "Test prompt");
+
+const researchAgent = definePermissionedAgent({
+  systemPrompt: prompt.declare(async () => "You are the research subagent."),
+  tools: { shell: shellTool },
+  agents: {},
+});
+const plainResearchAgent = definePermissionlessAgent({
+  systemPrompt: testPrompt,
+  tools: {},
+  agents: {},
+});
 
 const _testAgent = definePermissionedAgent({
+  systemPrompt: testPrompt,
   tools: { search: searchTool, shell: shellTool },
   agents: { research: researchAgent },
 });
@@ -94,6 +108,7 @@ type TestAgent = typeof _testAgent;
 type TestInvocation = Extract<TreeIR<TestAgent>, { role: "tool-invoke-subagent" }>;
 
 const _plainAgent = definePermissionlessAgent({
+  systemPrompt: testPrompt,
   tools: { search: searchTool },
   agents: { research: plainResearchAgent },
 });
@@ -107,7 +122,7 @@ afterEach(async () => {
   await Promise.all(waitingSteps.splice(0));
 });
 
-async function startWaitingStep<A extends Agent<any, any, any>, Model>(
+async function startWaitingStep<A extends Agent<any, any, any, any>, Model>(
   traj: Trajectory<A, Model>,
   mode: TrajectoryMode<TestAgent>["mode"],
 ): Promise<{ finished: Promise<boolean> }> {
@@ -204,7 +219,7 @@ function makeRunCompiler(queue: CompilerQueueItem[]) {
     systemPrompt: string | undefined;
   }> = [];
   const runCompiler: Compiler<null> = async <
-    A extends Agent<any, any, any>,
+    A extends Agent<any, any, any, any>,
     Tools extends Partial<LoadedTools<A["tools"]>> | undefined = undefined,
   >(
     params: CompilerParams<A, null, Tools>,
@@ -223,6 +238,7 @@ function makeRunCompiler(queue: CompilerQueueItem[]) {
 }
 
 function makeTrajectory(opts?: {
+  getData?: () => Promise<TestData>;
   permission?: (toolCall: ToolCall<TestAgent["tools"]>) => Promise<PermissionDecision>;
   contextWindow?: number;
   modalities?: MultimodalConfig | null;
@@ -305,9 +321,8 @@ function makeTrajectory(opts?: {
       errorCorrection: opts?.errorCorrection,
       loopController: opts?.loopController,
       messages: opts?.messages ?? [],
-      toolData: { marker: "fresh" },
+      getData: opts?.getData ?? (async () => ({ marker: "fresh" })),
       runCompiler,
-      subagentPrompts: { research: async () => "You are the research subagent." },
       lowerMessages: (messages, modalities) => {
         rec.loweringModalities.push(modalities);
         const pairs: Array<LowerOutputIR<TestAgent>> = [];
@@ -386,7 +401,7 @@ function makeTrajectory(opts?: {
   return { build, rec, exit };
 }
 
-function inputControl<A extends Agent<any, any, any>, Model>(traj: Trajectory<A, Model>) {
+function inputControl<A extends Agent<any, any, any, any>, Model>(traj: Trajectory<A, Model>) {
   const mode = traj.mode;
   if ("control" in mode && "enqueueSteering" in mode.control) {
     return mode.control as InputControl;
@@ -422,6 +437,7 @@ function retryControl(traj: Trajectory<any, null>): RetryControl & Partial<Clear
 
 beforeEach(() => {
   runImpl = async query => ok({ type: "output", content: text(`results: ${query}`) });
+  runDataSeen.length = 0;
 });
 
 describe("trajectory", () => {
@@ -508,6 +524,29 @@ describe("trajectory", () => {
     expect(rec.modes).toContain("running-tool");
     await startWaitingStep(traj, "ready-for-request");
     expect(traj.mode.mode).toBe("ready-for-request");
+  });
+
+  it("resolves fresh data separately for every tool execution", async () => {
+    let marker = "first";
+    const { build } = makeTrajectory({ getData: async () => ({ marker }) });
+    const { traj } = await build([
+      () =>
+        okResult(
+          assistantMessage({
+            toolCalls: [searchCall("cats", "c1"), searchCall("dogs", "c2")],
+          }),
+        ),
+      plainOk,
+    ]);
+    runImpl = async query => {
+      marker = query === "cats" ? "second" : "unused";
+      return ok({ type: "output", content: text(query) });
+    };
+
+    inputControl(traj).enqueueSteering(text("search"));
+    expect(await traj.step()).toBe(true);
+    expect(await traj.step()).toBe(true);
+    expect(runDataSeen).toEqual([{ marker: "first" }, { marker: "second" }]);
   });
 
   it("reloads tools for a batch and reuses that runtime data for its response", async () => {
@@ -981,11 +1020,27 @@ describe("trajectory", () => {
   it.each([undefined, "leaf-model"])(
     "resumes nested parents and selects each invocation's model (leaf=%s)",
     async leafModel => {
+      let marker = "data-0";
+      const promptDataSeen: string[] = [];
+      const dataPrompt = (name: string) =>
+        prompt.withData<{ marker: string }>().declare(async args => {
+          expect(args.transport).toBe(transport);
+          expect(args.signal).toBeInstanceOf(AbortSignal);
+          promptDataSeen.push(`${name}:${args.data.marker}`);
+          return `${name} prompt`;
+        });
+      const leaf = definePermissionlessAgent({
+        systemPrompt: dataPrompt("leaf"),
+        tools: {},
+        agents: {},
+      });
       const middle = definePermissionlessAgent({
+        systemPrompt: dataPrompt("middle"),
         tools: { search: searchTool },
-        agents: { research: plainResearchAgent },
+        agents: { research: leaf },
       });
       const root = definePermissionlessAgent({
+        systemPrompt: dataPrompt("root"),
         tools: { search: searchTool },
         agents: { research: middle },
       });
@@ -1032,9 +1087,11 @@ describe("trajectory", () => {
         { role: "tool-invoke-subagent" }
       > | null> = [];
       const models: string[] = [];
-      const compiler: Compiler<string> = params => {
+      const compiler: Compiler<string> = async params => {
         models.push(params.model);
-        return runCompiler({ ...params, model: null });
+        const result = await runCompiler({ ...params, model: null });
+        marker = `data-${calls.length}`;
+        return result;
       };
       const traj = new Trajectory({
         agent: root,
@@ -1049,10 +1106,8 @@ describe("trajectory", () => {
         loadTools: async () => ok({ search }),
         toolContentTooLargeError: async () => "OUTPUT TOO LARGE",
         messages: [],
-        toolData: { marker: "fresh" },
+        getData: async () => ({ marker }),
         runCompiler: compiler,
-        systemPrompt: async () => "root prompt",
-        subagentPrompts: { research: async () => "research prompt" },
         lowerMessages: messages => messages.map(original => ({ original, converted: original })),
         transport,
         abortSignal: exit.signal,
@@ -1063,6 +1118,7 @@ describe("trajectory", () => {
         },
       });
 
+      expect(promptDataSeen).toEqual([]);
       await inputControl(traj).enqueueSteering(text("run nested work"));
       expect(await traj.step()).toBe(true);
       expect(await traj.step()).toBe(true);
@@ -1108,10 +1164,17 @@ describe("trajectory", () => {
       ]);
       expect(calls.map(call => call.systemPrompt)).toEqual([
         "root prompt",
-        "research prompt",
-        "research prompt",
-        "research prompt",
+        "middle prompt",
+        "leaf prompt",
+        "middle prompt",
         "root prompt",
+      ]);
+      expect(promptDataSeen).toEqual([
+        "root:data-0",
+        "middle:data-1",
+        "leaf:data-2",
+        "middle:data-3",
+        "root:data-4",
       ]);
       expect(outer.ir.map(ir => ir.role)).toEqual([
         "user",
@@ -3264,9 +3327,8 @@ describe("trajectory", () => {
       loadTools: async () => ok({ search: searchDef }),
       toolContentTooLargeError: async () => "OUTPUT TOO LARGE",
       messages: [],
-      toolData: { marker: "fresh" },
+      getData: async () => ({ marker: "fresh" }),
       runCompiler,
-      subagentPrompts: { research: async () => "You are the research subagent." },
       lowerMessages: messages => messages.map(original => ({ original, converted: original })),
       transport,
       abortSignal: exit.signal,
