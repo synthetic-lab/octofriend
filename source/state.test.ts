@@ -41,9 +41,9 @@ import {
 } from "./libocto/llm-ir.ts";
 import type { TrajectoryMode } from "./libocto/trajectory.ts";
 import { meaningfulTailIR } from "./libocto/ir-operations.ts";
-import type { LoadedTools, ToolCall } from "./libocto/toolkits/tool-def.ts";
+import type { LoadedTools } from "./libocto/toolkits/tool-def.ts";
 import type { octoAgent, OctoIR } from "./ir/octo-ir.ts";
-import type toolMap from "./tools/tool-defs/index.ts";
+import type { OctoToolCall } from "./tools/index.ts";
 import { LocalTransport } from "./transports/local.ts";
 
 /*
@@ -55,7 +55,7 @@ import { LocalTransport } from "./transports/local.ts";
 
 type OctoAgent = typeof octoAgent;
 type OctoAssistant = AssistantMessage<OctoAgent["tools"]>;
-type ShellToolCall = Extract<ToolCall<typeof toolMap>, { name: "shell" }>;
+type ShellToolCall = Extract<OctoToolCall, { name: "shell" }>;
 
 const config: Config = {
   yourName: "Test",
@@ -559,14 +559,14 @@ describe("runnable session hydration", () => {
   it.each([false, true])(
     "interrupts saved delegation work without running it (child already inserted=%s)",
     async inserted => {
-      const delegate: Extract<ToolCall<typeof toolMap>, { name: "explore" }> = {
+      const delegate: Extract<OctoToolCall, { name: "explore" }> = {
         type: "tool-call",
         name: "explore",
         toolCallId: "delegate",
         original: { task: "inspect" },
         parsed: { task: "inspect" },
       };
-      const read: Extract<ToolCall<typeof toolMap>, { name: "read" }> = {
+      const read: Extract<OctoToolCall, { name: "read" }> = {
         type: "tool-call",
         name: "read",
         toolCallId: "child-read",
@@ -641,14 +641,14 @@ describe("explore subagent", () => {
     const filePath = path.join(dir, "notes.txt");
     await fs.writeFile(filePath, "explore-file-marker: oranges are citrus fruits");
     const task = `Find the fruit description in ${filePath}`;
-    const delegate: Extract<ToolCall<typeof toolMap>, { name: "explore" }> = {
+    const delegate: Extract<OctoToolCall, { name: "explore" }> = {
       type: "tool-call",
       name: "explore",
       toolCallId: "delegate",
       original: { task },
       parsed: { task },
     };
-    const read: Extract<ToolCall<typeof toolMap>, { name: "read" }> = {
+    const read: Extract<OctoToolCall, { name: "read" }> = {
       type: "tool-call",
       name: "read",
       toolCallId: "child-read",

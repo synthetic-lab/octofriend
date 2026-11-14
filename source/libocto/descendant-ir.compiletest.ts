@@ -9,10 +9,10 @@ import type {
   RecursiveLowered,
   ShallowLoweredIR,
   TreeIR,
-  TreeToolCall,
+  ToolCall,
 } from "./llm-ir.ts";
 import type { ActiveHistory } from "./ir-operations.ts";
-import type { ToolCall, ToolFactory } from "./toolkits/tool-def.ts";
+import type { ToolCall as ToolCallForTools, ToolFactory } from "./toolkits/tool-def.ts";
 
 // The optimized traversal must project directory entries, not individual members of a
 // union-valued entry. Nor may an any entry swallow its typed siblings before projection.
@@ -118,10 +118,12 @@ type _anySiblingRecursiveReject = Expect<
 
 // Tool-call projection uses the same boxed traversal, retaining per-entry union semantics
 // and stopping at abstract directories rather than recursively expanding their constraints.
-type _unionCalls = Expect<Equivalent<TreeToolCall<UnionRoot>, ToolCall<UnionChild["tools"]>>>;
-type _abstractCalls = Expect<Equivalent<TreeToolCall<AbstractRoot>, ToolCall<UnionChild["tools"]>>>;
-type _leafCalls = Expect<Equivalent<TreeToolCall<ReadAgent>, ToolCall<ReadAgent["tools"]>>>;
-type _emptyCalls = Expect<Equivalent<TreeToolCall<Root<{}>>, never>>;
+type _unionCalls = Expect<Equivalent<ToolCall<UnionRoot>, ToolCallForTools<UnionChild["tools"]>>>;
+type _abstractCalls = Expect<
+  Equivalent<ToolCall<AbstractRoot>, ToolCallForTools<UnionChild["tools"]>>
+>;
+type _leafCalls = Expect<Equivalent<ToolCall<ReadAgent>, ToolCallForTools<ReadAgent["tools"]>>>;
+type _emptyCalls = Expect<Equivalent<ToolCall<Root<{}>>, never>>;
 
 type NestedRoot = PermissionedAgent<
   never,
@@ -129,9 +131,12 @@ type NestedRoot = PermissionedAgent<
   ReadAgent["tools"],
   {}
 >;
-type NestedCalls = TreeToolCall<NestedRoot>;
+type NestedCalls = ToolCall<NestedRoot>;
 type _nestedCalls = Expect<
-  Equivalent<NestedCalls, ToolCall<ReadAgent["tools"]> | ToolCall<WriteAgent["tools"]>>
+  Equivalent<
+    NestedCalls,
+    ToolCallForTools<ReadAgent["tools"]> | ToolCallForTools<WriteAgent["tools"]>
+  >
 >;
 type _nestedReadArguments = Expect<
   Equivalent<Extract<NestedCalls, { name: "read" }>["original"], { path: string }>

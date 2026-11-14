@@ -1,10 +1,9 @@
 import { octoAgent } from "./ir/octo-ir.ts";
-import type { ToolCall } from "./libocto/toolkits/tool-def.ts";
 import type { UserMessage } from "./libocto/llm-ir.ts";
 import type { PermissionDecision, PermissionGate } from "./libocto/permissions.ts";
-import type toolMap from "./tools/tool-defs/index.ts";
+import type { OctoToolCall } from "./tools/index.ts";
 
-export type ToolCallRequest = ToolCall<typeof toolMap>;
+export type ToolCallRequest = OctoToolCall;
 
 export type RejectionTransaction = {
   commitRejection: (steering: UserMessage["content"]) => void;

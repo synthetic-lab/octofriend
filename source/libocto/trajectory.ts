@@ -4,9 +4,9 @@ import type {
   AgentIR,
   AgentPromptData,
   TreeIR,
-  TreeToolCall,
+  ToolCall,
   LowerInputIR,
-  AllToolsAcrossTree,
+  ToolRegistry,
   CompilerReadyIR,
   IsPermissioned,
   LlmIR,
@@ -42,7 +42,12 @@ import type {
 export type { SubagentTrajectoryInspection } from "./ir-operations.ts";
 import type { MultimodalConfig } from "./modalities.ts";
 import { subagentPrompt, userInterruptReason } from "./compilers/ir-prompts.ts";
-import type { LoadedTools, ToolCall, ToolExtensionIR, ToolReturn } from "./toolkits/tool-def.ts";
+import type {
+  LoadedTools,
+  ToolCall as ToolCallForTools,
+  ToolExtensionIR,
+  ToolReturn,
+} from "./toolkits/tool-def.ts";
 import {
   loadAgentTools,
   type TrajectoryToolLoadError,
@@ -206,18 +211,18 @@ type WithArcScope<Scope, Modes> = Scope extends unknown
 // with their declared string-indexed agent type. Apply the inspection bound once, outside
 // recursion: repeating this same intersection at every depth multiplies generic union work.
 type SubagentModes<Agents extends AgentDirectory> = SubagentModeUnion<Agents> &
-  SharedArcModes<ToolCall<any>, true>;
+  SharedArcModes<ToolCallForTools<any>, true>;
 
 type SubagentModeUnion<Agents extends AgentDirectory> = string extends keyof Agents
   ? WithArcScope<
       ScopeSubagent<string>,
-      SharedArcModes<ToolCall<Agents[string]["tools"]>, IsPermissioned<Agents[string]>>
+      SharedArcModes<ToolCallForTools<Agents[string]["tools"]>, IsPermissioned<Agents[string]>>
     >
   : {
       [K in keyof Agents & string]:
         | WithArcScope<
             ScopeSubagent<K>,
-            SharedArcModes<ToolCall<Agents[K]["tools"]>, IsPermissioned<Agents[K]>>
+            SharedArcModes<ToolCallForTools<Agents[K]["tools"]>, IsPermissioned<Agents[K]>>
           >
         | SubagentModeUnion<Agents[K]["agents"]>;
     }[keyof Agents & string];
@@ -225,7 +230,7 @@ type SubagentModeUnion<Agents extends AgentDirectory> = string extends keyof Age
 export type TrajectoryMode<A extends Agent<any, any, any, any>> =
   | WithArcScope<
       ScopeRoot,
-      RootOnlyModes<A> | SharedArcModes<ToolCall<A["tools"]>, IsPermissioned<A>>
+      RootOnlyModes<A> | SharedArcModes<ToolCallForTools<A["tools"]>, IsPermissioned<A>>
     >
   | (SubagentModes<A["agents"]> & {
       scope: { parentSubagentIR: Extract<TreeIR<A>, { role: "subagent-trajectory" }> };
@@ -330,7 +335,7 @@ export type TrajectoryModelResult<Provider> = Result<
 
 type RuntimeData<A extends Agent<any, any, any, any>, Provider> = {
   model: ExecutionModel<Provider>;
-  tools: Partial<AllToolsAcrossTree<A>>;
+  tools: Partial<ToolRegistry<A>>;
 };
 
 type UnionToIntersection<U> = (U extends U ? (x: U) => void : never) extends (x: infer I) => void
@@ -513,10 +518,10 @@ function rectifiable(exit: AbortSignal): {
 // stays tree-wide; filtering changes neither the loaded definitions nor their schemas.
 function arcTools<A extends Agent<any, any, any, any>>(
   agent: { tools: object },
-  all: Partial<AllToolsAcrossTree<A>>,
-): Partial<AllToolsAcrossTree<A>> {
-  const tools: Partial<AllToolsAcrossTree<A>> = {};
-  for (const key of Object.keys(agent.tools) as Array<keyof AllToolsAcrossTree<A>>) {
+  all: Partial<ToolRegistry<A>>,
+): Partial<ToolRegistry<A>> {
+  const tools: Partial<ToolRegistry<A>> = {};
+  for (const key of Object.keys(agent.tools) as Array<keyof ToolRegistry<A>>) {
     const def = all[key];
     if (def) tools[key] = def;
   }
@@ -713,7 +718,7 @@ export class Trajectory<A extends Agent<any, any, any, any>, Provider> {
 
   private arcMode(
     location: ActiveHistory<A>,
-    mode: SharedArcModes<TreeToolCall<A>, true>,
+    mode: SharedArcModes<ToolCall<A>, true>,
   ): TrajectoryMode<A> {
     // The calls and scope belong to the same selected operation. Permission modes are only
     // emitted when the tree-wide gate exists; the public union retains both correlations.
@@ -722,7 +727,7 @@ export class Trajectory<A extends Agent<any, any, any, any>, Provider> {
 
   private setArcMode(
     location: ActiveHistory<A>,
-    mode: SharedArcModes<TreeToolCall<A>, true>,
+    mode: SharedArcModes<ToolCall<A>, true>,
   ): Promise<void> {
     return this.setMode(this.arcMode(location, mode));
   }
@@ -1346,13 +1351,11 @@ export class Trajectory<A extends Agent<any, any, any, any>, Provider> {
   private async runTool(
     inspection: Extract<HistoryInspection<A>, { action: "run-tools" }>,
     signal: AbortSignal,
-    tools: Partial<AllToolsAcrossTree<A>>,
+    tools: Partial<ToolRegistry<A>>,
     model: ExecutionModel<Provider>,
   ): Promise<TreeIR<A>> {
     const toolCall = inspection.pendingCalls[0];
-    const defs = Object.values<AllToolsAcrossTree<A>[keyof AllToolsAcrossTree<A>] | undefined>(
-      tools,
-    );
+    const defs = Object.values<ToolRegistry<A>[keyof ToolRegistry<A>] | undefined>(tools);
     const def = defs.find(loaded => loaded?.name === toolCall.name);
     if (def == null) {
       return { role: "tool-runtime-error", toolCall, error: `No tool named ${toolCall.name}` };

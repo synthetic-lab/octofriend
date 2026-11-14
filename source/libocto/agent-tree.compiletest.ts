@@ -13,7 +13,7 @@ import type {
   ShallowLoweredIR,
   LoweredIR,
   AllSubagentNames,
-  AllToolsAcrossTree,
+  ToolRegistry,
   LowerOutputIR,
   IRConversion,
   PreLoweredIR,
@@ -160,16 +160,16 @@ type _names = Expect<Equal<AllSubagentNames<Root>, "research" | "grandchild">>;
 type _noNames = Expect<Equal<AllSubagentNames<Single>, never>>;
 
 // The merged tool map: every level's keys, shared keys shared, values exact per key.
-type _treeKeys = Expect<Equal<keyof AllToolsAcrossTree<Root>, "search" | "note" | "delegate">>;
-expectType<Partial<AllToolsAcrossTree<Single>>>(
+type _treeKeys = Expect<Equal<keyof ToolRegistry<Root>, "search" | "note" | "delegate">>;
+expectType<Partial<ToolRegistry<Single>>>(
   undefined as unknown as Partial<LoadedTools<Single["tools"]>>,
 );
 
 // A declared key takes exactly the loaded definition of the tool declared under it — never
 // another tool's definition, even when that definition loaded perfectly fine.
-type SearchDef = AllToolsAcrossTree<Root>["search"];
+type SearchDef = ToolRegistry<Root>["search"];
 const searchDef = {} as SearchDef;
-const wrongDefs: Partial<AllToolsAcrossTree<Root>> = {
+const wrongDefs: Partial<ToolRegistry<Root>> = {
   search: searchDef,
   // We expect an error here because a declared key takes exactly its own tool's definition
   // @ts-expect-error

@@ -1,5 +1,5 @@
 import type { ExecutionArgs } from "../execution.ts";
-import type { Agent, AllToolsAcrossTree, TreeToolMap } from "../llm-ir.ts";
+import type { Agent, ToolRegistry, TreeToolMap } from "../llm-ir.ts";
 import { err, ok, errorToString, type Result } from "../result.ts";
 import { AbortError } from "../transport.ts";
 import type { ToolDef } from "./tool-def.ts";
@@ -16,7 +16,7 @@ type ToolDataFor<Def> =
     ? Data
     : never;
 export type TreeToolData<A extends Agent<any, any, any, any>> = UnionToIntersection<
-  ToolDataFor<AllToolsAcrossTree<A>[keyof AllToolsAcrossTree<A>]>
+  ToolDataFor<ToolRegistry<A>[keyof ToolRegistry<A>]>
 >;
 
 type AnyAgent = Agent<any, any, any, any>;
@@ -32,7 +32,7 @@ function allTools<A extends AnyAgent>(agent: A): TreeToolMap<A> {
 export async function loadAgentTools<A extends AnyAgent, Provider>(
   agent: A,
   args: ExecutionArgs<TreeToolData<A>, Provider>,
-): Promise<Result<Partial<AllToolsAcrossTree<A>>, TrajectoryToolLoadError>> {
+): Promise<Result<Partial<ToolRegistry<A>>, TrajectoryToolLoadError>> {
   if (args.signal.aborted) return err({ type: "quit" });
   const toolMap = allTools(agent);
 
@@ -51,7 +51,7 @@ export async function loadAgentTools<A extends AnyAgent, Provider>(
   }
   if (args.signal.aborted) return err({ type: "quit" });
 
-  const loaded: Partial<AllToolsAcrossTree<A>> = {};
+  const loaded: Partial<ToolRegistry<A>> = {};
   for (const result of results) {
     if (result.status !== "fulfilled") continue;
     const { key, toolDef } = result.value;
