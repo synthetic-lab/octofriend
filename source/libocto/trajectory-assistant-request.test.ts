@@ -20,7 +20,7 @@ import {
   type CompilerParams,
   type CompilerResult,
   type CompilerSuccessData,
-} from "./compilers/compiler-interface.ts";
+} from "./jit/jit-interface.ts";
 import { lower } from "./ir-operations.ts";
 import {
   trajectoryAssistantRequest,

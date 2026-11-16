@@ -19,12 +19,34 @@ export { lowerMessages, meaningfulTailIR } from "./ir-operations.ts";
 export { timeout } from "./signals.ts";
 export { BackgroundProcessManager } from "./background-process.ts";
 
-// The compiler contract, and the model backends libocto ships.
-export * from "./compilers/compiler-interface.ts";
-export { imageAttachmentPlaceholderText } from "./compilers/ir-prompts.ts";
-export type { OpenAIBackend } from "./compilers/openai-shared.ts";
-export { runAnthropicAgent, type AnthropicBackend } from "./compilers/anthropic.ts";
-export { runResponsesAgent } from "./compilers/responses.ts";
-export { runAgent } from "./compilers/standard.ts";
+// The jit contract.
+export * from "./jit/jit-interface.ts";
+export { imageAttachmentPlaceholderText } from "./jit/ir-prompts.ts";
+
+/*
+ * Compilers: IR in, a complete provider-native request body out, no execution. Use these to run
+ * requests on your own transport — enqueue them for a cloud worker, or emit them as SFT data.
+ */
+export {
+  chatCompletionsCompiler,
+  chatCompletionsCurl,
+} from "./jit/chat-completions/compiler-chat-completions.ts";
+export {
+  anthropicCompiler,
+  anthropicCurl,
+  type AnthropicCompileConfig,
+} from "./jit/anthropic/compiler-anthropic.ts";
+export { responsesCompiler, responsesCurl } from "./jit/responses/compiler-responses.ts";
+export type {
+  OpenAIBackend,
+  OpenAICompileConfig,
+  OpenAIReasoningEffort,
+} from "./jit/openai-shared.ts";
+
+// Interpreters: compile, execute against the provider, and interpret the stream back into IR.
+export { runAgent } from "./jit/chat-completions/interpreter-chat-completions.ts";
+export type { AnthropicBackend } from "./jit/anthropic/interpreter-anthropic.ts";
+export { runAnthropicAgent } from "./jit/anthropic/interpreter-anthropic.ts";
+export { runResponsesAgent } from "./jit/responses/interpreter-responses.ts";
 
 export * as toolkits from "./toolkits/index.ts";

@@ -19,9 +19,9 @@ import type {
   ToolValidationErrorMessage,
 } from "./llm-ir.ts";
 import type { ToolDef } from "./toolkits/tool-def.ts";
-import type { AutofixJsonFn, Compiler, CompilerError } from "./compilers/compiler-interface.ts";
-import { compilerUsage } from "./compilers/compiler-interface.ts";
-import { userInterruptReason } from "./compilers/ir-prompts.ts";
+import type { AutofixJsonFn, Compiler, CompilerError } from "./jit/jit-interface.ts";
+import { compilerUsage } from "./jit/jit-interface.ts";
+import { userInterruptReason } from "./jit/ir-prompts.ts";
 import type { ExecutionModel } from "./execution.ts";
 
 // A batch is all-or-nothing: one invalid call means its callable siblings are skipped.

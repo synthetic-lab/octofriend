@@ -1,11 +1,17 @@
 import { t } from "structural";
 import type OpenAI from "openai";
-import type { CompilerError } from "./compiler-interface.ts";
+import type { CompilerError } from "./jit-interface.ts";
 import { errorToString } from "../result.ts";
 
-export type OpenAIBackend = {
+export type OpenAIReasoningEffort = "low" | "medium" | "high" | "xhigh";
+
+// What the OpenAI compilers need to build a request body; the shipped interpreters add a client.
+export type OpenAICompileConfig = {
+  reasoningEffort?: OpenAIReasoningEffort;
+};
+
+export type OpenAIBackend = OpenAICompileConfig & {
   client: OpenAI;
-  reasoningEffort?: "low" | "medium" | "high" | "xhigh";
 };
 
 const OpenAIStatusErrorSchema = t.subtype({

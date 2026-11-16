@@ -2,7 +2,7 @@ import { prompt } from "./system-prompt.ts";
 import { afterEach, describe, expect, it } from "bun:test";
 import { t } from "structural";
 import { MockTransport } from "../transports/mock.ts";
-import { compilerUsage, type Compiler } from "./compilers/compiler-interface.ts";
+import { compilerUsage, type Compiler } from "./jit/jit-interface.ts";
 import {
   agent as agentBuilder,
   type AgentIR,

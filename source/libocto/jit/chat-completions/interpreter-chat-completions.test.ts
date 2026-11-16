@@ -1,18 +1,19 @@
 import { describe, expect, it } from "bun:test";
 import OpenAI from "openai";
-import { MockTransport } from "../../transports/mock.ts";
+import { MockTransport } from "../../../transports/mock.ts";
 import { t } from "structural";
-import { ToolBuilder } from "../toolkits/tool-def.ts";
-import { ok } from "../result.ts";
+import { ToolBuilder } from "../../toolkits/tool-def.ts";
+import { ok } from "../../result.ts";
 import type {
   ChatCompletionAssistantMessageParam,
   ChatCompletionToolMessageParam,
 } from "openai/resources/chat/completions";
-import { octoAgent } from "../../ir/octo-ir.ts";
-import { compilerUsage } from "./compiler-interface.ts";
-import { runAgent, toLlmMessages } from "./standard.ts";
-import type { LoweredIR, MalformedToolRequest, OwnToolCall } from "../llm-ir.ts";
-import { defaultCountTokens } from "../execution.ts";
+import { octoAgent } from "../../../ir/octo-ir.ts";
+import { compilerUsage } from "../jit-interface.ts";
+import { runAgent } from "./interpreter-chat-completions.ts";
+import { toLlmMessages } from "./compiler-chat-completions.ts";
+import type { LoweredIR, MalformedToolRequest, OwnToolCall } from "../../llm-ir.ts";
+import { defaultCountTokens } from "../../execution.ts";
 
 type Ir = LoweredIR<typeof octoAgent.tools>;
 type ShellToolCall = Extract<OwnToolCall<typeof octoAgent>, { name: "shell" }>;

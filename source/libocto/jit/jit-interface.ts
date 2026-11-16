@@ -3,8 +3,33 @@ import type { Agent, AssistantMessage, LoweredIR, OwnToolRegistry } from "../llm
 import type { ToolMap } from "../toolkits/tool-def.ts";
 import { Transport } from "../transport.ts";
 import type { ExecutionModel } from "../execution.ts";
+import type { MultimodalConfig } from "../modalities.ts";
 
 export type CompilerIR<A extends Agent<any, any, any, any>> = LoweredIR<A["tools"]>;
+
+/*
+ * The compile half of the jit: IR in, a provider-native request body out, with no execution.
+ *
+ * Each provider's compiler module owns the whole body — messages, tool schemas, model options,
+ * streaming flags — so a caller can hand the result to their own transport (an HTTP client, or a
+ * queue of chat-completions-shaped jobs) instead of libocto's interpreter. Compilers live below
+ * the interpreters: the shipped interpreters import them, never the other way around.
+ */
+
+// The minimum a compiler needs to know about the model: the wire name, and which modalities it can
+// render. ExecutionModel satisfies this, so interpreters can pass their model straight through.
+export type CompileModel = {
+  model: string;
+  modalities: MultimodalConfig | null;
+};
+
+export type CompileInputs<A extends Agent<any, any, any, any>> = {
+  model: CompileModel;
+  irs: Array<CompilerIR<A>>;
+  systemPrompt?: () => Promise<string>;
+  tools?: Partial<OwnToolRegistry<A>>;
+};
+
 export type CompilerTokenType<Tools = unknown> = [Tools] extends [undefined]
   ? "reasoning" | "content"
   : "reasoning" | "content" | "tool";
@@ -236,14 +261,13 @@ export type Compiler<Backend> = <
   params: CompilerParams<A, Backend, Tools>,
 ) => Promise<CompilerResult<A, Tools>>;
 
-// defineCompiler keeps the "were tools offered?" bookkeeping local to libocto. Concrete compiler
-// implementations get a broad token callback that they can call with any provider event, plus a
+// defineCompiler keeps the "were tools offered?" bookkeeping local to libocto's interpreters. An
+// interpreter gets a broad token callback that it can call with any provider event, plus a
 // finish(...) callback that wraps final assistant construction. If a provider emits tool tokens when
 // the caller did not supply tools, finish(...) returns an unexpected-tool-call error before running
-// the parsedOutput callback, so compiler implementations do not need to duplicate that guard around
-// every tool parsing path. finish(...) also skips the parsedOutput callback after aborts, because
-// compiler parsedOutput callbacks are where expensive or invalid-on-abort tool parsing usually
-// happens.
+// the parsedOutput callback, so interpreters do not need to duplicate that guard around every tool
+// parsing path. finish(...) also skips the parsedOutput callback after aborts, because interpreter
+// parsedOutput callbacks are where expensive or invalid-on-abort tool parsing usually happens.
 export function defineCompiler<Backend>(
   implementation: CompilerImplementation<Backend>,
 ): Compiler<Backend> {

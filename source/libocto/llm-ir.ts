@@ -1,7 +1,7 @@
 import { ImageInfo } from "./images.ts";
 import { BUILTIN_IR_ROLES } from "./ir-roles.ts";
 import type { BuiltinIRRole } from "./ir-roles.ts";
-import type { CompilerUsage } from "./compilers/compiler-interface.ts";
+import type { CompilerUsage } from "./jit/jit-interface.ts";
 import type { SystemPrompt, SystemPromptData } from "./system-prompt.ts";
 import type {
   LoadedTools,

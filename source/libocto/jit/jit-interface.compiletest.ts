@@ -5,8 +5,8 @@ import type {
   CompilerImplementationParams,
   CompilerResult,
   CompilerResultWithoutToolCalls,
-} from "./compiler-interface.ts";
-import { compilerUsage, defineCompiler } from "./compiler-interface.ts";
+} from "./jit-interface.ts";
+import { compilerUsage, defineCompiler } from "./jit-interface.ts";
 import type { ExecutionModel } from "../execution.ts";
 
 type ScratchBackend = {

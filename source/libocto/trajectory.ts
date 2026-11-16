@@ -43,7 +43,7 @@ import type {
 } from "./ir-operations.ts";
 export type { SubagentTrajectoryInspection } from "./ir-operations.ts";
 import type { MultimodalConfig } from "./modalities.ts";
-import { subagentPrompt, userInterruptReason } from "./compilers/ir-prompts.ts";
+import { subagentPrompt, userInterruptReason } from "./jit/ir-prompts.ts";
 import type { ToolExtensionIR, ToolReturn } from "./toolkits/tool-def.ts";
 import {
   loadAgentTools,
@@ -56,7 +56,7 @@ import { Input } from "./input.ts";
 import { err, ok, type Result } from "./result.ts";
 import { OwnershipLock, type OwnershipLockRef } from "./ownership-lock.ts";
 import { waitForPermissionDecision, type PermissionGate } from "./permissions.ts";
-import { approximateIRTokens, shouldAutoCompactHistory } from "./compilers/autocompact.ts";
+import { approximateIRTokens, shouldAutoCompactHistory } from "./trajectory-autocompact.ts";
 import { defaultCountTokens, type ExecutionModel } from "./execution.ts";
 import { trajectoryCompaction, type TrajectoryCompactionEvents } from "./trajectory-compaction.ts";
 import {

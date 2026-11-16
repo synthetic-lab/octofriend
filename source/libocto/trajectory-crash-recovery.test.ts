@@ -9,7 +9,7 @@ import {
   type CompilerParams,
   type CompilerResult,
   type CompilerSuccessData,
-} from "./compilers/compiler-interface.ts";
+} from "./jit/jit-interface.ts";
 import { downconvert, inspectHistory } from "./ir-operations.ts";
 import {
   agent as agentBuilder,

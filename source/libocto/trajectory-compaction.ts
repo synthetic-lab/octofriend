@@ -3,8 +3,8 @@ import type { Transport } from "./transport.ts";
 import {
   generateCompactionCheckpointContent,
   type CompactionError,
-} from "./compilers/autocompact.ts";
-import type { AutofixJsonFn, Compiler, CompilerIR } from "./compilers/compiler-interface.ts";
+} from "./trajectory-autocompact.ts";
+import type { AutofixJsonFn, Compiler, CompilerIR } from "./jit/jit-interface.ts";
 import type {
   Agent,
   Checkpoint,
@@ -12,7 +12,7 @@ import type {
   InterruptedByUserIR,
   ModelErrorIR,
 } from "./llm-ir.ts";
-import { userInterruptReason } from "./compilers/ir-prompts.ts";
+import { userInterruptReason } from "./jit/ir-prompts.ts";
 import { err, ok, type Result } from "./result.ts";
 import { combineSignals } from "./signals.ts";
 import type { ExecutionModel } from "./execution.ts";

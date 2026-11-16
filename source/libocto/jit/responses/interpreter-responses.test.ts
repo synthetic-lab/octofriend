@@ -1,15 +1,16 @@
 import { describe, expect, it } from "bun:test";
-import { MockTransport } from "../../transports/mock.ts";
+import { MockTransport } from "../../../transports/mock.ts";
 import OpenAI from "openai";
-import { octoAgent } from "../../ir/octo-ir.ts";
-import type { Transport } from "../transport.ts";
-import { runResponsesAgent, toResponseInput } from "./responses.ts";
+import { octoAgent } from "../../../ir/octo-ir.ts";
+import type { Transport } from "../../transport.ts";
+import { runResponsesAgent } from "./interpreter-responses.ts";
 import {
   normalizeOpenAIStrictFunctionArguments,
   openAIStrictFunctionParameters,
-} from "./responses.ts";
-import { compilerUsage } from "./compiler-interface.ts";
-import type { LoweredIR, OwnToolCall } from "../llm-ir.ts";
+  toResponseInput,
+} from "./compiler-responses.ts";
+import { compilerUsage } from "../jit-interface.ts";
+import type { LoweredIR, OwnToolCall } from "../../llm-ir.ts";
 
 describe("openAIStrictFunctionParameters", () => {
   it("closes object schemas for OpenAI strict function calling", () => {

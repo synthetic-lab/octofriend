@@ -29,9 +29,9 @@ import {
   type CompilerParams,
   type CompilerResult,
   type CompilerSuccessData,
-} from "./compilers/compiler-interface.ts";
+} from "./jit/jit-interface.ts";
 import type { ErrorCorrection } from "./trajectory-assistant-request.ts";
-import { subagentPrompt } from "./compilers/ir-prompts.ts";
+import { subagentPrompt } from "./jit/ir-prompts.ts";
 import type { PermissionDecision } from "./permissions.ts";
 import {
   Trajectory,

@@ -1,7 +1,7 @@
 import { describe, expect, it } from "bun:test";
 import { downconvert, lowerMessages, pendingToolCalls } from "../../ir-operations.ts";
 import { agent, type TreeIR, type RecursiveLowered } from "../../llm-ir.ts";
-import { compilerUsage } from "../../compilers/compiler-interface.ts";
+import { compilerUsage } from "../../jit/jit-interface.ts";
 import type { ToolCallFromToolMap } from "../tool-def.ts";
 import type { ImageInfo } from "../../images.ts";
 import type { MultimodalConfig } from "../../modalities.ts";

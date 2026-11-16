@@ -1,7 +1,7 @@
 import { prompt } from "./system-prompt.ts";
 import { describe, expect, it } from "bun:test";
 import { t } from "structural";
-import { compilerUsage } from "./compilers/compiler-interface.ts";
+import { compilerUsage } from "./jit/jit-interface.ts";
 import { downconvert, lower } from "./ir-operations.ts";
 import {
   agent,

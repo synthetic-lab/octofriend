@@ -1,300 +1,43 @@
 import type Anthropic from "@anthropic-ai/sdk";
-import { t, toJSONSchema } from "structural";
-import type { Compiler, CompilerImplementationParams, CompilerIR } from "./compiler-interface.ts";
-import { compilerUsage, defineCompiler } from "./compiler-interface.ts";
-import { parseToolCall } from "./parse-tool-call.ts";
+import { t } from "structural";
+import type { Compiler, CompilerImplementationParams } from "../jit-interface.ts";
+import { compilerUsage, defineCompiler } from "../jit-interface.ts";
+import { parseToolCall } from "../parse-tool-call.ts";
 import type {
   Agent,
   AnthropicAssistantData,
   AssistantMessage,
-  Content as IRContent,
   MalformedToolRequest,
   OwnToolCall,
-  OwnToolRegistry,
-} from "../llm-ir.ts";
-import { errorToString, err } from "../result.ts";
-import * as irPrompts from "./ir-prompts.ts";
-import type { MultimodalConfig } from "../modalities.ts";
+} from "../../llm-ir.ts";
+import { errorToString, err } from "../../result.ts";
+import type { AnthropicCompileConfig } from "./compiler-anthropic.ts";
+import { anthropicCompiler, anthropicCurl } from "./compiler-anthropic.ts";
 
-type ToolCallRequest<A extends Agent<any, any, any, any>> = OwnToolCall<A>;
-type LoadedTool<A extends Agent<any, any, any, any>> = OwnToolRegistry<A>[keyof OwnToolRegistry<A>];
-
-export type AnthropicBackend = {
+export type AnthropicBackend = AnthropicCompileConfig & {
   client: Anthropic;
-  maxTokens: number;
-  thinking?: Anthropic.ThinkingConfigParam;
-  outputConfig?: Anthropic.OutputConfig;
 };
-
-const ThinkingBlockSchema = t.subtype({
-  type: t.value("thinking"),
-  thinking: t.str,
-  signature: t.str,
-});
-
-function imagePlaceholderContent(): string {
-  return irPrompts.imageAttachmentPlaceholderText();
-}
-
-function anthropicContentParts(
-  content: IRContent["content"],
-  modalities?: MultimodalConfig | null,
-): Array<Anthropic.TextBlockParam | Anthropic.ImageBlockParam> {
-  const output: Array<Anthropic.TextBlockParam | Anthropic.ImageBlockParam> = [];
-  for (const part of content) {
-    if (part.type === "text") {
-      output.push({ type: "text", text: part.content });
-      continue;
-    }
-    if (modalities?.image?.enabled) {
-      output.push({
-        type: "image",
-        source: {
-          type: "base64",
-          media_type: part.image.mimeType,
-          data: part.image.base64Data,
-        },
-      });
-    } else {
-      output.push({ type: "text", text: imagePlaceholderContent() });
-    }
-  }
-  return output;
-}
-
-function toModelMessage<A extends Agent<any, any, any, any>>(
-  messages: Array<CompilerIR<A>>,
-  modalities?: MultimodalConfig | null,
-): Array<Anthropic.MessageParam> {
-  const output: Anthropic.MessageParam[] = [];
-
-  for (const ir of messages) {
-    output.push(modelMessageFromIr(ir, modalities));
-  }
-
-  return output;
-}
-
-function modelMessageFromIr<A extends Agent<any, any, any, any>>(
-  ir: CompilerIR<A>,
-  modalities?: MultimodalConfig | null,
-): Anthropic.MessageParam {
-  if (ir.role === "assistant") {
-    const thinkingBlocks = ir.anthropic?.thinkingBlocks || [];
-    const toolCalls = ir.toolCalls || [];
-    return {
-      role: "assistant",
-      content: [
-        ...thinkingBlocks,
-        { type: "text", text: ir.content || " " },
-        ...toolCalls
-          .filter((t: any) => t.type === "tool-call")
-          .map((t: any) => {
-            return {
-              type: "tool_use" as const,
-              id: t.toolCallId,
-              name: t.name,
-              input: t.original || {},
-            };
-          }),
-      ],
-    };
-  }
-
-  if (ir.role === "user") {
-    return {
-      role: "user",
-      content: anthropicContentParts(ir.content, modalities),
-    };
-  }
-
-  if (ir.role === "tool-output") {
-    return {
-      role: "user",
-      content: [
-        {
-          type: "tool_result",
-          tool_use_id: ir.toolCall.toolCallId,
-          content: anthropicContentParts(ir.content, modalities),
-        },
-      ],
-    };
-  }
-
-  if (ir.role === "tool-skip-output") {
-    return {
-      role: "user",
-      content: [
-        {
-          type: "tool_result",
-          tool_use_id: ir.toolCall.toolCallId,
-          is_error: true,
-          content: irPrompts.toolSkip(ir.reason),
-        },
-      ],
-    };
-  }
-
-  if (ir.role === "tool-runtime-error") {
-    return {
-      role: "user",
-      content: [
-        {
-          type: "tool_result",
-          tool_use_id: ir.toolCall.toolCallId,
-          is_error: true,
-          content: `Error: ${ir.error}`,
-        },
-      ],
-    };
-  }
-
-  if (ir.role === "tool-parse-error") {
-    return {
-      role: "user",
-      content: [
-        {
-          type: "tool_result",
-          tool_use_id: ir.malformedRequest.toolCallId,
-          is_error: true,
-          content: `Error: ${ir.malformedRequest.error}`,
-        },
-      ],
-    };
-  }
-
-  if (ir.role === "tool-validation-error") {
-    return {
-      role: "user",
-      content: [
-        {
-          type: "tool_result",
-          tool_use_id: ir.toolCall.toolCallId,
-          is_error: true,
-          content: `Error: ${ir.error}`,
-        },
-      ],
-    };
-  }
-
-  if (ir.role === "lowered-checkpoint") {
-    return {
-      role: "user",
-      content: anthropicContentParts(ir.content, modalities),
-    };
-  }
-
-  const _: never = ir;
-  throw new Error(`Unsupported IR role: ${(ir as any).role}`);
-}
-
-function generateCurlFrom(params: {
-  baseURL: string;
-  model: string;
-  system: string;
-  messages: Array<Anthropic.MessageParam>;
-  tools?: Array<{ description: string; input_schema: any; name: string }>;
-  maxTokens: number;
-  thinking?: Anthropic.ThinkingConfigParam;
-  outputConfig?: Anthropic.OutputConfig;
-}): string {
-  const { baseURL, model, system, messages, tools, maxTokens, thinking, outputConfig } = params;
-  const requestBody = {
-    model,
-    system,
-    messages,
-    tools,
-    tool_choice: {
-      type: "auto",
-      disable_parallel_tool_use: false,
-    },
-    max_tokens: maxTokens,
-    ...(thinking ? { thinking } : {}),
-    ...(outputConfig ? { output_config: outputConfig } : {}),
-    stream: true,
-  };
-
-  // Curl requests need an API Version
-  // Currently hardcoded in Anthropic SDK
-  const ANTHROPIC_API_VERSION = "2023-06-01";
-
-  return `curl -X POST "${baseURL}/v1/messages" \\
-  -H "Content-Type: application/json" \\
-  -H "x-api-key: [REDACTED_API_KEY]" \\
-  -H "anthropic-version: ${ANTHROPIC_API_VERSION}" \\
-  -d @- <<'JSON'
-${JSON.stringify(requestBody)}
-JSON`;
-}
 
 export const runAnthropicAgent: Compiler<AnthropicBackend> = defineCompiler(
   async <A extends Agent<any, any, any, any>>(
     params: CompilerImplementationParams<A, AnthropicBackend>,
   ) => {
     const { model, backend, irs, abortSignal, transport, systemPrompt, autofixJson } = params;
-    const messages = toModelMessage(irs, model.modalities);
-    const sysPrompt = systemPrompt ? await systemPrompt() : "";
+
+    const request = await anthropicCompiler({
+      model,
+      irs,
+      systemPrompt,
+      tools: params.tools,
+      config: backend,
+    });
+    const curl = anthropicCurl(request, backend.client.baseURL);
 
     const toolDefs = params.tools || {};
-    const toolDefinitions: Array<{ description: string; input_schema: any; name: string }> = [];
-    const toolEntries = Object.entries(toolDefs) as Array<[string, LoadedTool<A>]>;
-    toolEntries.forEach(([name, toolDef]) => {
-      const argJsonSchema = toJSONSchema("ignore", toolDef.ArgumentsSchema);
-      // Delete JSON schema fields unused by AI SDK
-      // @ts-ignore
-      delete argJsonSchema.$schema;
-      delete argJsonSchema.description;
-      // @ts-ignore
-      delete argJsonSchema.title;
-
-      toolDefinitions.push({
-        name,
-        description: toolDef.description,
-        input_schema: argJsonSchema,
-      });
-    });
-    const toolParams =
-      toolDefinitions.length === 0
-        ? {}
-        : {
-            tools: toolDefinitions,
-          };
-
-    const modelOptions = {
-      ...(backend.thinking ? { thinking: backend.thinking } : {}),
-      ...(backend.outputConfig ? { output_config: backend.outputConfig } : {}),
-    };
-
-    const curl = generateCurlFrom({
-      baseURL: backend.client.baseURL,
-      model: model.model,
-      system: sysPrompt,
-      messages,
-      ...toolParams,
-      maxTokens: backend.maxTokens,
-      thinking: backend.thinking,
-      outputConfig: backend.outputConfig,
-    });
 
     try {
-      const system = sysPrompt == null ? {} : { system: sysPrompt };
       const { data: stream, response } = await backend.client.messages
-        .create(
-          {
-            ...system,
-            model: model.model,
-            messages,
-            ...toolParams,
-            tool_choice: {
-              type: "auto",
-              disable_parallel_tool_use: false,
-            },
-            max_tokens: backend.maxTokens,
-            ...modelOptions,
-            stream: true,
-          },
-          { signal: abortSignal },
-        )
+        .create(request, { signal: abortSignal })
         .withResponse();
 
       let content = "";
@@ -519,3 +262,11 @@ export const runAnthropicAgent: Compiler<AnthropicBackend> = defineCompiler(
     }
   },
 );
+
+type ToolCallRequest<A extends Agent<any, any, any, any>> = OwnToolCall<A>;
+
+const ThinkingBlockSchema = t.subtype({
+  type: t.value("thinking"),
+  thinking: t.str,
+  signature: t.str,
+});

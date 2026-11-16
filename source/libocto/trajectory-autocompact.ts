@@ -1,12 +1,12 @@
-import type { Agent, Content, LoweredIR } from "../llm-ir.ts";
-import { defaultCountTokens, type ExecutionModel } from "../execution.ts";
-import type { ToolMap } from "../toolkits/tool-def.ts";
+import type { Agent, Content, LoweredIR } from "./llm-ir.ts";
+import { defaultCountTokens, type ExecutionModel } from "./execution.ts";
+import type { ToolMap } from "./toolkits/tool-def.ts";
 import type {
   CompilerError,
   CompilerIR,
   CompilerResultWithoutToolCalls,
-} from "./compiler-interface.ts";
-import { Result, ok, err } from "../result.ts";
+} from "./jit/jit-interface.ts";
+import { Result, ok, err } from "./result.ts";
 
 export const AUTOCOMPACT_THRESHOLD = 0.8;
 

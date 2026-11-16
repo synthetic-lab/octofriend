@@ -1,7 +1,7 @@
 import { describe, expect, it } from "bun:test";
 import { LocalTransport } from "../transports/local.ts";
-import { compilerUsage, defineCompiler } from "./compilers/compiler-interface.ts";
-import { userInterruptReason } from "./compilers/ir-prompts.ts";
+import { compilerUsage, defineCompiler } from "./jit/jit-interface.ts";
+import { userInterruptReason } from "./jit/ir-prompts.ts";
 import { err } from "./result.ts";
 import { trajectoryCompaction } from "./trajectory-compaction.ts";
 import { defaultCountTokens, type ExecutionModel } from "./execution.ts";
