@@ -4,8 +4,8 @@ import type {
   ResponseOutputItem,
   ResponseReasoningItem,
 } from "openai/resources/responses/responses";
-import type { Compiler, CompilerImplementationParams } from "../jit-interface.ts";
-import { compilerUsage, defineCompiler } from "../jit-interface.ts";
+import type { Interpreter, InterpreterImplementationParams } from "../jit-interface.ts";
+import { interpreterUsage, defineInterpreter } from "../jit-interface.ts";
 import { parseToolCall } from "../parse-tool-call.ts";
 import type {
   Agent,
@@ -18,15 +18,11 @@ import { errorToString, err } from "../../result.ts";
 import type { OpenAIBackend } from "../openai-shared.ts";
 import { openAIRequestError } from "../openai-shared.ts";
 import type { JsonObject, JsonValue } from "./compiler-responses.ts";
-import {
-  normalizeOpenAIStrictFunctionArguments,
-  responsesCompiler,
-  responsesCurl,
-} from "./compiler-responses.ts";
+import { responsesCompiler, responsesCurl } from "./compiler-responses.ts";
 
-export const runResponsesAgent: Compiler<OpenAIBackend> = defineCompiler(
+export const runResponsesAgent: Interpreter<OpenAIBackend> = defineInterpreter(
   async <A extends Agent<any, any, any, any>>(
-    params: CompilerImplementationParams<A, OpenAIBackend>,
+    params: InterpreterImplementationParams<A, OpenAIBackend>,
   ) => {
     const { model, backend, irs, abortSignal, transport, systemPrompt, autofixJson } = params;
 
@@ -115,7 +111,7 @@ export const runResponsesAgent: Compiler<OpenAIBackend> = defineCompiler(
                 type: "stream-error",
                 requestError: event.response.error?.message || "OpenAI Responses request failed",
                 curl,
-                usage: compilerUsage(usage.input, usage.output, usage.cachedInput),
+                usage: interpreterUsage(usage.input, usage.output, usage.cachedInput),
                 headers: response.headers,
               });
 
@@ -124,7 +120,7 @@ export const runResponsesAgent: Compiler<OpenAIBackend> = defineCompiler(
                 type: "stream-error",
                 requestError: event.message,
                 curl,
-                usage: compilerUsage(usage.input, usage.output, usage.cachedInput),
+                usage: interpreterUsage(usage.input, usage.output, usage.cachedInput),
                 headers: response.headers,
               });
           }
@@ -135,13 +131,13 @@ export const runResponsesAgent: Compiler<OpenAIBackend> = defineCompiler(
             type: "stream-error",
             requestError: errorToString(e),
             curl,
-            usage: compilerUsage(usage.input, usage.output, usage.cachedInput),
+            usage: interpreterUsage(usage.input, usage.output, usage.cachedInput),
             headers: response.headers,
           });
         }
       }
 
-      const compilerTokens = compilerUsage(usage.input, usage.output, usage.cachedInput);
+      const interpreterTokens = interpreterUsage(usage.input, usage.output, usage.cachedInput);
 
       let openaiSpecific = {};
       if (reasoningId || encryptedReasoningContent) {
@@ -152,13 +148,13 @@ export const runResponsesAgent: Compiler<OpenAIBackend> = defineCompiler(
         content,
         reasoningContent,
         ...openaiSpecific,
-        usage: compilerTokens,
+        usage: interpreterTokens,
       };
 
       return params.finish({
         curl,
         headers: response.headers,
-        usage: compilerTokens,
+        usage: interpreterTokens,
         abortedOutput: assistantHistoryItem,
         parsedOutput: async () => {
           if (responseToolCalls.size === 0) return assistantHistoryItem;
@@ -230,4 +226,80 @@ function normalizeResponseToolArguments(schema: JsonObject, rawArguments: string
   } catch {
     return rawArguments;
   }
+}
+
+// Because OpenAI strict mode models optional fields as required nullable fields, a missing
+// optional argument can come back as `null`. Before structural validates the arguments,
+// convert only those originally-optional null fields back into absent properties.
+export function normalizeOpenAIStrictFunctionArguments(
+  schema: JsonObject,
+  args: JsonValue,
+): JsonValue {
+  const optionalPaths: Array<Array<string>> = [];
+  collectOptionalPropertyPaths(schema, [], optionalPaths);
+  return deleteNullOptionals(args, optionalPaths);
+}
+
+function collectOptionalPropertyPaths(
+  schema: JsonValue,
+  path: Array<string>,
+  optionalPaths: Array<Array<string>>,
+): void {
+  if (Array.isArray(schema)) {
+    for (const item of schema) collectOptionalPropertyPaths(item, path, optionalPaths);
+    return;
+  }
+
+  if (schema == null || typeof schema !== "object") return;
+
+  const properties = objectRecord(schema["properties"]);
+  if (properties) {
+    const required = new Set(
+      Array.isArray(schema["required"]) ? schema["required"].filter(isString) : [],
+    );
+
+    for (const [propertyName, propertySchema] of Object.entries(properties)) {
+      const propertyPath = [...path, propertyName];
+      if (!required.has(propertyName)) optionalPaths.push(propertyPath);
+      collectOptionalPropertyPaths(propertySchema, propertyPath, optionalPaths);
+    }
+  }
+
+  for (const [key, value] of Object.entries(schema)) {
+    if (key === "properties" || key === "required") continue;
+    collectOptionalPropertyPaths(value, path, optionalPaths);
+  }
+}
+
+function deleteNullOptionals(args: JsonValue, optionalPaths: Array<Array<string>>): JsonValue {
+  if (args == null || typeof args !== "object" || Array.isArray(args)) return args;
+  const normalized = structuredClone(args);
+
+  for (const path of optionalPaths) deleteIfNullAtPath(normalized, path);
+
+  return normalized;
+}
+
+function deleteIfNullAtPath(value: JsonValue, path: Array<string>): void {
+  if (path.length === 0 || value == null || typeof value !== "object" || Array.isArray(value)) {
+    return;
+  }
+
+  const node = value;
+  const [key, ...rest] = path;
+  if (rest.length === 0) {
+    if (node[key] === null) delete node[key];
+    return;
+  }
+
+  deleteIfNullAtPath(node[key], rest);
+}
+
+function objectRecord(value: JsonValue | undefined): JsonObject | null {
+  if (value == null || typeof value !== "object" || Array.isArray(value)) return null;
+  return value;
+}
+
+function isString(value: JsonValue): value is string {
+  return typeof value === "string";
 }

@@ -9,8 +9,8 @@ import type {
   ChatCompletionToolMessageParam,
 } from "openai/resources/chat/completions";
 import { octoAgent } from "../../../ir/octo-ir.ts";
-import { compilerUsage } from "../jit-interface.ts";
-import { runAgent } from "./interpreter-chat-completions.ts";
+import { interpreterUsage } from "../jit-interface.ts";
+import { runChatCompletionsAgent } from "./interpreter-chat-completions.ts";
 import { toLlmMessages } from "./compiler-chat-completions.ts";
 import type { LoweredIR, MalformedToolRequest, OwnToolCall } from "../../llm-ir.ts";
 import { defaultCountTokens } from "../../execution.ts";
@@ -76,7 +76,7 @@ describe("standard mixed stream chunks", () => {
           }),
       });
       const tokens: Array<{ text: string; type: string }> = [];
-      const result = await runAgent({
+      const result = await runChatCompletionsAgent({
         model: {
           provider: null,
           model: "test-model",
@@ -149,7 +149,7 @@ describe("toLlmMessages reasoning", () => {
           role: "assistant",
           content: "I will check the files.",
           reasoningContent: "First, inspect the directory.",
-          usage: compilerUsage(1, 1),
+          usage: interpreterUsage(1, 1),
           ...(hasTools ? { toolCalls: [shellCall("call_reasoning")] } : {}),
         },
       ]);
@@ -168,7 +168,7 @@ describe("toLlmMessages reasoning", () => {
 
   it.each([undefined, ""])("omits absent or empty reasoning (%s)", async reasoningContent => {
     const messages = await toLlmMessages<typeof octoAgent>([
-      { role: "assistant", content: "Done.", reasoningContent, usage: compilerUsage(1, 1) },
+      { role: "assistant", content: "Done.", reasoningContent, usage: interpreterUsage(1, 1) },
     ]);
 
     expect(messages).toEqual([{ role: "assistant", content: "Done." }]);
@@ -196,7 +196,7 @@ describe("toLlmMessages malformed tool requests", () => {
       {
         role: "assistant",
         content: "",
-        usage: compilerUsage(0, 0),
+        usage: interpreterUsage(0, 0),
         toolCalls: [malformed],
       },
       { role: "tool-parse-error", malformedRequest: malformed },
@@ -226,7 +226,7 @@ describe("toLlmMessages malformed tool requests", () => {
       {
         role: "assistant",
         content: "",
-        usage: compilerUsage(0, 0),
+        usage: interpreterUsage(0, 0),
         toolCalls: [valid, malformed],
       },
       {

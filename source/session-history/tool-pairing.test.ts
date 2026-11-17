@@ -5,7 +5,7 @@ import {
   repairOrphanedToolOutputs,
 } from "./tool-pairing.ts";
 import type { HistoryNode } from "./index.ts";
-import { compilerUsage } from "../libocto/index.ts";
+import { interpreterUsage } from "../libocto/index.ts";
 import type { OctoIR } from "../ir/octo-ir.ts";
 import type { OctoToolCall } from "../tools/index.ts";
 
@@ -31,7 +31,7 @@ function assistantNode(calls: ShellToolCall[]): HistoryNode {
   return node({
     role: "assistant",
     content: "On it.",
-    usage: compilerUsage(0, 0),
+    usage: interpreterUsage(0, 0),
     toolCalls: calls,
   });
 }

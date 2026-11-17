@@ -1,6 +1,10 @@
 import { t } from "structural";
-import type { Compiler, CompilerError, CompilerImplementationParams } from "../jit-interface.ts";
-import { compilerUsage, defineCompiler } from "../jit-interface.ts";
+import type {
+  Interpreter,
+  InterpreterError,
+  InterpreterImplementationParams,
+} from "../jit-interface.ts";
+import { interpreterUsage, defineInterpreter } from "../jit-interface.ts";
 import { parseToolCall } from "../parse-tool-call.ts";
 import type {
   Agent,
@@ -13,9 +17,9 @@ import type { OpenAIBackend } from "../openai-shared.ts";
 import { openAIRequestError } from "../openai-shared.ts";
 import { chatCompletionsCompiler, chatCompletionsCurl } from "./compiler-chat-completions.ts";
 
-export const runAgent: Compiler<OpenAIBackend> = defineCompiler(
+export const runChatCompletionsAgent: Interpreter<OpenAIBackend> = defineInterpreter(
   async <A extends Agent<any, any, any, any>>(
-    params: CompilerImplementationParams<A, OpenAIBackend>,
+    params: InterpreterImplementationParams<A, OpenAIBackend>,
   ) => {
     const { model, backend, irs, abortSignal, transport, systemPrompt, autofixJson } = params;
 
@@ -120,25 +124,25 @@ export const runAgent: Compiler<OpenAIBackend> = defineCompiler(
             type: "stream-error",
             requestError: errorToString(e),
             curl,
-            usage: compilerUsage(usage.input, usage.output, usage.cachedInput),
+            usage: interpreterUsage(usage.input, usage.output, usage.cachedInput),
             headers: response.headers,
           });
         }
       }
 
-      const compilerTokens = compilerUsage(usage.input, usage.output, usage.cachedInput);
+      const interpreterTokens = interpreterUsage(usage.input, usage.output, usage.cachedInput);
 
       const assistantIr: AssistantIR<A["tools"]> = {
         role: "assistant" as const,
         content,
         reasoningContent,
-        usage: compilerTokens,
+        usage: interpreterTokens,
       };
 
       return params.finish({
         curl,
         headers: response.headers,
-        usage: compilerTokens,
+        usage: interpreterTokens,
         abortedOutput: assistantIr,
         parsedOutput: async () => {
           if (toolCallMap.size === 0) return assistantIr;
@@ -222,7 +226,7 @@ type ResponseToolCall = t.GetType<typeof ResponseToolCallSchema>;
 async function handleKnownErrors<T>(
   curl: string,
   cb: () => Promise<T>,
-): Promise<T | Result<never, CompilerError>> {
+): Promise<T | Result<never, InterpreterError>> {
   try {
     return await cb();
   } catch (e) {

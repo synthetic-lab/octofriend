@@ -2,7 +2,7 @@
  * libocto's public surface. Clients import the agent framework from here and toolkit APIs from
  * ./toolkits/index.ts, so libocto's internal file layout stays private:
  *
- *   import { Compiler, Trajectory, agent, prompt } from "../libocto/index.ts";
+ *   import { Interpreter, Trajectory, agent, prompt } from "../libocto/index.ts";
  *   import { toolkits } from "../libocto/index.ts";
  */
 export * from "./llm-ir.ts";
@@ -44,7 +44,7 @@ export type {
 } from "./jit/openai-shared.ts";
 
 // Interpreters: compile, execute against the provider, and interpret the stream back into IR.
-export { runAgent } from "./jit/chat-completions/interpreter-chat-completions.ts";
+export { runChatCompletionsAgent } from "./jit/chat-completions/interpreter-chat-completions.ts";
 export type { AnthropicBackend } from "./jit/anthropic/interpreter-anthropic.ts";
 export { runAnthropicAgent } from "./jit/anthropic/interpreter-anthropic.ts";
 export { runResponsesAgent } from "./jit/responses/interpreter-responses.ts";

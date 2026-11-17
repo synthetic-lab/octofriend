@@ -30,14 +30,14 @@ export type CompileInputs<A extends Agent<any, any, any, any>> = {
   tools?: Partial<OwnToolRegistry<A>>;
 };
 
-export type CompilerTokenType<Tools = unknown> = [Tools] extends [undefined]
+export type InterpreterTokenType<Tools = unknown> = [Tools] extends [undefined]
   ? "reasoning" | "content"
   : "reasoning" | "content" | "tool";
 
-export type CompilerModality = "text" | "vision";
-export type CompilerModalities = readonly CompilerModality[];
+export type InterpreterModality = "text" | "vision";
+export type InterpreterModalities = readonly InterpreterModality[];
 
-export type CompilerUsage = {
+export type InterpreterUsage = {
   input: {
     cached: number;
     uncached: number;
@@ -46,11 +46,11 @@ export type CompilerUsage = {
   output: number;
 };
 
-export function compilerUsage(
+export function interpreterUsage(
   inputTotal: number,
   output: number,
   cached: number = 0,
-): CompilerUsage {
+): InterpreterUsage {
   return {
     input: {
       cached,
@@ -61,11 +61,11 @@ export function compilerUsage(
   };
 }
 
-export function compilerUsageHasTokens(usage: CompilerUsage): boolean {
+export function interpreterUsageHasTokens(usage: InterpreterUsage): boolean {
   return usage.input.total !== 0 || usage.output !== 0;
 }
 
-export type CompilerError =
+export type InterpreterError =
   | {
       type: "auth-error";
       authError: string;
@@ -80,7 +80,7 @@ export type CompilerError =
       type: "stream-error";
       requestError: string;
       curl: string;
-      usage: CompilerUsage;
+      usage: InterpreterUsage;
       headers: Headers;
     }
   | {
@@ -99,15 +99,15 @@ export type CompilerError =
       type: "unexpected-tool-call";
       requestError: string;
       curl: string;
-      usage: CompilerUsage;
+      usage: InterpreterUsage;
       headers: Headers;
     };
 
 export function unexpectedToolCallError(
   curl: string,
-  usage: CompilerUsage,
+  usage: InterpreterUsage,
   headers: Headers,
-): CompilerError {
+): InterpreterError {
   return {
     type: "unexpected-tool-call",
     requestError: "Model returned tool calls even though no tools were provided.",
@@ -130,35 +130,33 @@ type AssistantMessageForTools<A extends Agent<any, any, any, any>, Tools> = [Too
   ? AssistantMessageWithoutToolCalls<A["tools"]>
   : AssistantMessage<A["tools"]>;
 
-export type CompilerResultData<A extends Agent<any, any, any, any>, Tools> = {
+export type InterpreterResultData<A extends Agent<any, any, any, any>, Tools> = {
   output: AssistantMessageForTools<A, Tools>;
   curl: string;
   headers: Headers;
-  usage: CompilerUsage;
+  usage: InterpreterUsage;
 };
 
-export type CompilerResult<A extends Agent<any, any, any, any>, Tools = unknown> = Result<
-  CompilerResultData<A, Tools>,
-  CompilerError
+export type InterpreterResult<A extends Agent<any, any, any, any>, Tools = unknown> = Result<
+  InterpreterResultData<A, Tools>,
+  InterpreterError
 >;
 
-export type CompilerResultWithoutToolCalls<A extends Agent<any, any, any, any>> = CompilerResult<
-  A,
-  undefined
->;
+export type InterpreterResultWithoutToolCalls<A extends Agent<any, any, any, any>> =
+  InterpreterResult<A, undefined>;
 
 export type JsonFixResponse = { success: true; fixed: any } | { success: false };
 
 export type AutofixJsonFn = (badJson: string, signal: AbortSignal) => Promise<JsonFixResponse>;
 
-export type CompilerSuccessData<A extends Agent<any, any, any, any>> = {
+export type InterpreterSuccessData<A extends Agent<any, any, any, any>> = {
   output: AssistantMessage<A["tools"]>;
   curl: string;
   headers: Headers;
-  usage: CompilerUsage;
+  usage: InterpreterUsage;
 };
 
-type CompilerParamsBase<A extends Agent<any, any, any, any>, Backend> = {
+type InterpreterParamsBase<A extends Agent<any, any, any, any>, Backend> = {
   systemPrompt?: () => Promise<string>;
   model: Omit<ExecutionModel<unknown>, "countTokens">;
   backend: Backend;
@@ -168,82 +166,82 @@ type CompilerParamsBase<A extends Agent<any, any, any, any>, Backend> = {
   autofixJson?: AutofixJsonFn;
 };
 
-export type CompilerParams<
+export type InterpreterParams<
   A extends Agent<any, any, any, any>,
   Backend,
   Tools extends Partial<OwnToolRegistry<A>> | undefined = undefined,
-> = CompilerParamsBase<A, Backend> & {
-  onTokens: (t: string, type: CompilerTokenType<Tools>) => Promise<void>;
+> = InterpreterParamsBase<A, Backend> & {
+  onTokens: (t: string, type: InterpreterTokenType<Tools>) => Promise<void>;
   tools?: Tools;
 };
 
-export type CompilerParamsWithoutTools<
+export type InterpreterParamsWithoutTools<
   A extends Agent<any, any, any, any>,
   Backend,
-> = CompilerParamsBase<A, Backend> & {
-  onTokens: (t: string, type: CompilerTokenType<undefined>) => Promise<void>;
+> = InterpreterParamsBase<A, Backend> & {
+  onTokens: (t: string, type: InterpreterTokenType<undefined>) => Promise<void>;
   tools?: undefined;
 };
 
-export type CompilerParamsWithTools<
+export type InterpreterParamsWithTools<
   A extends Agent<any, any, any, any>,
   Backend,
   Tools extends Partial<OwnToolRegistry<A>> = Partial<OwnToolRegistry<A>>,
-> = CompilerParamsBase<A, Backend> & {
+> = InterpreterParamsBase<A, Backend> & {
   onTokens: (t: string, type: "reasoning" | "content" | "tool") => Promise<void>;
   tools: Tools;
 };
 
-export type CompilerParamsImplementation<A extends Agent<any, any, any, any>, Backend> =
-  | CompilerParamsWithoutTools<A, Backend>
-  | CompilerParamsWithTools<A, Backend>;
+export type InterpreterParamsImplementation<A extends Agent<any, any, any, any>, Backend> =
+  | InterpreterParamsWithoutTools<A, Backend>
+  | InterpreterParamsWithTools<A, Backend>;
 
-const compilerFinished = Symbol("compilerFinished");
-type CompilerFinishedData<A extends Agent<any, any, any, any>> = CompilerSuccessData<A> & {
-  readonly [compilerFinished]: true;
+const interpreterFinished = Symbol("interpreterFinished");
+type InterpreterFinishedData<A extends Agent<any, any, any, any>> = InterpreterSuccessData<A> & {
+  readonly [interpreterFinished]: true;
 };
-type CompilerImplementationResult<A extends Agent<any, any, any, any>> = Result<
-  CompilerFinishedData<A>,
-  CompilerError
+type InterpreterImplementationResult<A extends Agent<any, any, any, any>> = Result<
+  InterpreterFinishedData<A>,
+  InterpreterError
 >;
 
-export function compilerParamsHaveTools<A extends Agent<any, any, any, any>, Backend>(
-  params: CompilerParamsImplementation<A, Backend>,
-): params is CompilerParamsWithTools<A, Backend> {
+export function interpreterParamsHaveTools<A extends Agent<any, any, any, any>, Backend>(
+  params: InterpreterParamsImplementation<A, Backend>,
+): params is InterpreterParamsWithTools<A, Backend> {
   return params.tools !== undefined;
 }
 
-export type CompilerImplementationParams<A extends Agent<any, any, any, any>, Backend> = Omit<
-  CompilerParamsImplementation<A, Backend>,
+export type InterpreterImplementationParams<A extends Agent<any, any, any, any>, Backend> = Omit<
+  InterpreterParamsImplementation<A, Backend>,
   "onTokens"
 > & {
   onTokens: (t: string, type: "reasoning" | "content" | "tool") => Promise<void>;
   finish: (args: {
     curl: string;
     headers: Headers;
-    usage: CompilerUsage;
+    usage: InterpreterUsage;
     abortedOutput: AssistantMessage<A["tools"]>;
     parsedOutput: () => AssistantMessage<A["tools"]> | Promise<AssistantMessage<A["tools"]>>;
-  }) => Promise<CompilerImplementationResult<A>>;
+  }) => Promise<InterpreterImplementationResult<A>>;
 };
 
-type CompilerImplementation<Backend> = <A extends Agent<any, any, any, any>>(
-  params: CompilerImplementationParams<A, Backend>,
-) => Promise<CompilerImplementationResult<A>>;
+type InterpreterImplementation<Backend> = <A extends Agent<any, any, any, any>>(
+  params: InterpreterImplementationParams<A, Backend>,
+) => Promise<InterpreterImplementationResult<A>>;
 
-function compilerSuccess<A extends Agent<any, any, any, any>, Backend>(
-  params: CompilerParamsImplementation<A, Backend>,
-  data: CompilerSuccessData<A>,
-): CompilerResult<A, undefined> | CompilerResult<A> {
+function interpreterSuccess<A extends Agent<any, any, any, any>, Backend>(
+  params: InterpreterParamsImplementation<A, Backend>,
+  data: InterpreterSuccessData<A>,
+): InterpreterResult<A, undefined> | InterpreterResult<A> {
   if (
-    !compilerParamsHaveTools(params) &&
+    !interpreterParamsHaveTools(params) &&
     data.output.toolCalls &&
     data.output.toolCalls.length > 0
   ) {
     return err(unexpectedToolCallError(data.curl, data.usage, data.headers));
   }
 
-  if (!compilerParamsHaveTools(params)) {
+  if (!interpreterParamsHaveTools(params)) {
     const { toolCalls: _toolCalls, ...output } = data.output;
     return ok({
       ...data,
@@ -254,36 +252,39 @@ function compilerSuccess<A extends Agent<any, any, any, any>, Backend>(
   return ok(data);
 }
 
-export type Compiler<Backend> = <
+export type Interpreter<Backend> = <
   A extends Agent<any, any, any, any>,
   Tools extends Partial<OwnToolRegistry<A>> | undefined = undefined,
 >(
-  params: CompilerParams<A, Backend, Tools>,
-) => Promise<CompilerResult<A, Tools>>;
+  params: InterpreterParams<A, Backend, Tools>,
+) => Promise<InterpreterResult<A, Tools>>;
 
-// defineCompiler keeps the "were tools offered?" bookkeeping local to libocto's interpreters. An
+// defineInterpreter keeps the "were tools offered?" bookkeeping local to libocto's interpreters. An
 // interpreter gets a broad token callback that it can call with any provider event, plus a
 // finish(...) callback that wraps final assistant construction. If a provider emits tool tokens when
 // the caller did not supply tools, finish(...) returns an unexpected-tool-call error before running
 // the parsedOutput callback, so interpreters do not need to duplicate that guard around every tool
 // parsing path. finish(...) also skips the parsedOutput callback after aborts, because interpreter
 // parsedOutput callbacks are where expensive or invalid-on-abort tool parsing usually happens.
-export function defineCompiler<Backend>(
-  implementation: CompilerImplementation<Backend>,
-): Compiler<Backend> {
-  async function compiler<A extends Agent<any, any, any, any>>(
-    params: CompilerParamsWithoutTools<A, Backend>,
-  ): Promise<CompilerResult<A, undefined>>;
-  async function compiler<A extends Agent<any, any, any, any>>(
-    params: CompilerParamsWithTools<A, Backend>,
-  ): Promise<CompilerResult<A>>;
-  async function compiler<A extends Agent<any, any, any, any>>(
-    params: CompilerParamsImplementation<A, Backend>,
-  ): Promise<CompilerResult<A, undefined> | CompilerResult<A>> {
+export function defineInterpreter<Backend>(
+  implementation: InterpreterImplementation<Backend>,
+): Interpreter<Backend> {
+  async function interpreter<A extends Agent<any, any, any, any>>(
+    params: InterpreterParamsWithoutTools<A, Backend>,
+  ): Promise<InterpreterResult<A, undefined>>;
+  async function interpreter<A extends Agent<any, any, any, any>>(
+    params: InterpreterParamsWithTools<A, Backend>,
+  ): Promise<InterpreterResult<A>>;
+  async function interpreter<A extends Agent<any, any, any, any>>(
+    params: InterpreterParamsImplementation<A, Backend>,
+  ): Promise<InterpreterResult<A, undefined> | InterpreterResult<A>> {
     let unexpectedToolCall = false;
-    const onTokens: CompilerImplementationParams<A, Backend>["onTokens"] = async (tokens, type) => {
+    const onTokens: InterpreterImplementationParams<A, Backend>["onTokens"] = async (
+      tokens,
+      type,
+    ) => {
       if (type === "tool") {
-        if (!compilerParamsHaveTools(params)) {
+        if (!interpreterParamsHaveTools(params)) {
           unexpectedToolCall = true;
           return;
         }
@@ -295,7 +296,7 @@ export function defineCompiler<Backend>(
       await params.onTokens(tokens, type);
     };
 
-    const finish: CompilerImplementationParams<A, Backend>["finish"] = async ({
+    const finish: InterpreterImplementationParams<A, Backend>["finish"] = async ({
       curl,
       headers,
       usage,
@@ -309,18 +310,18 @@ export function defineCompiler<Backend>(
         curl,
         headers,
         usage,
-        [compilerFinished]: true,
+        [interpreterFinished]: true,
       });
     };
 
-    const compiled = await implementation({
+    const interpreted = await implementation({
       ...params,
       onTokens,
       finish,
     });
-    if (!compiled.success) return compiled;
-    return compilerSuccess(params, compiled.data);
+    if (!interpreted.success) return interpreted;
+    return interpreterSuccess(params, interpreted.data);
   }
 
-  return compiler;
+  return interpreter;
 }

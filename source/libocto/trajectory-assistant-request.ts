@@ -19,8 +19,8 @@ import type {
   ToolValidationErrorMessage,
 } from "./llm-ir.ts";
 import type { ToolDef } from "./toolkits/tool-def.ts";
-import type { AutofixJsonFn, Compiler, CompilerError } from "./jit/jit-interface.ts";
-import { compilerUsage } from "./jit/jit-interface.ts";
+import type { AutofixJsonFn, Interpreter, InterpreterError } from "./jit/jit-interface.ts";
+import { interpreterUsage } from "./jit/jit-interface.ts";
 import { userInterruptReason } from "./jit/ir-prompts.ts";
 import type { ExecutionModel } from "./execution.ts";
 
@@ -66,7 +66,7 @@ export type LoadedToolCallByName<
 };
 
 // The same union OwnToolCall describes, re-indexed by the name the model emits. Definition
-// lookup happens in this view: the compiler's factory-keyed output cannot correlate a call's
+// lookup happens in this view: the interpreter's factory-keyed output cannot correlate a call's
 // name with the schemas of the definition that name selects.
 type LoadedToolCall<A extends Agent<any, any, any, any>> = {
   [Name in LoadedToolNames<A>]: LoadedToolCallByName<A, Name>;
@@ -141,7 +141,7 @@ export type TrajectoryAssistantRequestParams<A extends Agent<any, any, any, any>
   messages: Array<AgentIR<A>>;
   tools: Partial<OwnToolRegistry<A>>;
   data: AgentToolData<A>;
-  runCompiler: Compiler<Provider>;
+  runInterpreter: Interpreter<Provider>;
   lowerMessages: (messages: Array<TreeIR<A>>) => Array<CompilerReadyIR<A>>;
   systemPrompt?: (signal: AbortSignal) => Promise<string>;
   transport: Transport;
@@ -181,7 +181,7 @@ async function assistantRequestAttempt<A extends Agent<any, any, any, any>, Mode
   messages,
   tools,
   data,
-  runCompiler,
+  runInterpreter,
   lowerMessages,
   systemPrompt,
   transport,
@@ -205,7 +205,7 @@ async function assistantRequestAttempt<A extends Agent<any, any, any, any>, Mode
       }
     : undefined;
   const buffer: AssistantBuffer<TrajectoryAssistantRequestTokenTypes> = {};
-  const result = await runCompiler<A, Partial<OwnToolRegistry<A>>>({
+  const result = await runInterpreter<A, Partial<OwnToolRegistry<A>>>({
     model,
     backend: model.provider,
     irs: lowerMessages(messages).map(({ converted }) => converted),
@@ -238,14 +238,14 @@ async function assistantRequestAttempt<A extends Agent<any, any, any, any>, Mode
       role: "assistant",
       content: buffer.content ?? "",
       reasoningContent: buffer.reasoning,
-      usage: compilerUsage(0, 0),
+      usage: interpreterUsage(0, 0),
     });
   }
   if (result == null || abortSignal.aborted) {
     if (partial.length === 0) await handler.discardResponseProgress(null);
     return [...partial, interrupted];
   }
-  if (!result.success) return [...partial, compilerErrorIR(result.error)];
+  if (!result.success) return [...partial, interpreterErrorIR(result.error)];
 
   const assistant = result.data.output;
   const calls = assistant.toolCalls ?? [];
@@ -314,7 +314,7 @@ async function assistantRequestAttempt<A extends Agent<any, any, any, any>, Mode
   return [assistant];
 }
 
-function compilerErrorIR(error: CompilerError): RequestErrorIR | ModelErrorIR {
+function interpreterErrorIR(error: InterpreterError): RequestErrorIR | ModelErrorIR {
   switch (error.type) {
     case "auth-error":
       return { role: "auth-error", authError: error.authError };
@@ -421,7 +421,7 @@ async function validateWithCorrection<
   return correctedValidation;
 }
 
-// The compiler emits calls keyed by tool-map key; definition lookup is keyed by the name the
+// The interpreter emits calls keyed by tool-map key; definition lookup is keyed by the name the
 // model emits. Same members, different indexing, so payloads are untouched.
 function asLoadedToolCall<A extends Agent<any, any, any, any>>(
   call: OwnToolCall<A>,

@@ -1,12 +1,12 @@
 import type { Agent } from "../llm-ir.ts";
 import type { Transport } from "../transport.ts";
 import type {
-  Compiler,
-  CompilerImplementationParams,
-  CompilerResult,
-  CompilerResultWithoutToolCalls,
+  Interpreter,
+  InterpreterImplementationParams,
+  InterpreterResult,
+  InterpreterResultWithoutToolCalls,
 } from "./jit-interface.ts";
-import { compilerUsage, defineCompiler } from "./jit-interface.ts";
+import { interpreterUsage, defineInterpreter } from "./jit-interface.ts";
 import type { ExecutionModel } from "../execution.ts";
 
 type ScratchBackend = {
@@ -15,9 +15,9 @@ type ScratchBackend = {
 
 type ScratchAgent = Agent<never, {}, {}, {}>;
 
-const scratchCompiler: Compiler<ScratchBackend> = defineCompiler(
+const scratchInterpreter: Interpreter<ScratchBackend> = defineInterpreter(
   async <A extends Agent<any, any, any, any>>(
-    params: CompilerImplementationParams<A, ScratchBackend>,
+    params: InterpreterImplementationParams<A, ScratchBackend>,
   ) => {
     await params.onTokens("hello", "content");
     await params.onTokens("{}", "tool");
@@ -25,16 +25,16 @@ const scratchCompiler: Compiler<ScratchBackend> = defineCompiler(
     return params.finish({
       curl: "",
       headers: new Headers(),
-      usage: compilerUsage(0, 0),
+      usage: interpreterUsage(0, 0),
       abortedOutput: {
         role: "assistant",
         content: "hello",
-        usage: compilerUsage(0, 0),
+        usage: interpreterUsage(0, 0),
       },
       parsedOutput: () => ({
         role: "assistant",
         content: "hello",
-        usage: compilerUsage(0, 0),
+        usage: interpreterUsage(0, 0),
       }),
     });
   },
@@ -45,7 +45,7 @@ declare const transport: Transport;
 declare const model: Omit<ExecutionModel<unknown>, "countTokens">;
 declare const backend: ScratchBackend;
 
-const withoutTools = scratchCompiler<ScratchAgent>({
+const withoutTools = scratchInterpreter<ScratchAgent>({
   model,
   backend,
   irs: [],
@@ -68,11 +68,11 @@ withoutTools.then(compiled => {
   void noToolCalls;
 });
 
-declare const toolCapableResult: CompilerResult<ScratchAgent, { someTool: unknown }>;
-declare const noToolsResult: CompilerResultWithoutToolCalls<ScratchAgent>;
+declare const toolCapableResult: InterpreterResult<ScratchAgent, { someTool: unknown }>;
+declare const noToolsResult: InterpreterResultWithoutToolCalls<ScratchAgent>;
 
-const defaultResultAcceptsToolCapable: CompilerResult<ScratchAgent> = toolCapableResult;
-const defaultResultAcceptsNoTools: CompilerResult<ScratchAgent> = noToolsResult;
+const defaultResultAcceptsToolCapable: InterpreterResult<ScratchAgent> = toolCapableResult;
+const defaultResultAcceptsNoTools: InterpreterResult<ScratchAgent> = noToolsResult;
 
 void defaultResultAcceptsToolCapable;
 void defaultResultAcceptsNoTools;

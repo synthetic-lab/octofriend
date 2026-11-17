@@ -5,9 +5,9 @@ import { systemPrompt } from "../prompts/system-prompt.ts";
 import { MockTransport } from "../transports/mock.ts";
 import { AbortError, TransportError } from "./transport.ts";
 import { runAnthropicAgent } from "./jit/anthropic/interpreter-anthropic.ts";
-import type { Compiler } from "./jit/jit-interface.ts";
+import type { Interpreter } from "./jit/jit-interface.ts";
 import { runResponsesAgent } from "./jit/responses/interpreter-responses.ts";
-import { runAgent } from "./jit/chat-completions/interpreter-chat-completions.ts";
+import { runChatCompletionsAgent } from "./jit/chat-completions/interpreter-chat-completions.ts";
 import { agent as agentBuilder, type AgentIR } from "./llm-ir.ts";
 import { err, ok, type Result } from "./result.ts";
 import { Trajectory } from "./trajectory.ts";
@@ -24,10 +24,10 @@ function fixture(provider: Provider, transport: MockTransport) {
   };
   const openai = new OpenAI({ apiKey: "test", maxRetries: 0, fetch });
   const anthropic = new Anthropic({ apiKey: "test", maxRetries: 0, fetch });
-  const runCompiler: Compiler<null> = params => {
+  const runInterpreter: Interpreter<null> = params => {
     switch (provider) {
       case "standard":
-        return runAgent({ ...params, backend: { client: openai } });
+        return runChatCompletionsAgent({ ...params, backend: { client: openai } });
       case "responses":
         return runResponsesAgent({ ...params, backend: { client: openai } });
       case "anthropic":
@@ -49,7 +49,7 @@ function fixture(provider: Provider, transport: MockTransport) {
       ok({ provider: null, model: "test-model", contextWindow: 100_000, modalities: null }),
     getData: async () => ({ yourName: "Test", models: [], lsp: { config: {} } }),
     toolContentTooLargeError: async () => "Unexpected oversized output",
-    runCompiler,
+    runInterpreter,
     lowerMessages: irs => irs.map(original => ({ original, converted: original })),
     transport,
     abortSignal: new AbortController().signal,

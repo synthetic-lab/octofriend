@@ -1,6 +1,6 @@
 import { t } from "structural";
 import type OpenAI from "openai";
-import type { CompilerError } from "./jit-interface.ts";
+import type { InterpreterError } from "./jit-interface.ts";
 import { errorToString } from "../result.ts";
 
 export type OpenAIReasoningEffort = "low" | "medium" | "high" | "xhigh";
@@ -26,7 +26,7 @@ const OpenAIStatusErrorSchema = t.subtype({
   ),
 });
 
-export function openAIRequestError(curl: string, error: unknown): CompilerError {
+export function openAIRequestError(curl: string, error: unknown): InterpreterError {
   const parsed = OpenAIStatusErrorSchema.sliceResult(error);
   if (parsed instanceof t.Err) {
     return {

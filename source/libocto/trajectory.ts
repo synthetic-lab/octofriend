@@ -377,7 +377,7 @@ export type TrajectoryParams<A extends Agent<any, any, any, any>, Provider> = Om
   abortSignal: AbortSignal;
   handler?: TrajectoryHandler<A>;
   // Re-resolved each active step, so a retry always sees fresh credentials and config; a
-  // resolution error lands in the same mode as the equivalent compiler finish.
+  // resolution error lands in the same mode as the equivalent interpreter finish.
   model: (
     invocation: Extract<TreeIR<A>, { role: "tool-invoke-subagent" }> | null,
   ) => Promise<TrajectoryModelResult<Provider>>;
@@ -895,7 +895,7 @@ export class Trajectory<A extends Agent<any, any, any, any>, Provider> {
         tools: arcTools<A>(agent, allTools) as Partial<OwnToolRegistry<B>>,
         messages: history,
         data: data as AgentToolData<B>,
-        runCompiler: params.runCompiler,
+        runInterpreter: params.runInterpreter,
         lowerMessages: irs =>
           lowerMessages(irs as Array<TreeIR<A>>) as Array<CompilerReadyIR<A> & CompilerReadyIR<B>>,
         systemPrompt: async signal =>
@@ -1192,7 +1192,7 @@ export class Trajectory<A extends Agent<any, any, any, any>, Provider> {
         location,
         runtime.model.modalities,
       )(location.history).map(pair => pair.converted),
-      runCompiler: this.params.runCompiler,
+      runInterpreter: this.params.runInterpreter,
       transport: this.params.transport,
       abortSignal: this.turnController.signal,
       quitSignal: this.params.abortSignal,

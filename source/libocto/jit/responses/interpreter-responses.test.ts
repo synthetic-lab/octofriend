@@ -3,13 +3,12 @@ import { MockTransport } from "../../../transports/mock.ts";
 import OpenAI from "openai";
 import { octoAgent } from "../../../ir/octo-ir.ts";
 import type { Transport } from "../../transport.ts";
-import { runResponsesAgent } from "./interpreter-responses.ts";
 import {
   normalizeOpenAIStrictFunctionArguments,
-  openAIStrictFunctionParameters,
-  toResponseInput,
-} from "./compiler-responses.ts";
-import { compilerUsage } from "../jit-interface.ts";
+  runResponsesAgent,
+} from "./interpreter-responses.ts";
+import { openAIStrictFunctionParameters, toResponseInput } from "./compiler-responses.ts";
+import { interpreterUsage } from "../jit-interface.ts";
 import type { LoweredIR, OwnToolCall } from "../../llm-ir.ts";
 
 describe("openAIStrictFunctionParameters", () => {
@@ -205,7 +204,7 @@ function assistantWith(calls: ShellToolCall[]): Ir {
   return {
     role: "assistant",
     content: "On it.",
-    usage: compilerUsage(0, 0),
+    usage: interpreterUsage(0, 0),
     toolCalls: calls,
   };
 }

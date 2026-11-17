@@ -4,7 +4,7 @@ import {
   generateCompactionCheckpointContent,
   type CompactionError,
 } from "./trajectory-autocompact.ts";
-import type { AutofixJsonFn, Compiler, CompilerIR } from "./jit/jit-interface.ts";
+import type { AutofixJsonFn, Interpreter, CompilerIR } from "./jit/jit-interface.ts";
 import type {
   Agent,
   Checkpoint,
@@ -37,7 +37,7 @@ export type TrajectoryCompactionIR =
 export type TrajectoryCompactionParams<A extends Agent<any, any, any, any>, Provider> = {
   model: ExecutionModel<Provider>;
   messages: Array<CompilerIR<A>>;
-  runCompiler: Compiler<Provider>;
+  runInterpreter: Interpreter<Provider>;
   transport: Transport;
   abortSignal: AbortSignal;
   quitSignal: AbortSignal;
@@ -73,7 +73,7 @@ async function runTrajectoryCompaction<A extends Agent<any, any, any, any>, Mode
 async function compactionAttempt<A extends Agent<any, any, any, any>, Model>({
   model,
   messages,
-  runCompiler,
+  runInterpreter,
   transport,
   abortSignal,
   autofixJson,
@@ -91,7 +91,7 @@ async function compactionAttempt<A extends Agent<any, any, any, any>, Model>({
   const result = await generateCompactionCheckpointContent<A>({
     messages,
     run: compactionMessages => {
-      return runCompiler<A, undefined>({
+      return runInterpreter<A, undefined>({
         model,
         backend: model.provider,
         irs: compactionMessages,
@@ -118,7 +118,7 @@ async function compactionAttempt<A extends Agent<any, any, any, any>, Model>({
 }
 
 function compactionErrorIR(error: CompactionError): CompactionErrorIR | ModelErrorIR {
-  // Compiler errors use `type`, while persisted IR uses `role`. Copy only the IR
+  // Interpreter errors use `type`, while persisted IR uses `role`. Copy only the IR
   // fields, rather than returning the error or persisting its headers/transport metadata.
   switch (error.type) {
     case "auth-error":

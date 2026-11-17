@@ -149,18 +149,6 @@ export function openAIStrictFunctionParameters(schema: JsonObject): JsonObject {
   return normalized;
 }
 
-// Because OpenAI strict mode models optional fields as required nullable fields, a missing
-// optional argument can come back as `null`. Before structural validates the arguments,
-// convert only those originally-optional null fields back into absent properties.
-export function normalizeOpenAIStrictFunctionArguments(
-  schema: JsonObject,
-  args: JsonValue,
-): JsonValue {
-  const optionalPaths: Array<Array<string>> = [];
-  collectOptionalPropertyPaths(schema, [], optionalPaths);
-  return deleteNullOptionals(args, optionalPaths);
-}
-
 type LoadedTool<A extends Agent<any, any, any, any>> = OwnToolRegistry<A>[keyof OwnToolRegistry<A>];
 
 function responseInputFromIr<A extends Agent<any, any, any, any>>(
@@ -385,61 +373,6 @@ function lowerToOpenAIStrictSchema(schema: JsonValue): JsonValue {
   }
 
   return node;
-}
-
-function collectOptionalPropertyPaths(
-  schema: JsonValue,
-  path: Array<string>,
-  optionalPaths: Array<Array<string>>,
-): void {
-  if (Array.isArray(schema)) {
-    for (const item of schema) collectOptionalPropertyPaths(item, path, optionalPaths);
-    return;
-  }
-
-  if (schema == null || typeof schema !== "object") return;
-
-  const properties = objectRecord(schema["properties"]);
-  if (properties) {
-    const required = new Set(
-      Array.isArray(schema["required"]) ? schema["required"].filter(isString) : [],
-    );
-
-    for (const [propertyName, propertySchema] of Object.entries(properties)) {
-      const propertyPath = [...path, propertyName];
-      if (!required.has(propertyName)) optionalPaths.push(propertyPath);
-      collectOptionalPropertyPaths(propertySchema, propertyPath, optionalPaths);
-    }
-  }
-
-  for (const [key, value] of Object.entries(schema)) {
-    if (key === "properties" || key === "required") continue;
-    collectOptionalPropertyPaths(value, path, optionalPaths);
-  }
-}
-
-function deleteNullOptionals(args: JsonValue, optionalPaths: Array<Array<string>>): JsonValue {
-  if (args == null || typeof args !== "object" || Array.isArray(args)) return args;
-  const normalized = structuredClone(args);
-
-  for (const path of optionalPaths) deleteIfNullAtPath(normalized, path);
-
-  return normalized;
-}
-
-function deleteIfNullAtPath(value: JsonValue, path: Array<string>): void {
-  if (path.length === 0 || value == null || typeof value !== "object" || Array.isArray(value)) {
-    return;
-  }
-
-  const node = value;
-  const [key, ...rest] = path;
-  if (rest.length === 0) {
-    if (node[key] === null) delete node[key];
-    return;
-  }
-
-  deleteIfNullAtPath(node[key], rest);
 }
 
 function addOpenAIStrictTypeHints(node: JsonObject): void {

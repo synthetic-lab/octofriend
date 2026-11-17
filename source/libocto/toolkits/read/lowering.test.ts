@@ -1,7 +1,7 @@
 import { describe, expect, it } from "bun:test";
 import { downconvert, lowerMessages, pendingToolCalls } from "../../ir-operations.ts";
 import { agent, type TreeIR, type RecursiveLowered } from "../../llm-ir.ts";
-import { compilerUsage } from "../../jit/jit-interface.ts";
+import { interpreterUsage } from "../../jit/jit-interface.ts";
 import type { ToolCallFromToolMap } from "../tool-def.ts";
 import type { ImageInfo } from "../../images.ts";
 import type { MultimodalConfig } from "../../modalities.ts";
@@ -90,7 +90,7 @@ function imageReadHistory(): Array<TreeIR<typeof _agent>> {
     {
       role: "assistant",
       content: "Let me look at that image.",
-      usage: compilerUsage(0, 0),
+      usage: interpreterUsage(0, 0),
       toolCalls: [call],
     },
     {
@@ -165,7 +165,7 @@ describe("automatic read tool-call answering", () => {
       {
         role: "assistant",
         content: "Reading it.",
-        usage: compilerUsage(0, 0),
+        usage: interpreterUsage(0, 0),
         toolCalls: [call],
       },
       {

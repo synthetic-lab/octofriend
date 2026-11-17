@@ -1,13 +1,13 @@
 import {
-  compilerUsageHasTokens,
-  runAgent,
+  interpreterUsageHasTokens,
+  runChatCompletionsAgent,
   runAnthropicAgent,
   runResponsesAgent,
   type Agent,
   type AnthropicBackend,
-  type Compiler,
-  type CompilerResult,
-  type CompilerUsage,
+  type Interpreter,
+  type InterpreterResult,
+  type InterpreterUsage,
   type OpenAIBackend,
 } from "../libocto/index.ts";
 import Anthropic from "@anthropic-ai/sdk";
@@ -25,7 +25,7 @@ export type Backend =
   | { type: "api"; auth: ApiKeyAuth; model: ApiKeyModelConfig }
   | { type: "codex"; auth: OAuthLoadedAuth; model: CodexModelConfig };
 
-export const run: Compiler<Backend> = async params => {
+export const run: Interpreter<Backend> = async params => {
   const result = await (async () => {
     const backend = params.backend;
 
@@ -37,7 +37,7 @@ export const run: Compiler<Backend> = async params => {
     }
 
     if (backend.model.type == null || backend.model.type === "standard") {
-      return runAgent({
+      return runChatCompletionsAgent({
         ...params,
         backend: standardOpenAIBackend(backend.model, backend.auth.apiKey),
       });
@@ -57,23 +57,23 @@ export const run: Compiler<Backend> = async params => {
     });
   })();
 
-  trackCompilerResultUsage(params.model.model, result);
+  trackInterpreterResultUsage(params.model.model, result);
   return result;
 };
 
-function trackCompilerResultUsage<A extends Agent<any, any, any, any>, Tools>(
+function trackInterpreterResultUsage<A extends Agent<any, any, any, any>, Tools>(
   model: string,
-  result: CompilerResult<A, Tools>,
+  result: InterpreterResult<A, Tools>,
 ): void {
-  const usage = compilerResultUsage(result);
-  if (!usage || !compilerUsageHasTokens(usage)) return;
+  const usage = interpreterResultUsage(result);
+  if (!usage || !interpreterUsageHasTokens(usage)) return;
   trackTokens(model, "input", usage.input.total);
   trackTokens(model, "output", usage.output);
 }
 
-function compilerResultUsage<A extends Agent<any, any, any, any>, Tools>(
-  result: CompilerResult<A, Tools>,
-): CompilerUsage | undefined {
+function interpreterResultUsage<A extends Agent<any, any, any, any>, Tools>(
+  result: InterpreterResult<A, Tools>,
+): InterpreterUsage | undefined {
   if (result.success) return result.data.usage;
   if ("usage" in result.error) return result.error.usage;
   return undefined;

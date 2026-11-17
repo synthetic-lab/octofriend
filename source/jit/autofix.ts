@@ -53,7 +53,7 @@ export async function autofixJson(config: Config, brokenJson: string, abortSigna
 }
 
 // Makes a curried autofixJson function that doesn't require passing in the config; useful for
-// calling the main run(...) compiler
+// calling the main run(...) interpreter
 export function makeAutofixJson(config: Config) {
   return async (brokenJson: string, abortSignal: AbortSignal) => {
     return autofixJson(config, brokenJson, abortSignal);

@@ -1,7 +1,7 @@
 import type Anthropic from "@anthropic-ai/sdk";
 import { t } from "structural";
-import type { Compiler, CompilerImplementationParams } from "../jit-interface.ts";
-import { compilerUsage, defineCompiler } from "../jit-interface.ts";
+import type { Interpreter, InterpreterImplementationParams } from "../jit-interface.ts";
+import { interpreterUsage, defineInterpreter } from "../jit-interface.ts";
 import { parseToolCall } from "../parse-tool-call.ts";
 import type {
   Agent,
@@ -18,9 +18,9 @@ export type AnthropicBackend = AnthropicCompileConfig & {
   client: Anthropic;
 };
 
-export const runAnthropicAgent: Compiler<AnthropicBackend> = defineCompiler(
+export const runAnthropicAgent: Interpreter<AnthropicBackend> = defineInterpreter(
   async <A extends Agent<any, any, any, any>>(
-    params: CompilerImplementationParams<A, AnthropicBackend>,
+    params: InterpreterImplementationParams<A, AnthropicBackend>,
   ) => {
     const { model, backend, irs, abortSignal, transport, systemPrompt, autofixJson } = params;
 
@@ -172,13 +172,13 @@ export const runAnthropicAgent: Compiler<AnthropicBackend> = defineCompiler(
             type: "stream-error",
             requestError: errorToString(e),
             curl,
-            usage: compilerUsage(usage.input, usage.output, usage.cachedInput),
+            usage: interpreterUsage(usage.input, usage.output, usage.cachedInput),
             headers: response.headers,
           });
         }
       }
 
-      const compilerTokens = compilerUsage(usage.input, usage.output, usage.cachedInput);
+      const interpreterTokens = interpreterUsage(usage.input, usage.output, usage.cachedInput);
 
       const anthropic: { anthropic?: AnthropicAssistantData } = {};
       if (thinkingBlocks.length > 0) {
@@ -199,13 +199,13 @@ export const runAnthropicAgent: Compiler<AnthropicBackend> = defineCompiler(
         content,
         reasoningContent,
         ...anthropic,
-        usage: compilerTokens,
+        usage: interpreterTokens,
       };
 
       return params.finish({
         curl,
         headers: response.headers,
-        usage: compilerTokens,
+        usage: interpreterTokens,
         abortedOutput: assistantMessage,
         parsedOutput: async () => {
           if (inProgressTools.size === 0) return assistantMessage;

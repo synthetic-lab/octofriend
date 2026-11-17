@@ -1,7 +1,7 @@
 import type {
-  CompilerResult,
-  CompilerResultWithoutToolCalls,
-  CompilerTokenType,
+  InterpreterResult,
+  InterpreterResultWithoutToolCalls,
+  InterpreterTokenType,
   ExecutionModel,
   JsonFixResponse,
   LoweredIR,
@@ -38,7 +38,7 @@ const noToolsResult = run<typeof octoAgent>({
   },
 });
 
-expectType<Promise<CompilerResultWithoutToolCalls<typeof octoAgent>>>(noToolsResult);
+expectType<Promise<InterpreterResultWithoutToolCalls<typeof octoAgent>>>(noToolsResult);
 
 noToolsResult.then(result => {
   if (!result.success) return;
@@ -54,11 +54,11 @@ const withToolsResult = run<typeof octoAgent, Partial<LoadedTools>>({
   autofixJson,
   tools,
   onTokens: async (_tokens, type) => {
-    expectType<CompilerTokenType<LoadedTools>>(type);
+    expectType<InterpreterTokenType<LoadedTools>>(type);
   },
 });
 
-expectType<Promise<CompilerResult<typeof octoAgent, Partial<LoadedTools>>>>(withToolsResult);
+expectType<Promise<InterpreterResult<typeof octoAgent, Partial<LoadedTools>>>>(withToolsResult);
 
 run<typeof octoAgent>({
   model,

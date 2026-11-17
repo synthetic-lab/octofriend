@@ -14,12 +14,12 @@ import {
   type OwnToolRegistry,
 } from "./llm-ir.ts";
 import {
-  compilerUsage,
-  type Compiler,
-  type CompilerError,
-  type CompilerParams,
-  type CompilerResult,
-  type CompilerSuccessData,
+  interpreterUsage,
+  type Interpreter,
+  type InterpreterError,
+  type InterpreterParams,
+  type InterpreterResult,
+  type InterpreterSuccessData,
 } from "./jit/jit-interface.ts";
 import { lower } from "./ir-operations.ts";
 import {
@@ -59,8 +59,8 @@ type Emit = (tokens: string, type: "reasoning" | "content") => Promise<void>;
 type QueueItem = (
   onTokens: Emit,
 ) =>
-  | Result<CompilerSuccessData<TestAgent>, CompilerError>
-  | Promise<Result<CompilerSuccessData<TestAgent>, CompilerError>>;
+  | Result<InterpreterSuccessData<TestAgent>, InterpreterError>
+  | Promise<Result<InterpreterSuccessData<TestAgent>, InterpreterError>>;
 
 function assistant(opts: {
   content?: string;
@@ -69,7 +69,7 @@ function assistant(opts: {
   return {
     role: "assistant",
     content: opts.content ?? "",
-    usage: compilerUsage(1, 1),
+    usage: interpreterUsage(1, 1),
     toolCalls: opts.toolCalls,
   };
 }
@@ -85,9 +85,9 @@ function malformedRequest(): MalformedToolRequest {
   };
 }
 function result(output: AssistantMessage<TestAgent["tools"]>): QueueItem {
-  return () => ok({ output, curl: "curl", headers: new Headers(), usage: compilerUsage(1, 1) });
+  return () => ok({ output, curl: "curl", headers: new Headers(), usage: interpreterUsage(1, 1) });
 }
-function requestError(message: string): Extract<CompilerError, { type: "request-error" }> {
+function requestError(message: string): Extract<InterpreterError, { type: "request-error" }> {
   return { type: "request-error", requestError: message, curl: "curl" };
 }
 
@@ -113,14 +113,14 @@ async function runAssistantRequest(opts: {
     data,
   });
   if (search == null) throw new Error("search tool failed to load");
-  const runCompiler: Compiler<null> = async <
+  const runInterpreter: Interpreter<null> = async <
     A extends Agent<any, any, any, any>,
     Tools extends Partial<OwnToolRegistry<A>> | undefined = undefined,
   >(
-    params: CompilerParams<A, null, Tools>,
-  ): Promise<CompilerResult<A, Tools>> => {
-    const compiled = await opts.response(params.onTokens);
-    return compiled as typeof compiled & CompilerResult<A, Tools>;
+    params: InterpreterParams<A, null, Tools>,
+  ): Promise<InterpreterResult<A, Tools>> => {
+    const interpreted = await opts.response(params.onTokens);
+    return interpreted as typeof interpreted & InterpreterResult<A, Tools>;
   };
   const correctedTools: string[] = [];
   const rollbacks: null[] = [];
@@ -151,7 +151,7 @@ async function runAssistantRequest(opts: {
     messages: opts.messages ?? [{ role: "user", content: [{ type: "text", content: "hi" }] }],
     tools: { search },
     data,
-    runCompiler,
+    runInterpreter,
     lowerMessages: msgs => {
       return lower<TestAgent>(msgs.map(original => ({ original, converted: original })));
     },
@@ -247,8 +247,8 @@ describe("trajectoryAssistantRequest", () => {
     "rate-limit-error",
     "auth-error",
     "payment-error",
-  ] as const)("maps compiler %s to its finalized error outcome", async type => {
-    const error: CompilerError =
+  ] as const)("maps interpreter %s to its finalized error outcome", async type => {
+    const error: InterpreterError =
       type === "auth-error"
         ? { type, authError: "no key" }
         : {
@@ -256,7 +256,7 @@ describe("trajectoryAssistantRequest", () => {
             requestError: "failed",
             curl: "curl",
             headers: new Headers(),
-            usage: compilerUsage(1, 1),
+            usage: interpreterUsage(1, 1),
           };
     const { messages } = await runAssistantRequest({ response: () => err(error) });
     expect(messages).toEqual([
@@ -283,7 +283,7 @@ describe("trajectoryAssistantRequest", () => {
         role: "assistant",
         content: "partial response",
         reasoningContent: undefined,
-        usage: compilerUsage(0, 0),
+        usage: interpreterUsage(0, 0),
       },
       { role: "request-error", requestError: "boom", curl: "curl" },
     ]);
@@ -315,7 +315,7 @@ describe("trajectoryAssistantRequest", () => {
                 role: "assistant",
                 content: "partial",
                 reasoningContent: undefined,
-                usage: compilerUsage(0, 0),
+                usage: interpreterUsage(0, 0),
               },
               { role: "interrupted-by-user", reason: "The user interrupted the response." },
             ]

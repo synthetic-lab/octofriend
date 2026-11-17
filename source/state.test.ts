@@ -24,24 +24,24 @@ import {
 } from "./session-history/schema/session-history-schema.ts";
 import {
   answeredToolCallId,
-  compilerUsage,
+  interpreterUsage,
   err,
   meaningfulTailIR,
   ok,
   type Agent,
   type AssistantMessage,
-  type Compiler,
-  type CompilerError,
-  type CompilerParams,
-  type CompilerResult,
-  type CompilerSuccessData,
-  type CompilerUsage,
+  type Interpreter,
+  type InterpreterError,
+  type InterpreterParams,
+  type InterpreterResult,
+  type InterpreterSuccessData,
+  type InterpreterUsage,
   type LoweredIR,
   type OwnToolRegistry,
   type Result,
   type TrajectoryMode,
 } from "./libocto/index.ts";
-import type { Backend } from "./compilers/run.ts";
+import type { Backend } from "./jit/run.ts";
 import type { octoAgent, OctoIR } from "./ir/octo-ir.ts";
 import type { OctoToolCall } from "./tools/index.ts";
 import { LocalTransport } from "./transports/local.ts";
@@ -212,55 +212,57 @@ function deferred<T = void>(): {
   return { promise, resolve, reject };
 }
 
-/* Mock compiler seam: state.ts lets tests inject a Compiler via BootEnv. */
+/* Mock interpreter seam: state.ts lets tests inject a Interpreter via BootEnv. */
 
 type Emit = (tokens: string, type: "reasoning" | "content") => Promise<void>;
-type CompilerQueueItem = (
+type InterpreterQueueItem = (
   onTokens: Emit,
   params: { abortSignal: AbortSignal },
 ) =>
-  | Result<CompilerSuccessData<OctoAgent>, CompilerError>
-  | Promise<Result<CompilerSuccessData<OctoAgent>, CompilerError>>;
+  | Result<InterpreterSuccessData<OctoAgent>, InterpreterError>
+  | Promise<Result<InterpreterSuccessData<OctoAgent>, InterpreterError>>;
 
 function assistantMessage(opts: {
   content?: string;
-  usage?: CompilerUsage;
+  usage?: InterpreterUsage;
   toolCalls?: OctoAssistant["toolCalls"];
 }): OctoAssistant {
   return {
     role: "assistant",
     content: opts.content ?? "",
-    usage: opts.usage ?? compilerUsage(1, 1),
+    usage: opts.usage ?? interpreterUsage(1, 1),
     toolCalls: opts.toolCalls,
   };
 }
 
-function okResult(output: OctoAssistant): Result<CompilerSuccessData<OctoAgent>, CompilerError> {
+function okResult(
+  output: OctoAssistant,
+): Result<InterpreterSuccessData<OctoAgent>, InterpreterError> {
   return ok({ output, curl: "curl", headers: new Headers(), usage: output.usage });
 }
 
-function plain(content: string): CompilerQueueItem {
+function plain(content: string): InterpreterQueueItem {
   return () => okResult(assistantMessage({ content }));
 }
 
 // Parked error mode if a test under-queues: a never-rejected run promise would hit state.ts's
 // process.exit crash path and kill the whole test file, so the queue never throws.
-const QUEUE_EXHAUSTED: CompilerQueueItem = () =>
+const QUEUE_EXHAUSTED: InterpreterQueueItem = () =>
   err({
     type: "payment-error",
-    requestError: "mock compiler queue exhausted",
+    requestError: "mock interpreter queue exhausted",
     curl: "curl",
     headers: new Headers(),
   });
 
-function makeRunCompiler(queue: CompilerQueueItem[]) {
+function makeRunInterpreter(queue: InterpreterQueueItem[]) {
   const calls: Array<{ irs: Array<LoweredIR<any>>; tools: string[]; model: string }> = [];
-  const runCompiler: Compiler<Backend> = async <
+  const runInterpreter: Interpreter<Backend> = async <
     A extends Agent<any, any, any, any>,
     Tools extends Partial<OwnToolRegistry<A>> | undefined = undefined,
   >(
-    params: CompilerParams<A, Backend, Tools>,
-  ): Promise<CompilerResult<A, Tools>> => {
+    params: InterpreterParams<A, Backend, Tools>,
+  ): Promise<InterpreterResult<A, Tools>> => {
     calls.push({
       irs: [...params.irs] as Array<LoweredIR<any>>,
       tools: Object.keys(params.tools ?? {}),
@@ -268,9 +270,9 @@ function makeRunCompiler(queue: CompilerQueueItem[]) {
     });
     const next = queue.shift() ?? QUEUE_EXHAUSTED;
     const result = await next(params.onTokens, params);
-    return result as typeof result & CompilerResult<A, Tools>;
+    return result as typeof result & InterpreterResult<A, Tools>;
   };
-  return { runCompiler, calls };
+  return { runInterpreter, calls };
 }
 
 /* Store-driving helpers. */
@@ -371,25 +373,25 @@ async function waitForNextTurn(trigger: () => void | Promise<unknown>): Promise<
   }
 }
 
-async function bootSession(queue: CompilerQueueItem[]) {
+async function bootSession(queue: InterpreterQueueItem[]) {
   const transport = new LocalTransport();
-  const { runCompiler, calls } = makeRunCompiler(queue);
+  const { runInterpreter, calls } = makeRunInterpreter(queue);
   const session = await bootControls.newSession(
     process.cwd(),
     { kind: "local" },
     {
       config: agentConfig,
       transport,
-      runCompiler,
+      runInterpreter,
     },
   );
   await waitFor(currentLive);
-  return { session, compilerCalls: calls };
+  return { session, interpreterCalls: calls };
 }
 
-async function hydrateSession(items: HistoryItem[], queue: CompilerQueueItem[]) {
+async function hydrateSession(items: HistoryItem[], queue: InterpreterQueueItem[]) {
   const transport = new LocalTransport();
-  const { runCompiler, calls } = makeRunCompiler(queue);
+  const { runInterpreter, calls } = makeRunInterpreter(queue);
   const session = createSession(process.cwd(), { kind: "local" });
   const nodes = insertHistoryItems(session, null, items, testModelJson);
   await bootControls.hydrate({
@@ -397,10 +399,10 @@ async function hydrateSession(items: HistoryItem[], queue: CompilerQueueItem[]) 
     history: nodes,
     config: agentConfig,
     transport,
-    runCompiler,
+    runInterpreter,
   });
   await waitFor(currentLive);
-  return { session, nodes, compilerCalls: calls };
+  return { session, nodes, interpreterCalls: calls };
 }
 
 function permissionControl(): OctoPermissionControl {
@@ -419,13 +421,13 @@ function sessionError(error: unknown): never {
 
 describe("boot and response mirror", () => {
   it("boots a session, runs a response, and persists history exactly once", async () => {
-    const { session, compilerCalls } = await bootSession([plain("boot-assistant-marker")]);
+    const { session, interpreterCalls } = await bootSession([plain("boot-assistant-marker")]);
 
     await waitForNextTurn(() => respond("hello"));
 
     expect(historyRoles()).toEqual(["user", ...assistantSnapshot]);
-    expect(compilerCalls.length).toBe(1);
-    expect(compilerCalls[0].irs.map(m => m.role)).toEqual(["user"]);
+    expect(interpreterCalls.length).toBe(1);
+    expect(interpreterCalls[0].irs.map(m => m.role)).toEqual(["user"]);
 
     const sessionId = session.metadata.sessionId ?? sessionError(new Error("no session id"));
     expect(dbNodeCount(sessionId)).toBe(4);
@@ -487,7 +489,7 @@ describe("boot and response mirror", () => {
       enqueued.resolve(mode.control.enqueueSteering([{ type: "text", content: "first request" }]));
     });
     try {
-      const { runCompiler, calls: compilerCalls } = makeRunCompiler([
+      const { runInterpreter, calls: interpreterCalls } = makeRunInterpreter([
         plain("selected-model response"),
       ]);
       await bootControls.newSession(
@@ -496,18 +498,18 @@ describe("boot and response mirror", () => {
         {
           config: { ...agentConfig, models: [...agentConfig.models, selectedModel] },
           transport: new LocalTransport(),
-          runCompiler,
+          runInterpreter,
         },
       );
       expect(submitted).toBe(true);
       expect(installedModels).toEqual([serializeModelJson(selectedModel)]);
       await enqueued.promise;
-      await waitFor(() => compilerCalls.length > 0);
+      await waitFor(() => interpreterCalls.length > 0);
       await waitTrajectoryMode("ready-for-request");
 
-      expect(compilerCalls).toHaveLength(1);
-      expect(compilerCalls[0].model).toEqual(selectedModel.model);
-      expect(compilerCalls[0].irs).toEqual([
+      expect(interpreterCalls).toHaveLength(1);
+      expect(interpreterCalls[0].model).toEqual(selectedModel.model);
+      expect(interpreterCalls[0].irs).toEqual([
         { role: "user", content: [{ type: "text", content: "first request" }] },
       ]);
       expect(useAppStore.getState().modelOverride).toBe(serializeModelJson(selectedModel));
@@ -520,7 +522,7 @@ describe("boot and response mirror", () => {
 
 describe("runnable session hydration", () => {
   it("restores an unanswered user prompt without making a request", async () => {
-    const { session, compilerCalls } = await hydrateSession(
+    const { session, interpreterCalls } = await hydrateSession(
       [
         {
           type: "llm-ir",
@@ -532,13 +534,13 @@ describe("runnable session hydration", () => {
     await waitTrajectoryMode("ready-for-request");
     await waitFor(() => useAppStore.getState().history.length === 0);
     expect(useAppStore.getState().query).toBe("unfinished prompt");
-    expect(compilerCalls).toEqual([]);
+    expect(interpreterCalls).toEqual([]);
     expect(dbNodeCount(session.metadata.sessionId!)).toBe(0);
   });
 
   it("keeps a draft while interrupting an unanswered saved prompt", async () => {
     useAppStore.getState().setQuery("existing draft");
-    const { session, compilerCalls } = await hydrateSession(
+    const { session, interpreterCalls } = await hydrateSession(
       [
         {
           type: "llm-ir",
@@ -548,7 +550,7 @@ describe("runnable session hydration", () => {
       [plain("must not execute")],
     );
     await waitTrajectoryMode("ready-for-request");
-    expect(compilerCalls).toEqual([]);
+    expect(interpreterCalls).toEqual([]);
     expect(useAppStore.getState().query).toBe("existing draft");
     expect(historyRoles()).toEqual(["user", "interrupted-by-user"]);
     expect(loadSession(session.metadata.sessionId!)?.history).toEqual(
@@ -580,7 +582,7 @@ describe("runnable session hydration", () => {
         task: [{ type: "text", content: "inspect" }],
         ir: [
           { role: "user", content: [{ type: "text", content: "inspect" }] },
-          { role: "assistant", content: "", usage: compilerUsage(1, 1), toolCalls: [read] },
+          { role: "assistant", content: "", usage: interpreterUsage(1, 1), toolCalls: [read] },
         ],
       };
       const irs: OctoIR[] = [
@@ -594,12 +596,12 @@ describe("runnable session hydration", () => {
         },
       ];
       if (inserted) irs.push(child);
-      const { session, nodes, compilerCalls } = await hydrateSession(
+      const { session, nodes, interpreterCalls } = await hydrateSession(
         irs.map(ir => ({ type: "llm-ir", ir })),
         [plain("must not execute")],
       );
       await waitTrajectoryMode("ready-for-request");
-      expect(compilerCalls).toEqual([]);
+      expect(interpreterCalls).toEqual([]);
       expect(currentLive()!.liveMode.permissionUi.type).toBe("idle");
       const children = useAppStore
         .getState()
@@ -656,7 +658,7 @@ describe("explore subagent", () => {
       parsed: { filePath },
     };
     const release = deferred();
-    const { session, compilerCalls } = await bootSession([
+    const { session, interpreterCalls } = await bootSession([
       () => okResult(assistantMessage({ toolCalls: [delegate] })),
       () => okResult(assistantMessage({ toolCalls: [read] })),
       async onTokens => {
@@ -679,21 +681,21 @@ describe("explore subagent", () => {
     });
     try {
       await respond(task);
-      await waitFor(() => compilerCalls.length === 3 && useAppStore.getState().byteCount > 0);
-      expect(compilerCalls[0].tools).toContain("explore");
-      expect(compilerCalls[1].tools.sort()).toEqual([
+      await waitFor(() => interpreterCalls.length === 3 && useAppStore.getState().byteCount > 0);
+      expect(interpreterCalls[0].tools).toContain("explore");
+      expect(interpreterCalls[1].tools.sort()).toEqual([
         "glob",
         "grep",
         "list",
         "partial-read",
         "read",
       ]);
-      const directive = compilerCalls[1].irs[0];
+      const directive = interpreterCalls[1].irs[0];
       if (directive.role !== "user") throw new Error("Expected child directive");
       expect(directive.content.some(part => part.type === "text" && part.content === task)).toBe(
         true,
       );
-      expect(compilerCalls[2].irs.at(-1)).toMatchObject({
+      expect(interpreterCalls[2].irs.at(-1)).toMatchObject({
         role: "tool-output",
         toolCall: { toolCallId: "child-read" },
       });
@@ -749,7 +751,7 @@ describe("explore subagent", () => {
         "file-read",
         ...assistantSnapshot,
       ]);
-      expect(compilerCalls[3].irs.at(-1)).toMatchObject({
+      expect(interpreterCalls[3].irs.at(-1)).toMatchObject({
         role: "tool-output",
         toolCall: { toolCallId: "delegate" },
         content: [{ type: "text", content: "explore-report-marker: oranges are citrus fruits" }],
@@ -936,15 +938,15 @@ describe("permission gate mirror", () => {
     if (loaded == null) throw new Error("Expected saved session");
     expect(loaded.history).toEqual(JSON.parse(saved));
 
-    const compiler = makeRunCompiler([]);
+    const interpreter = makeRunInterpreter([]);
     await bootControls.hydrate({
       ...loaded,
       config: agentConfig,
       transport: new LocalTransport(),
-      runCompiler: compiler.runCompiler,
+      runInterpreter: interpreter.runInterpreter,
     });
     await waitTrajectoryMode("ready-for-request");
-    expect(compiler.calls).toEqual([]);
+    expect(interpreter.calls).toEqual([]);
     expect(currentLive()!.liveMode.permissionUi.type).toBe("idle");
     expect(historyRoles()).toEqual([
       "user",
@@ -963,25 +965,25 @@ describe("permission gate mirror", () => {
 });
 
 describe("error-mode mirrors", () => {
-  it("maps a missing API key to the auth-error mode without a compiler call", async () => {
+  it("maps a missing API key to the auth-error mode without an interpreter call", async () => {
     delete process.env["OCTO_STATE_TEST_API_KEY"];
-    const { compilerCalls } = await bootSession([plain("auth-after-marker")]);
+    const { interpreterCalls } = await bootSession([plain("auth-after-marker")]);
 
     await respond("hi");
     const authError = await waitTrajectoryMode("auth-error");
 
-    expect(compilerCalls.length).toBe(0);
+    expect(interpreterCalls.length).toBe(0);
     expect(authError.authError.length).toBeGreaterThan(0);
 
     process.env["OCTO_STATE_TEST_API_KEY"] = "test-key";
     await waitForNextTurn(() => authError.control.retry());
-    expect(compilerCalls.length).toBe(1);
+    expect(interpreterCalls.length).toBe(1);
     expect(historyRoles()).toEqual(["user", "auth-error", "error-retry", ...assistantSnapshot]);
   });
 
   it("mirrors a legacy compaction-error rewind, restoring the draft and slicing history", async () => {
-    const seededUsage = compilerUsage(200_000, 10);
-    const { session, compilerCalls } = await hydrateSession(
+    const seededUsage = interpreterUsage(200_000, 10);
+    const { session, interpreterCalls } = await hydrateSession(
       [
         {
           type: "llm-ir",
@@ -1006,7 +1008,7 @@ describe("error-mode mirrors", () => {
 
     const nonceAfterHydrate = useAppStore.getState().inputResetNonce;
     const compactionError = await waitTrajectoryMode("compaction-error");
-    expect(compilerCalls).toHaveLength(0);
+    expect(interpreterCalls).toHaveLength(0);
 
     await waitForNextTurn(() => compactionError.control.rewind());
 
@@ -1019,7 +1021,7 @@ describe("error-mode mirrors", () => {
 
     await waitForNextTurn(() => respond("edited prompt text"));
 
-    expect(compilerCalls.length).toBe(2);
+    expect(interpreterCalls.length).toBe(2);
     expect(historyRoles()).toEqual([
       "user",
       "assistant",
@@ -1032,12 +1034,12 @@ describe("error-mode mirrors", () => {
     expect(dbNodeCount(session.metadata.sessionId!)).toBe(9);
     // The edited request reaches the model in the re-compaction; after it, requests lower to
     // just the checkpoint.
-    const compactionRequest = compilerCalls[0].irs;
+    const compactionRequest = interpreterCalls[0].irs;
     expect(compactionRequest.map(m => m.role)).toEqual(["user", "assistant", "user", "user"]);
     const editedUser = compactionRequest[2];
     if (editedUser.role !== "user") throw new Error("impossible");
     expect(editedUser.content).toEqual([{ type: "text", content: "edited prompt text" }]);
-    expect(compilerCalls[1].irs.map(m => m.role)).toEqual(["lowered-checkpoint"]);
+    expect(interpreterCalls[1].irs.map(m => m.role)).toEqual(["lowered-checkpoint"]);
   });
 
   it("degrades to the lost mode when the session's tree disappears", async () => {
@@ -1126,12 +1128,12 @@ describe("history persistence (BUGS.md #8, #12)", () => {
       call: { original: { name: "shell", arguments: "{oops" } },
       toolCallId: "call_mixed",
     };
-    const { session, compilerCalls } = await bootSession([
+    const { session, interpreterCalls } = await bootSession([
       () =>
         okResult(
           assistantMessage({
             content: "mixed-attempt-marker",
-            usage: compilerUsage(200_000, 10),
+            usage: interpreterUsage(200_000, 10),
             toolCalls: [malformed],
           }),
         ),
@@ -1141,7 +1143,7 @@ describe("history persistence (BUGS.md #8, #12)", () => {
 
     await waitForNextTurn(() => respond("hi"));
 
-    expect(compilerCalls.length).toBe(3);
+    expect(interpreterCalls.length).toBe(3);
     expect(historyRoles()).toEqual([
       "user",
       "request-snapshot-begin",
