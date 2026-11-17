@@ -4,7 +4,7 @@ import fs from "fs/promises";
 import json5 from "json5";
 import { fileURLToPath } from "url";
 import { fixJsonPrompt } from "../../source/prompts/autofix-prompts.ts";
-import type { JsonFixResponse } from "../../source/libocto/jit/jit-interface.ts";
+import type { JsonFixResponse } from "../../source/libocto/protocols/protocol-interface.ts";
 import { genDiffs } from "../generate-edits.ts";
 import { cutIndex, insertAt } from "../str.ts";
 import { randomIndex, pickRandom, zeroToN, percentChance, randomLowercase } from "../random.ts";

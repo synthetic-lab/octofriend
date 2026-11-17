@@ -4,8 +4,8 @@ import type {
   ResponseOutputItem,
   ResponseReasoningItem,
 } from "openai/resources/responses/responses";
-import type { Interpreter, InterpreterImplementationParams } from "../jit-interface.ts";
-import { interpreterUsage, defineInterpreter } from "../jit-interface.ts";
+import type { Protocol, ProtocolImplementationParams } from "../protocol-interface.ts";
+import { protocolUsage, defineProtocol } from "../protocol-interface.ts";
 import { parseToolCall } from "../parse-tool-call.ts";
 import type {
   Agent,
@@ -20,9 +20,9 @@ import { openAIRequestError } from "../openai-shared.ts";
 import type { JsonObject, JsonValue } from "./compiler-responses.ts";
 import { responsesCompiler, responsesCurl } from "./compiler-responses.ts";
 
-export const runResponsesAgent: Interpreter<OpenAIBackend> = defineInterpreter(
+export const responsesProtocol: Protocol<OpenAIBackend> = defineProtocol(
   async <A extends Agent<any, any, any, any>>(
-    params: InterpreterImplementationParams<A, OpenAIBackend>,
+    params: ProtocolImplementationParams<A, OpenAIBackend>,
   ) => {
     const { model, backend, irs, abortSignal, transport, systemPrompt, autofixJson } = params;
 
@@ -111,7 +111,7 @@ export const runResponsesAgent: Interpreter<OpenAIBackend> = defineInterpreter(
                 type: "stream-error",
                 requestError: event.response.error?.message || "OpenAI Responses request failed",
                 curl,
-                usage: interpreterUsage(usage.input, usage.output, usage.cachedInput),
+                usage: protocolUsage(usage.input, usage.output, usage.cachedInput),
                 headers: response.headers,
               });
 
@@ -120,7 +120,7 @@ export const runResponsesAgent: Interpreter<OpenAIBackend> = defineInterpreter(
                 type: "stream-error",
                 requestError: event.message,
                 curl,
-                usage: interpreterUsage(usage.input, usage.output, usage.cachedInput),
+                usage: protocolUsage(usage.input, usage.output, usage.cachedInput),
                 headers: response.headers,
               });
           }
@@ -131,13 +131,13 @@ export const runResponsesAgent: Interpreter<OpenAIBackend> = defineInterpreter(
             type: "stream-error",
             requestError: errorToString(e),
             curl,
-            usage: interpreterUsage(usage.input, usage.output, usage.cachedInput),
+            usage: protocolUsage(usage.input, usage.output, usage.cachedInput),
             headers: response.headers,
           });
         }
       }
 
-      const interpreterTokens = interpreterUsage(usage.input, usage.output, usage.cachedInput);
+      const protocolTokens = protocolUsage(usage.input, usage.output, usage.cachedInput);
 
       let openaiSpecific = {};
       if (reasoningId || encryptedReasoningContent) {
@@ -148,13 +148,13 @@ export const runResponsesAgent: Interpreter<OpenAIBackend> = defineInterpreter(
         content,
         reasoningContent,
         ...openaiSpecific,
-        usage: interpreterTokens,
+        usage: protocolTokens,
       };
 
       return params.finish({
         curl,
         headers: response.headers,
-        usage: interpreterTokens,
+        usage: protocolTokens,
         abortedOutput: assistantHistoryItem,
         parsedOutput: async () => {
           if (responseToolCalls.size === 0) return assistantHistoryItem;

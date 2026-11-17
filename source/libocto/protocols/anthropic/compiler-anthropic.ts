@@ -1,12 +1,12 @@
 import type Anthropic from "@anthropic-ai/sdk";
 import { toJSONSchema } from "structural";
-import type { CompileInputs, CompilerIR } from "../jit-interface.ts";
+import type { CompileInputs, CompilerIR } from "../protocol-interface.ts";
 import type { Agent, Content as IRContent, OwnToolRegistry } from "../../llm-ir.ts";
 import * as irPrompts from "../ir-prompts.ts";
 import type { MultimodalConfig } from "../../modalities.ts";
 
 /*
- * Everything the compiler needs to build a Claude Messages request body. The shipped interpreter
+ * Everything the compiler needs to build a Claude Messages request body. The shipped protocol
  * extends this with a client; compile-only callers (e.g. hosts that enqueue requests) supply just
  * these knobs.
  */

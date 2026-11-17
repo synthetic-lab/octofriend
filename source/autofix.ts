@@ -1,14 +1,14 @@
 import { t } from "structural";
-import { Config, apiKeyFromAuth, readAuthForModel } from "../config.ts";
-import { toolkits } from "../libocto/index.ts";
+import { Config, apiKeyFromAuth, readAuthForModel } from "./config.ts";
+import { toolkits } from "./libocto/index.ts";
 import {
   fixEditPrompt,
   fixJsonPrompt,
   JsonFixResponseSchema,
   DiffApplyResponse,
-} from "../prompts/autofix-prompts.ts";
-import { trackTokens } from "../token-tracker.ts";
-import { getDefaultOpenaiClient } from "./openai.ts";
+} from "./prompts/autofix-prompts.ts";
+import { trackTokens } from "./token-tracker.ts";
+import { getDefaultOpenaiClient } from "./protocols/openai.ts";
 
 type Edit = t.GetType<typeof toolkits.edit.ArgumentsSchema>;
 export async function autofixEdit(
@@ -53,7 +53,7 @@ export async function autofixJson(config: Config, brokenJson: string, abortSigna
 }
 
 // Makes a curried autofixJson function that doesn't require passing in the config; useful for
-// calling the main run(...) interpreter
+// calling the main run(...) protocol
 export function makeAutofixJson(config: Config) {
   return async (brokenJson: string, abortSignal: AbortSignal) => {
     return autofixJson(config, brokenJson, abortSignal);

@@ -1,10 +1,10 @@
 import { t } from "structural";
 import type {
-  Interpreter,
-  InterpreterError,
-  InterpreterImplementationParams,
-} from "../jit-interface.ts";
-import { interpreterUsage, defineInterpreter } from "../jit-interface.ts";
+  Protocol,
+  ProtocolError,
+  ProtocolImplementationParams,
+} from "../protocol-interface.ts";
+import { protocolUsage, defineProtocol } from "../protocol-interface.ts";
 import { parseToolCall } from "../parse-tool-call.ts";
 import type {
   Agent,
@@ -17,9 +17,9 @@ import type { OpenAIBackend } from "../openai-shared.ts";
 import { openAIRequestError } from "../openai-shared.ts";
 import { chatCompletionsCompiler, chatCompletionsCurl } from "./compiler-chat-completions.ts";
 
-export const runChatCompletionsAgent: Interpreter<OpenAIBackend> = defineInterpreter(
+export const chatCompletionsProtocol: Protocol<OpenAIBackend> = defineProtocol(
   async <A extends Agent<any, any, any, any>>(
-    params: InterpreterImplementationParams<A, OpenAIBackend>,
+    params: ProtocolImplementationParams<A, OpenAIBackend>,
   ) => {
     const { model, backend, irs, abortSignal, transport, systemPrompt, autofixJson } = params;
 
@@ -124,25 +124,25 @@ export const runChatCompletionsAgent: Interpreter<OpenAIBackend> = defineInterpr
             type: "stream-error",
             requestError: errorToString(e),
             curl,
-            usage: interpreterUsage(usage.input, usage.output, usage.cachedInput),
+            usage: protocolUsage(usage.input, usage.output, usage.cachedInput),
             headers: response.headers,
           });
         }
       }
 
-      const interpreterTokens = interpreterUsage(usage.input, usage.output, usage.cachedInput);
+      const protocolTokens = protocolUsage(usage.input, usage.output, usage.cachedInput);
 
       const assistantIr: AssistantIR<A["tools"]> = {
         role: "assistant" as const,
         content,
         reasoningContent,
-        usage: interpreterTokens,
+        usage: protocolTokens,
       };
 
       return params.finish({
         curl,
         headers: response.headers,
-        usage: interpreterTokens,
+        usage: protocolTokens,
         abortedOutput: assistantIr,
         parsedOutput: async () => {
           if (toolCallMap.size === 0) return assistantIr;
@@ -226,7 +226,7 @@ type ResponseToolCall = t.GetType<typeof ResponseToolCallSchema>;
 async function handleKnownErrors<T>(
   curl: string,
   cb: () => Promise<T>,
-): Promise<T | Result<never, InterpreterError>> {
+): Promise<T | Result<never, ProtocolError>> {
   try {
     return await cb();
   } catch (e) {

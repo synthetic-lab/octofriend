@@ -1,7 +1,7 @@
 import { describe, expect, it } from "bun:test";
 import { LocalTransport } from "../transports/local.ts";
-import { interpreterUsage, defineInterpreter } from "./jit/jit-interface.ts";
-import { userInterruptReason } from "./jit/ir-prompts.ts";
+import { protocolUsage, defineProtocol } from "./protocols/protocol-interface.ts";
+import { userInterruptReason } from "./protocols/ir-prompts.ts";
 import { err } from "./result.ts";
 import { trajectoryCompaction } from "./trajectory-compaction.ts";
 import { defaultCountTokens, type ExecutionModel } from "./execution.ts";
@@ -15,11 +15,11 @@ const model: ExecutionModel<null> = {
   countTokens: defaultCountTokens,
 };
 const interrupted = { role: "interrupted-by-user", reason: userInterruptReason() };
-const summaryInterpreter = defineInterpreter<null>(async ({ finish }) => {
+const summaryProtocol = defineProtocol<null>(async ({ finish }) => {
   const output = {
     role: "assistant" as const,
     content: "completed summary",
-    usage: interpreterUsage(1, 1),
+    usage: protocolUsage(1, 1),
   };
   return finish({
     curl: "curl",
@@ -32,7 +32,7 @@ const summaryInterpreter = defineInterpreter<null>(async ({ finish }) => {
 
 describe("trajectoryCompaction", () => {
   it.each(["before-start", "during-start"] as const)(
-    "returns interruption IR when cancelled %s without calling the interpreter",
+    "returns interruption IR when cancelled %s without calling the protocol",
     async when => {
       const interrupt = new AbortController();
       let calls = 0;
@@ -44,9 +44,9 @@ describe("trajectoryCompaction", () => {
         transport,
         abortSignal: interrupt.signal,
         quitSignal: new AbortController().signal,
-        runInterpreter: async params => {
+        protocol: async params => {
           calls++;
-          return summaryInterpreter(params);
+          return summaryProtocol(params);
         },
         handler: {
           startCompaction: () => {
@@ -62,7 +62,7 @@ describe("trajectoryCompaction", () => {
   );
 
   it.each(["success", "error"] as const)(
-    "returns interruption IR instead of the cancelled interpreter's %s outcome",
+    "returns interruption IR instead of the cancelled protocol's %s outcome",
     async finish => {
       const interrupt = new AbortController();
       const progress: string[] = [];
@@ -72,14 +72,14 @@ describe("trajectoryCompaction", () => {
         transport,
         abortSignal: interrupt.signal,
         quitSignal: new AbortController().signal,
-        runInterpreter: async params => {
+        protocol: async params => {
           await params.onTokens("partial summary", "content");
           interrupt.abort();
           await params.onTokens("late summary", "content");
           if (finish === "error") {
             return err({ type: "request-error", requestError: "cancelled", curl: "curl" });
           }
-          return summaryInterpreter(params);
+          return summaryProtocol(params);
         },
         handler: {
           compactionProgress: event => {
@@ -99,7 +99,7 @@ describe("trajectoryCompaction", () => {
       transport,
       abortSignal: new AbortController().signal,
       quitSignal: new AbortController().signal,
-      runInterpreter: summaryInterpreter,
+      protocol: summaryProtocol,
     });
     expect(outcome).toMatchObject({
       success: true,
@@ -117,8 +117,7 @@ describe("trajectoryCompaction", () => {
       transport,
       abortSignal: new AbortController().signal,
       quitSignal: new AbortController().signal,
-      runInterpreter: async () =>
-        err({ type: "request-error", requestError: "failed", curl: "curl" }),
+      protocol: async () => err({ type: "request-error", requestError: "failed", curl: "curl" }),
     });
     expect(outcome).toMatchObject({
       success: true,
@@ -140,11 +139,11 @@ describe("trajectoryCompaction", () => {
       transport,
       abortSignal: interrupt.signal,
       quitSignal: quit.signal,
-      runInterpreter: async params => {
+      protocol: async params => {
         calls++;
         interrupt.abort();
         quit.abort();
-        return summaryInterpreter(params);
+        return summaryProtocol(params);
       },
     });
     expect(outcome).toEqual(err("quit"));
@@ -159,10 +158,10 @@ describe("trajectoryCompaction", () => {
         transport,
         abortSignal: new AbortController().signal,
         quitSignal: new AbortController().signal,
-        runInterpreter: async () => {
-          throw new Error("interpreter failed");
+        protocol: async () => {
+          throw new Error("protocol failed");
         },
       }),
-    ).rejects.toThrow("interpreter failed");
+    ).rejects.toThrow("protocol failed");
   });
 });

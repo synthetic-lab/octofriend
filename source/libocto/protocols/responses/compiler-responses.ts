@@ -5,7 +5,7 @@ import type {
   ResponseInput,
   ResponseInputContent,
 } from "openai/resources/responses/responses";
-import type { CompileInputs, CompilerIR } from "../jit-interface.ts";
+import type { CompileInputs, CompilerIR } from "../protocol-interface.ts";
 import { answeredToolCallId } from "../../llm-ir.ts";
 import type { Agent, Content as IRContent, OwnToolRegistry } from "../../llm-ir.ts";
 import * as irPrompts from "../ir-prompts.ts";

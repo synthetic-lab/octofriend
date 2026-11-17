@@ -3,7 +3,7 @@ import type {
   ChatCompletionCreateParamsStreaming,
   ChatCompletionMessageParam,
 } from "openai/resources/chat/completions";
-import type { CompileInputs, CompilerIR } from "../jit-interface.ts";
+import type { CompileInputs, CompilerIR } from "../protocol-interface.ts";
 import type { Agent, Content as IRContent, OwnToolRegistry } from "../../llm-ir.ts";
 import * as irPrompts from "../ir-prompts.ts";
 import { tagged } from "../ir-prompts.ts";

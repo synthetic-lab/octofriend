@@ -18,7 +18,7 @@ import {
   messageText,
   ok,
   toolkits,
-  type Interpreter,
+  type Protocol,
   type ExecutionModel,
   type TrajectoryMode,
   type TrajectoryModelResult,
@@ -44,8 +44,8 @@ import type { ParsedCliArgs } from "./cli/cli-args.ts";
 import { create } from "zustand";
 import { useShallow } from "zustand/shallow";
 import { toLlmIR } from "./ir/convert-history-ir.ts";
-import { run, type Backend } from "./jit/run.ts";
-import { autofixEdit, makeAutofixJson } from "./jit/autofix.ts";
+import { run, type Backend } from "./protocols/run.ts";
+import { autofixEdit, makeAutofixJson } from "./autofix.ts";
 import {
   octoPermissionGate,
   whitelistKey,
@@ -87,7 +87,7 @@ export type LiveTrajectory = {
 export type BootEnv = {
   config: Config;
   transport: Transport;
-  runInterpreter?: Interpreter<Backend>;
+  protocol?: Protocol<Backend>;
 };
 
 type SessionControls = {
@@ -249,9 +249,9 @@ export const useAppStore = create<UiState>((set, get) => {
     history: readonly HistoryNode[];
     config: Config;
     transport: Transport;
-    runInterpreter: Interpreter<Backend>;
+    protocol: Protocol<Backend>;
   }): LiveTrajectory => {
-    const { session, history, config, transport, runInterpreter } = args;
+    const { session, history, config, transport, protocol } = args;
     const exitController = new AbortController();
     const throttle = throttledBuffer<Partial<UiState>>(300, set);
     let responseByteCount = 0;
@@ -355,7 +355,7 @@ export const useAppStore = create<UiState>((set, get) => {
           lsp: config.lsp === false ? { disabled: true, config: {} } : { config: config.lsp ?? {} },
         };
       },
-      runInterpreter,
+      protocol,
       lowerMessages,
       transport,
       errorCorrection: {
@@ -652,7 +652,7 @@ export const useAppStore = create<UiState>((set, get) => {
       history: repairedHistory,
       config: args.config,
       transport: args.transport,
-      runInterpreter: args.runInterpreter ?? (run as Interpreter<Backend>),
+      protocol: args.protocol ?? (run as Protocol<Backend>),
     });
     set(state => ({
       sessionMode: makeLive({

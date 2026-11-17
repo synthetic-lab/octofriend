@@ -8,16 +8,16 @@ import type { MultimodalConfig } from "../modalities.ts";
 export type CompilerIR<A extends Agent<any, any, any, any>> = LoweredIR<A["tools"]>;
 
 /*
- * The compile half of the jit: IR in, a provider-native request body out, with no execution.
+ * The compile half of a protocol: IR in, a provider-native request body out, with no execution.
  *
  * Each provider's compiler module owns the whole body — messages, tool schemas, model options,
  * streaming flags — so a caller can hand the result to their own transport (an HTTP client, or a
- * queue of chat-completions-shaped jobs) instead of libocto's interpreter. Compilers live below
- * the interpreters: the shipped interpreters import them, never the other way around.
+ * queue of chat-completions-shaped jobs) instead of libocto's protocol. Compilers live below
+ * protocol implementations: the shipped protocols import them, never the other way around.
  */
 
 // The minimum a compiler needs to know about the model: the wire name, and which modalities it can
-// render. ExecutionModel satisfies this, so interpreters can pass their model straight through.
+// render. ExecutionModel satisfies this, so protocols can pass their model straight through.
 export type CompileModel = {
   model: string;
   modalities: MultimodalConfig | null;
@@ -30,14 +30,14 @@ export type CompileInputs<A extends Agent<any, any, any, any>> = {
   tools?: Partial<OwnToolRegistry<A>>;
 };
 
-export type InterpreterTokenType<Tools = unknown> = [Tools] extends [undefined]
+export type ProtocolTokenType<Tools = unknown> = [Tools] extends [undefined]
   ? "reasoning" | "content"
   : "reasoning" | "content" | "tool";
 
-export type InterpreterModality = "text" | "vision";
-export type InterpreterModalities = readonly InterpreterModality[];
+export type ProtocolModality = "text" | "vision";
+export type ProtocolModalities = readonly ProtocolModality[];
 
-export type InterpreterUsage = {
+export type ProtocolUsage = {
   input: {
     cached: number;
     uncached: number;
@@ -46,11 +46,11 @@ export type InterpreterUsage = {
   output: number;
 };
 
-export function interpreterUsage(
+export function protocolUsage(
   inputTotal: number,
   output: number,
   cached: number = 0,
-): InterpreterUsage {
+): ProtocolUsage {
   return {
     input: {
       cached,
@@ -61,11 +61,11 @@ export function interpreterUsage(
   };
 }
 
-export function interpreterUsageHasTokens(usage: InterpreterUsage): boolean {
+export function protocolUsageHasTokens(usage: ProtocolUsage): boolean {
   return usage.input.total !== 0 || usage.output !== 0;
 }
 
-export type InterpreterError =
+export type ProtocolError =
   | {
       type: "auth-error";
       authError: string;
@@ -80,7 +80,7 @@ export type InterpreterError =
       type: "stream-error";
       requestError: string;
       curl: string;
-      usage: InterpreterUsage;
+      usage: ProtocolUsage;
       headers: Headers;
     }
   | {
@@ -99,15 +99,15 @@ export type InterpreterError =
       type: "unexpected-tool-call";
       requestError: string;
       curl: string;
-      usage: InterpreterUsage;
+      usage: ProtocolUsage;
       headers: Headers;
     };
 
 export function unexpectedToolCallError(
   curl: string,
-  usage: InterpreterUsage,
+  usage: ProtocolUsage,
   headers: Headers,
-): InterpreterError {
+): ProtocolError {
   return {
     type: "unexpected-tool-call",
     requestError: "Model returned tool calls even though no tools were provided.",
@@ -130,33 +130,35 @@ type AssistantMessageForTools<A extends Agent<any, any, any, any>, Tools> = [Too
   ? AssistantMessageWithoutToolCalls<A["tools"]>
   : AssistantMessage<A["tools"]>;
 
-export type InterpreterResultData<A extends Agent<any, any, any, any>, Tools> = {
+export type ProtocolResultData<A extends Agent<any, any, any, any>, Tools> = {
   output: AssistantMessageForTools<A, Tools>;
   curl: string;
   headers: Headers;
-  usage: InterpreterUsage;
+  usage: ProtocolUsage;
 };
 
-export type InterpreterResult<A extends Agent<any, any, any, any>, Tools = unknown> = Result<
-  InterpreterResultData<A, Tools>,
-  InterpreterError
+export type ProtocolResult<A extends Agent<any, any, any, any>, Tools = unknown> = Result<
+  ProtocolResultData<A, Tools>,
+  ProtocolError
 >;
 
-export type InterpreterResultWithoutToolCalls<A extends Agent<any, any, any, any>> =
-  InterpreterResult<A, undefined>;
+export type ProtocolResultWithoutToolCalls<A extends Agent<any, any, any, any>> = ProtocolResult<
+  A,
+  undefined
+>;
 
 export type JsonFixResponse = { success: true; fixed: any } | { success: false };
 
 export type AutofixJsonFn = (badJson: string, signal: AbortSignal) => Promise<JsonFixResponse>;
 
-export type InterpreterSuccessData<A extends Agent<any, any, any, any>> = {
+export type ProtocolSuccessData<A extends Agent<any, any, any, any>> = {
   output: AssistantMessage<A["tools"]>;
   curl: string;
   headers: Headers;
-  usage: InterpreterUsage;
+  usage: ProtocolUsage;
 };
 
-type InterpreterParamsBase<A extends Agent<any, any, any, any>, Backend> = {
+type ProtocolParamsBase<A extends Agent<any, any, any, any>, Backend> = {
   systemPrompt?: () => Promise<string>;
   model: Omit<ExecutionModel<unknown>, "countTokens">;
   backend: Backend;
@@ -166,82 +168,82 @@ type InterpreterParamsBase<A extends Agent<any, any, any, any>, Backend> = {
   autofixJson?: AutofixJsonFn;
 };
 
-export type InterpreterParams<
+export type ProtocolParams<
   A extends Agent<any, any, any, any>,
   Backend,
   Tools extends Partial<OwnToolRegistry<A>> | undefined = undefined,
-> = InterpreterParamsBase<A, Backend> & {
-  onTokens: (t: string, type: InterpreterTokenType<Tools>) => Promise<void>;
+> = ProtocolParamsBase<A, Backend> & {
+  onTokens: (t: string, type: ProtocolTokenType<Tools>) => Promise<void>;
   tools?: Tools;
 };
 
-export type InterpreterParamsWithoutTools<
+export type ProtocolParamsWithoutTools<
   A extends Agent<any, any, any, any>,
   Backend,
-> = InterpreterParamsBase<A, Backend> & {
-  onTokens: (t: string, type: InterpreterTokenType<undefined>) => Promise<void>;
+> = ProtocolParamsBase<A, Backend> & {
+  onTokens: (t: string, type: ProtocolTokenType<undefined>) => Promise<void>;
   tools?: undefined;
 };
 
-export type InterpreterParamsWithTools<
+export type ProtocolParamsWithTools<
   A extends Agent<any, any, any, any>,
   Backend,
   Tools extends Partial<OwnToolRegistry<A>> = Partial<OwnToolRegistry<A>>,
-> = InterpreterParamsBase<A, Backend> & {
+> = ProtocolParamsBase<A, Backend> & {
   onTokens: (t: string, type: "reasoning" | "content" | "tool") => Promise<void>;
   tools: Tools;
 };
 
-export type InterpreterParamsImplementation<A extends Agent<any, any, any, any>, Backend> =
-  | InterpreterParamsWithoutTools<A, Backend>
-  | InterpreterParamsWithTools<A, Backend>;
+export type ProtocolParamsImplementation<A extends Agent<any, any, any, any>, Backend> =
+  | ProtocolParamsWithoutTools<A, Backend>
+  | ProtocolParamsWithTools<A, Backend>;
 
-const interpreterFinished = Symbol("interpreterFinished");
-type InterpreterFinishedData<A extends Agent<any, any, any, any>> = InterpreterSuccessData<A> & {
-  readonly [interpreterFinished]: true;
+const protocolFinished = Symbol("protocolFinished");
+type ProtocolFinishedData<A extends Agent<any, any, any, any>> = ProtocolSuccessData<A> & {
+  readonly [protocolFinished]: true;
 };
-type InterpreterImplementationResult<A extends Agent<any, any, any, any>> = Result<
-  InterpreterFinishedData<A>,
-  InterpreterError
+type ProtocolImplementationResult<A extends Agent<any, any, any, any>> = Result<
+  ProtocolFinishedData<A>,
+  ProtocolError
 >;
 
-export function interpreterParamsHaveTools<A extends Agent<any, any, any, any>, Backend>(
-  params: InterpreterParamsImplementation<A, Backend>,
-): params is InterpreterParamsWithTools<A, Backend> {
+export function protocolParamsHaveTools<A extends Agent<any, any, any, any>, Backend>(
+  params: ProtocolParamsImplementation<A, Backend>,
+): params is ProtocolParamsWithTools<A, Backend> {
   return params.tools !== undefined;
 }
 
-export type InterpreterImplementationParams<A extends Agent<any, any, any, any>, Backend> = Omit<
-  InterpreterParamsImplementation<A, Backend>,
+export type ProtocolImplementationParams<A extends Agent<any, any, any, any>, Backend> = Omit<
+  ProtocolParamsImplementation<A, Backend>,
   "onTokens"
 > & {
   onTokens: (t: string, type: "reasoning" | "content" | "tool") => Promise<void>;
   finish: (args: {
     curl: string;
     headers: Headers;
-    usage: InterpreterUsage;
+    usage: ProtocolUsage;
     abortedOutput: AssistantMessage<A["tools"]>;
     parsedOutput: () => AssistantMessage<A["tools"]> | Promise<AssistantMessage<A["tools"]>>;
-  }) => Promise<InterpreterImplementationResult<A>>;
+  }) => Promise<ProtocolImplementationResult<A>>;
 };
 
-type InterpreterImplementation<Backend> = <A extends Agent<any, any, any, any>>(
-  params: InterpreterImplementationParams<A, Backend>,
-) => Promise<InterpreterImplementationResult<A>>;
+type ProtocolImplementation<Backend> = <A extends Agent<any, any, any, any>>(
+  params: ProtocolImplementationParams<A, Backend>,
+) => Promise<ProtocolImplementationResult<A>>;
 
-function interpreterSuccess<A extends Agent<any, any, any, any>, Backend>(
-  params: InterpreterParamsImplementation<A, Backend>,
-  data: InterpreterSuccessData<A>,
-): InterpreterResult<A, undefined> | InterpreterResult<A> {
+function protocolSuccess<A extends Agent<any, any, any, any>, Backend>(
+  params: ProtocolParamsImplementation<A, Backend>,
+  data: ProtocolSuccessData<A>,
+): ProtocolResult<A, undefined> | ProtocolResult<A> {
   if (
-    !interpreterParamsHaveTools(params) &&
+    !protocolParamsHaveTools(params) &&
     data.output.toolCalls &&
     data.output.toolCalls.length > 0
   ) {
     return err(unexpectedToolCallError(data.curl, data.usage, data.headers));
   }
 
-  if (!interpreterParamsHaveTools(params)) {
+  if (!protocolParamsHaveTools(params)) {
     const { toolCalls: _toolCalls, ...output } = data.output;
     return ok({
       ...data,
@@ -252,39 +254,37 @@ function interpreterSuccess<A extends Agent<any, any, any, any>, Backend>(
   return ok(data);
 }
 
-export type Interpreter<Backend> = <
+export type Protocol<Backend> = <
   A extends Agent<any, any, any, any>,
   Tools extends Partial<OwnToolRegistry<A>> | undefined = undefined,
 >(
-  params: InterpreterParams<A, Backend, Tools>,
-) => Promise<InterpreterResult<A, Tools>>;
+  params: ProtocolParams<A, Backend, Tools>,
+) => Promise<ProtocolResult<A, Tools>>;
 
-// defineInterpreter keeps the "were tools offered?" bookkeeping local to libocto's interpreters. An
-// interpreter gets a broad token callback that it can call with any provider event, plus a
-// finish(...) callback that wraps final assistant construction. If a provider emits tool tokens when
-// the caller did not supply tools, finish(...) returns an unexpected-tool-call error before running
-// the parsedOutput callback, so interpreters do not need to duplicate that guard around every tool
-// parsing path. finish(...) also skips the parsedOutput callback after aborts, because interpreter
-// parsedOutput callbacks are where expensive or invalid-on-abort tool parsing usually happens.
-export function defineInterpreter<Backend>(
-  implementation: InterpreterImplementation<Backend>,
-): Interpreter<Backend> {
-  async function interpreter<A extends Agent<any, any, any, any>>(
-    params: InterpreterParamsWithoutTools<A, Backend>,
-  ): Promise<InterpreterResult<A, undefined>>;
-  async function interpreter<A extends Agent<any, any, any, any>>(
-    params: InterpreterParamsWithTools<A, Backend>,
-  ): Promise<InterpreterResult<A>>;
-  async function interpreter<A extends Agent<any, any, any, any>>(
-    params: InterpreterParamsImplementation<A, Backend>,
-  ): Promise<InterpreterResult<A, undefined> | InterpreterResult<A>> {
+// defineProtocol keeps the "were tools offered?" bookkeeping local to libocto's protocol
+// implementations. A protocol gets a broad token callback that it can call with any provider event,
+// plus a finish(...) callback that wraps final assistant construction. If a provider emits tool
+// tokens when the caller did not supply tools, finish(...) returns an unexpected-tool-call error
+// before running the parsedOutput callback, so protocols do not need to duplicate that guard around
+// every tool parsing path. finish(...) also skips the parsedOutput callback after aborts, because
+// protocol parsedOutput callbacks are where expensive or invalid-on-abort tool parsing usually
+// happens.
+export function defineProtocol<Backend>(
+  implementation: ProtocolImplementation<Backend>,
+): Protocol<Backend> {
+  async function protocol<A extends Agent<any, any, any, any>>(
+    params: ProtocolParamsWithoutTools<A, Backend>,
+  ): Promise<ProtocolResult<A, undefined>>;
+  async function protocol<A extends Agent<any, any, any, any>>(
+    params: ProtocolParamsWithTools<A, Backend>,
+  ): Promise<ProtocolResult<A>>;
+  async function protocol<A extends Agent<any, any, any, any>>(
+    params: ProtocolParamsImplementation<A, Backend>,
+  ): Promise<ProtocolResult<A, undefined> | ProtocolResult<A>> {
     let unexpectedToolCall = false;
-    const onTokens: InterpreterImplementationParams<A, Backend>["onTokens"] = async (
-      tokens,
-      type,
-    ) => {
+    const onTokens: ProtocolImplementationParams<A, Backend>["onTokens"] = async (tokens, type) => {
       if (type === "tool") {
-        if (!interpreterParamsHaveTools(params)) {
+        if (!protocolParamsHaveTools(params)) {
           unexpectedToolCall = true;
           return;
         }
@@ -296,7 +296,7 @@ export function defineInterpreter<Backend>(
       await params.onTokens(tokens, type);
     };
 
-    const finish: InterpreterImplementationParams<A, Backend>["finish"] = async ({
+    const finish: ProtocolImplementationParams<A, Backend>["finish"] = async ({
       curl,
       headers,
       usage,
@@ -310,18 +310,18 @@ export function defineInterpreter<Backend>(
         curl,
         headers,
         usage,
-        [interpreterFinished]: true,
+        [protocolFinished]: true,
       });
     };
 
-    const interpreted = await implementation({
+    const result = await implementation({
       ...params,
       onTokens,
       finish,
     });
-    if (!interpreted.success) return interpreted;
-    return interpreterSuccess(params, interpreted.data);
+    if (!result.success) return result;
+    return protocolSuccess(params, result.data);
   }
 
-  return interpreter;
+  return protocol;
 }

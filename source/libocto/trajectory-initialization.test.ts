@@ -2,7 +2,7 @@ import { prompt } from "./system-prompt.ts";
 import { afterEach, describe, expect, it } from "bun:test";
 import { t } from "structural";
 import { MockTransport } from "../transports/mock.ts";
-import { interpreterUsage, type Interpreter } from "./jit/jit-interface.ts";
+import { protocolUsage, type Protocol } from "./protocols/protocol-interface.ts";
 import {
   agent as agentBuilder,
   type AgentIR,
@@ -103,7 +103,7 @@ const leafCall: OwnToolCall<typeof child> = {
 function assistant<Tools extends ToolMap<any, any>>(
   toolCalls?: Array<ToolCallFromToolMap<Tools>>,
 ): AssistantMessage<Tools> {
-  return { role: "assistant", content: "done", usage: interpreterUsage(1, 1), toolCalls };
+  return { role: "assistant", content: "done", usage: protocolUsage(1, 1), toolCalls };
 }
 function invocationHistory(): TestIR[] {
   return [
@@ -158,14 +158,14 @@ function fixture(messages: TestIR[], exit = new AbortController()) {
   const interruptions: Array<TrajectoryEvents<TestAgent>["interrupted"]> = [];
   const rewinds: Array<TrajectoryEvents<TestAgent>["rewind"]> = [];
   const ready = Promise.withResolvers<void>();
-  const runInterpreter: Interpreter<null> = async params => {
-    calls.push("interpreter");
+  const protocol: Protocol<null> = async params => {
+    calls.push("protocol");
     expect(params.abortSignal.aborted).toBe(false);
     return ok({
-      output: { role: "assistant", content: "done", usage: interpreterUsage(1, 1) },
+      output: { role: "assistant", content: "done", usage: protocolUsage(1, 1) },
       curl: "curl",
       headers: new Headers(),
-      usage: interpreterUsage(1, 1),
+      usage: protocolUsage(1, 1),
     });
   };
   const transport = new MockTransport({});
@@ -179,7 +179,7 @@ function fixture(messages: TestIR[], exit = new AbortController()) {
       calls.push("model");
       return ok({ provider: null, model: "test-model", contextWindow: 100_000, modalities: null });
     },
-    runInterpreter,
+    protocol,
     lowerMessages: irs => irs.map(original => ({ original, converted: original })),
     toolContentTooLargeError: async () => "Too large",
     permission: async () => {
@@ -383,7 +383,7 @@ describe("prestart controls", () => {
       expect(calls).toEqual([]);
       await step(trajectory);
       expect(commits[0]?.irs).toEqual([{ role: "error-retry" }]);
-      expect(calls.filter(call => call === "interpreter")).toHaveLength(1);
+      expect(calls.filter(call => call === "protocol")).toHaveLength(1);
     });
   }
 
@@ -404,7 +404,7 @@ describe("prestart controls", () => {
     if (current.mode !== "ready-for-request") throw new Error("Expected input");
     await current.control.enqueueSteering(text("new task"));
     await pending;
-    expect(calls.filter(call => call === "interpreter")).toHaveLength(1);
+    expect(calls.filter(call => call === "protocol")).toHaveLength(1);
   });
 
   for (const inChild of [false, true]) {
@@ -422,7 +422,7 @@ describe("prestart controls", () => {
       await step(trajectory);
       expect(commits[0]?.irs).toEqual([{ role: "error-retry" }]);
       expect(calls.filter(call => call === "tool")).toHaveLength(1);
-      expect(calls.filter(call => call === "interpreter")).toHaveLength(1);
+      expect(calls.filter(call => call === "protocol")).toHaveLength(1);
     });
   }
 
@@ -440,7 +440,7 @@ describe("prestart controls", () => {
     if (current.mode !== "ready-for-request") throw new Error("Expected input");
     await current.control.enqueueSteering(text("revised task"));
     await pending;
-    expect(calls.filter(call => call === "interpreter")).toHaveLength(1);
+    expect(calls.filter(call => call === "protocol")).toHaveLength(1);
   });
 
   for (const [name, history] of [
@@ -475,7 +475,7 @@ describe("prestart controls", () => {
       expect(reloaded.calls).toEqual([]);
       await current.control.enqueueSteering(text("new task"));
       await step(trajectory);
-      expect(calls.filter(call => call === "interpreter")).toHaveLength(1);
+      expect(calls.filter(call => call === "protocol")).toHaveLength(1);
       expect(calls).not.toContain("tool");
       expect(calls).not.toContain("permission");
     });

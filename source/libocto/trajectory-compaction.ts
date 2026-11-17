@@ -4,7 +4,7 @@ import {
   generateCompactionCheckpointContent,
   type CompactionError,
 } from "./trajectory-autocompact.ts";
-import type { AutofixJsonFn, Interpreter, CompilerIR } from "./jit/jit-interface.ts";
+import type { AutofixJsonFn, Protocol, CompilerIR } from "./protocols/protocol-interface.ts";
 import type {
   Agent,
   Checkpoint,
@@ -12,7 +12,7 @@ import type {
   InterruptedByUserIR,
   ModelErrorIR,
 } from "./llm-ir.ts";
-import { userInterruptReason } from "./jit/ir-prompts.ts";
+import { userInterruptReason } from "./protocols/ir-prompts.ts";
 import { err, ok, type Result } from "./result.ts";
 import { combineSignals } from "./signals.ts";
 import type { ExecutionModel } from "./execution.ts";
@@ -37,7 +37,7 @@ export type TrajectoryCompactionIR =
 export type TrajectoryCompactionParams<A extends Agent<any, any, any, any>, Provider> = {
   model: ExecutionModel<Provider>;
   messages: Array<CompilerIR<A>>;
-  runInterpreter: Interpreter<Provider>;
+  protocol: Protocol<Provider>;
   transport: Transport;
   abortSignal: AbortSignal;
   quitSignal: AbortSignal;
@@ -73,7 +73,7 @@ async function runTrajectoryCompaction<A extends Agent<any, any, any, any>, Mode
 async function compactionAttempt<A extends Agent<any, any, any, any>, Model>({
   model,
   messages,
-  runInterpreter,
+  protocol,
   transport,
   abortSignal,
   autofixJson,
@@ -91,7 +91,7 @@ async function compactionAttempt<A extends Agent<any, any, any, any>, Model>({
   const result = await generateCompactionCheckpointContent<A>({
     messages,
     run: compactionMessages => {
-      return runInterpreter<A, undefined>({
+      return protocol<A, undefined>({
         model,
         backend: model.provider,
         irs: compactionMessages,
@@ -118,7 +118,7 @@ async function compactionAttempt<A extends Agent<any, any, any, any>, Model>({
 }
 
 function compactionErrorIR(error: CompactionError): CompactionErrorIR | ModelErrorIR {
-  // Interpreter errors use `type`, while persisted IR uses `role`. Copy only the IR
+  // Protocol errors use `type`, while persisted IR uses `role`. Copy only the IR
   // fields, rather than returning the error or persisting its headers/transport metadata.
   switch (error.type) {
     case "auth-error":

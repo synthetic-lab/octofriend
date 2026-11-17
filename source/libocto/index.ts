@@ -2,7 +2,7 @@
  * libocto's public surface. Clients import the agent framework from here and toolkit APIs from
  * ./toolkits/index.ts, so libocto's internal file layout stays private:
  *
- *   import { Interpreter, Trajectory, agent, prompt } from "../libocto/index.ts";
+ *   import { Protocol, Trajectory, agent, prompt } from "../libocto/index.ts";
  *   import { toolkits } from "../libocto/index.ts";
  */
 export * from "./llm-ir.ts";
@@ -19,9 +19,9 @@ export { lowerMessages, meaningfulTailIR } from "./ir-operations.ts";
 export { timeout } from "./signals.ts";
 export { BackgroundProcessManager } from "./background-process.ts";
 
-// The jit contract.
-export * from "./jit/jit-interface.ts";
-export { imageAttachmentPlaceholderText } from "./jit/ir-prompts.ts";
+// The protocol contract.
+export * from "./protocols/protocol-interface.ts";
+export { imageAttachmentPlaceholderText } from "./protocols/ir-prompts.ts";
 
 /*
  * Compilers: IR in, a complete provider-native request body out, no execution. Use these to run
@@ -30,23 +30,23 @@ export { imageAttachmentPlaceholderText } from "./jit/ir-prompts.ts";
 export {
   chatCompletionsCompiler,
   chatCompletionsCurl,
-} from "./jit/chat-completions/compiler-chat-completions.ts";
+} from "./protocols/chat-completions/compiler-chat-completions.ts";
 export {
   anthropicCompiler,
   anthropicCurl,
   type AnthropicCompileConfig,
-} from "./jit/anthropic/compiler-anthropic.ts";
-export { responsesCompiler, responsesCurl } from "./jit/responses/compiler-responses.ts";
+} from "./protocols/anthropic/compiler-anthropic.ts";
+export { responsesCompiler, responsesCurl } from "./protocols/responses/compiler-responses.ts";
 export type {
   OpenAIBackend,
   OpenAICompileConfig,
   OpenAIReasoningEffort,
-} from "./jit/openai-shared.ts";
+} from "./protocols/openai-shared.ts";
 
-// Interpreters: compile, execute against the provider, and interpret the stream back into IR.
-export { runChatCompletionsAgent } from "./jit/chat-completions/interpreter-chat-completions.ts";
-export type { AnthropicBackend } from "./jit/anthropic/interpreter-anthropic.ts";
-export { runAnthropicAgent } from "./jit/anthropic/interpreter-anthropic.ts";
-export { runResponsesAgent } from "./jit/responses/interpreter-responses.ts";
+// Protocols: compile, execute against the provider, and interpret the stream back into IR.
+export { chatCompletionsProtocol } from "./protocols/chat-completions/protocol-chat-completions.ts";
+export type { AnthropicBackend } from "./protocols/anthropic/protocol-anthropic.ts";
+export { anthropicProtocol } from "./protocols/anthropic/protocol-anthropic.ts";
+export { responsesProtocol } from "./protocols/responses/protocol-responses.ts";
 
 export * as toolkits from "./toolkits/index.ts";

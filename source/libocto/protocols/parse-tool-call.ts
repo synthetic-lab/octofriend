@@ -1,5 +1,5 @@
 import { toTypescript } from "structural";
-import type { JsonFixResponse } from "./jit-interface.ts";
+import type { JsonFixResponse } from "./protocol-interface.ts";
 import type { LoadedTools, ToolCallFromToolMap, ToolMap } from "../toolkits/tool-def.ts";
 import { Transport } from "../transport.ts";
 import { logger } from "../logger.ts";

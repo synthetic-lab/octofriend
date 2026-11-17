@@ -1,13 +1,13 @@
 import {
-  interpreterUsageHasTokens,
-  runChatCompletionsAgent,
-  runAnthropicAgent,
-  runResponsesAgent,
+  protocolUsageHasTokens,
+  chatCompletionsProtocol,
+  anthropicProtocol,
+  responsesProtocol,
   type Agent,
   type AnthropicBackend,
-  type Interpreter,
-  type InterpreterResult,
-  type InterpreterUsage,
+  type Protocol,
+  type ProtocolResult,
+  type ProtocolUsage,
   type OpenAIBackend,
 } from "../libocto/index.ts";
 import Anthropic from "@anthropic-ai/sdk";
@@ -25,55 +25,55 @@ export type Backend =
   | { type: "api"; auth: ApiKeyAuth; model: ApiKeyModelConfig }
   | { type: "codex"; auth: OAuthLoadedAuth; model: CodexModelConfig };
 
-export const run: Interpreter<Backend> = async params => {
+export const run: Protocol<Backend> = async params => {
   const result = await (async () => {
     const backend = params.backend;
 
     if (backend.type === "codex") {
-      return runResponsesAgent({
+      return responsesProtocol({
         ...params,
         backend: codexBackend(backend.model, backend.auth),
       });
     }
 
     if (backend.model.type == null || backend.model.type === "standard") {
-      return runChatCompletionsAgent({
+      return chatCompletionsProtocol({
         ...params,
         backend: standardOpenAIBackend(backend.model, backend.auth.apiKey),
       });
     }
 
     if (backend.model.type === "openai-responses") {
-      return runResponsesAgent({
+      return responsesProtocol({
         ...params,
         backend: responsesOpenAIBackend(backend.model, backend.auth.apiKey),
       });
     }
 
     const _: "anthropic" = backend.model.type;
-    return runAnthropicAgent({
+    return anthropicProtocol({
       ...params,
       backend: anthropicBackend(backend.model, backend.auth.apiKey),
     });
   })();
 
-  trackInterpreterResultUsage(params.model.model, result);
+  trackProtocolResultUsage(params.model.model, result);
   return result;
 };
 
-function trackInterpreterResultUsage<A extends Agent<any, any, any, any>, Tools>(
+function trackProtocolResultUsage<A extends Agent<any, any, any, any>, Tools>(
   model: string,
-  result: InterpreterResult<A, Tools>,
+  result: ProtocolResult<A, Tools>,
 ): void {
-  const usage = interpreterResultUsage(result);
-  if (!usage || !interpreterUsageHasTokens(usage)) return;
+  const usage = protocolResultUsage(result);
+  if (!usage || !protocolUsageHasTokens(usage)) return;
   trackTokens(model, "input", usage.input.total);
   trackTokens(model, "output", usage.output);
 }
 
-function interpreterResultUsage<A extends Agent<any, any, any, any>, Tools>(
-  result: InterpreterResult<A, Tools>,
-): InterpreterUsage | undefined {
+function protocolResultUsage<A extends Agent<any, any, any, any>, Tools>(
+  result: ProtocolResult<A, Tools>,
+): ProtocolUsage | undefined {
   if (result.success) return result.data.usage;
   if ("usage" in result.error) return result.error.usage;
   return undefined;
