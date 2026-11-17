@@ -17,8 +17,8 @@ import {
   lowerMessages,
   messageText,
   ok,
+  protocols,
   toolkits,
-  type Protocol,
   type ExecutionModel,
   type TrajectoryMode,
   type TrajectoryModelResult,
@@ -87,7 +87,7 @@ export type LiveTrajectory = {
 export type BootEnv = {
   config: Config;
   transport: Transport;
-  protocol?: Protocol<Backend>;
+  protocol?: protocols.Protocol<Backend>;
 };
 
 type SessionControls = {
@@ -249,7 +249,7 @@ export const useAppStore = create<UiState>((set, get) => {
     history: readonly HistoryNode[];
     config: Config;
     transport: Transport;
-    protocol: Protocol<Backend>;
+    protocol: protocols.Protocol<Backend>;
   }): LiveTrajectory => {
     const { session, history, config, transport, protocol } = args;
     const exitController = new AbortController();
@@ -652,7 +652,7 @@ export const useAppStore = create<UiState>((set, get) => {
       history: repairedHistory,
       config: args.config,
       transport: args.transport,
-      protocol: args.protocol ?? (run as Protocol<Backend>),
+      protocol: args.protocol ?? (run as protocols.Protocol<Backend>),
     });
     set(state => ({
       sessionMode: makeLive({

@@ -3,7 +3,7 @@ import { MockTransport } from "../../../transports/mock.ts";
 import OpenAI from "openai";
 import { octoAgent } from "../../../ir/octo-ir.ts";
 import type { Transport } from "../../transport.ts";
-import { normalizeOpenAIStrictFunctionArguments, responsesProtocol } from "./protocol-responses.ts";
+import { normalizeOpenAIStrictFunctionArguments, responsesProtocol } from "./run-responses.ts";
 import { openAIStrictFunctionParameters, toResponseInput } from "./compiler-responses.ts";
 import { protocolUsage } from "../protocol-interface.ts";
 import type { LoweredIR, OwnToolCall } from "../../llm-ir.ts";

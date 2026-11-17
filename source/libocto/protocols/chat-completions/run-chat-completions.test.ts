@@ -10,7 +10,7 @@ import type {
 } from "openai/resources/chat/completions";
 import { octoAgent } from "../../../ir/octo-ir.ts";
 import { protocolUsage } from "../protocol-interface.ts";
-import { chatCompletionsProtocol } from "./protocol-chat-completions.ts";
+import { chatCompletionsProtocol } from "./run-chat-completions.ts";
 import { toLlmMessages } from "./compiler-chat-completions.ts";
 import type { LoweredIR, MalformedToolRequest, OwnToolCall } from "../../llm-ir.ts";
 import { defaultCountTokens } from "../../execution.ts";

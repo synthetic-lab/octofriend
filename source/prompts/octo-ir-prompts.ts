@@ -1,4 +1,4 @@
-import { ImageInfo, imageAttachmentPlaceholderText } from "../libocto/index.ts";
+import { ImageInfo, protocols } from "../libocto/index.ts";
 
 export function toolReject() {
   return `
@@ -8,6 +8,6 @@ Tool call was rejected by user. Your tool call did not run. No changes were appl
 
 export function imageAttachmentPlaceholder(content: string, images: ImageInfo[]) {
   if (images.length === 0) return content;
-  const imageBlurbs = images.map(() => imageAttachmentPlaceholderText()).join("\n");
+  const imageBlurbs = images.map(() => protocols.imageAttachmentPlaceholderText()).join("\n");
   return `${imageBlurbs}\n\n${content}`;
 }

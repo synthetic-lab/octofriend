@@ -24,18 +24,12 @@ import {
 } from "./session-history/schema/session-history-schema.ts";
 import {
   answeredToolCallId,
-  protocolUsage,
+  protocols,
   err,
   meaningfulTailIR,
   ok,
   type Agent,
   type AssistantMessage,
-  type Protocol,
-  type ProtocolError,
-  type ProtocolParams,
-  type ProtocolResult,
-  type ProtocolSuccessData,
-  type ProtocolUsage,
   type LoweredIR,
   type OwnToolRegistry,
   type Result,
@@ -212,30 +206,32 @@ function deferred<T = void>(): {
   return { promise, resolve, reject };
 }
 
-/* Mock protocol seam: state.ts lets tests inject a Protocol via BootEnv. */
+/* Mock protocol seam: state.ts lets tests inject a protocols.Protocol via BootEnv. */
 
 type Emit = (tokens: string, type: "reasoning" | "content") => Promise<void>;
 type ProtocolQueueItem = (
   onTokens: Emit,
   params: { abortSignal: AbortSignal },
 ) =>
-  | Result<ProtocolSuccessData<OctoAgent>, ProtocolError>
-  | Promise<Result<ProtocolSuccessData<OctoAgent>, ProtocolError>>;
+  | Result<protocols.ProtocolSuccessData<OctoAgent>, protocols.ProtocolError>
+  | Promise<Result<protocols.ProtocolSuccessData<OctoAgent>, protocols.ProtocolError>>;
 
 function assistantMessage(opts: {
   content?: string;
-  usage?: ProtocolUsage;
+  usage?: protocols.ProtocolUsage;
   toolCalls?: OctoAssistant["toolCalls"];
 }): OctoAssistant {
   return {
     role: "assistant",
     content: opts.content ?? "",
-    usage: opts.usage ?? protocolUsage(1, 1),
+    usage: opts.usage ?? protocols.protocolUsage(1, 1),
     toolCalls: opts.toolCalls,
   };
 }
 
-function okResult(output: OctoAssistant): Result<ProtocolSuccessData<OctoAgent>, ProtocolError> {
+function okResult(
+  output: OctoAssistant,
+): Result<protocols.ProtocolSuccessData<OctoAgent>, protocols.ProtocolError> {
   return ok({ output, curl: "curl", headers: new Headers(), usage: output.usage });
 }
 
@@ -255,12 +251,12 @@ const QUEUE_EXHAUSTED: ProtocolQueueItem = () =>
 
 function makeProtocol(queue: ProtocolQueueItem[]) {
   const calls: Array<{ irs: Array<LoweredIR<any>>; tools: string[]; model: string }> = [];
-  const protocol: Protocol<Backend> = async <
+  const protocol: protocols.Protocol<Backend> = async <
     A extends Agent<any, any, any, any>,
     Tools extends Partial<OwnToolRegistry<A>> | undefined = undefined,
   >(
-    params: ProtocolParams<A, Backend, Tools>,
-  ): Promise<ProtocolResult<A, Tools>> => {
+    params: protocols.ProtocolParams<A, Backend, Tools>,
+  ): Promise<protocols.ProtocolResult<A, Tools>> => {
     calls.push({
       irs: [...params.irs] as Array<LoweredIR<any>>,
       tools: Object.keys(params.tools ?? {}),
@@ -268,7 +264,7 @@ function makeProtocol(queue: ProtocolQueueItem[]) {
     });
     const next = queue.shift() ?? QUEUE_EXHAUSTED;
     const result = await next(params.onTokens, params);
-    return result as typeof result & ProtocolResult<A, Tools>;
+    return result as typeof result & protocols.ProtocolResult<A, Tools>;
   };
   return { protocol, calls };
 }
@@ -578,7 +574,12 @@ describe("runnable session hydration", () => {
         task: [{ type: "text", content: "inspect" }],
         ir: [
           { role: "user", content: [{ type: "text", content: "inspect" }] },
-          { role: "assistant", content: "", usage: protocolUsage(1, 1), toolCalls: [read] },
+          {
+            role: "assistant",
+            content: "",
+            usage: protocols.protocolUsage(1, 1),
+            toolCalls: [read],
+          },
         ],
       };
       const irs: OctoIR[] = [
@@ -978,7 +979,7 @@ describe("error-mode mirrors", () => {
   });
 
   it("mirrors a legacy compaction-error rewind, restoring the draft and slicing history", async () => {
-    const seededUsage = protocolUsage(200_000, 10);
+    const seededUsage = protocols.protocolUsage(200_000, 10);
     const { session, protocolCalls } = await hydrateSession(
       [
         {
@@ -1129,7 +1130,7 @@ describe("history persistence (BUGS.md #8, #12)", () => {
         okResult(
           assistantMessage({
             content: "mixed-attempt-marker",
-            usage: protocolUsage(200_000, 10),
+            usage: protocols.protocolUsage(200_000, 10),
             toolCalls: [malformed],
           }),
         ),
