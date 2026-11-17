@@ -1,7 +1,7 @@
 import { ImageInfo } from "./images.ts";
 import { BUILTIN_IR_ROLES } from "./ir-roles.ts";
 import type { BuiltinIRRole } from "./ir-roles.ts";
-import type { CompilerUsage } from "./compilers/compiler-interface.ts";
+import type { ProtocolUsage } from "./protocols/protocol-interface.ts";
 import type { SystemPrompt, SystemPromptData } from "./system-prompt.ts";
 import type {
   LoadedTools,
@@ -418,7 +418,7 @@ export type AssistantMessage<T extends ToolMap<any, any>> = {
   };
   anthropic?: AnthropicAssistantData;
   toolCalls?: Array<ToolCallFromToolMap<T> | MalformedToolRequest>;
-  usage: CompilerUsage;
+  usage: ProtocolUsage;
 };
 
 export type UserMessage = Content & {
@@ -560,7 +560,7 @@ export type CheckpointedIR<T extends ToolMap<any, any>> =
   | RequestSnapshotEndIR;
 
 /*
- * Compiler-ready IR plus subagent trajectories.
+ * Protocol-ready IR plus subagent trajectories.
  *
  * This is the shape callers should produce after lowering their custom IR extensions, but before
  * deciding how to represent nested subagent trajectories for a concrete compiler.

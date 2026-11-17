@@ -43,7 +43,7 @@ import type {
 } from "./ir-operations.ts";
 export type { SubagentTrajectoryInspection } from "./ir-operations.ts";
 import type { MultimodalConfig } from "./modalities.ts";
-import { subagentPrompt, userInterruptReason } from "./compilers/ir-prompts.ts";
+import { subagentPrompt, userInterruptReason } from "./protocols/ir-prompts.ts";
 import type { ToolExtensionIR, ToolReturn } from "./toolkits/tool-def.ts";
 import {
   loadAgentTools,
@@ -56,7 +56,7 @@ import { Input } from "./input.ts";
 import { err, ok, type Result } from "./result.ts";
 import { OwnershipLock, type OwnershipLockRef } from "./ownership-lock.ts";
 import { waitForPermissionDecision, type PermissionGate } from "./permissions.ts";
-import { approximateIRTokens, shouldAutoCompactHistory } from "./compilers/autocompact.ts";
+import { approximateIRTokens, shouldAutoCompactHistory } from "./trajectory-autocompact.ts";
 import { defaultCountTokens, type ExecutionModel } from "./execution.ts";
 import { trajectoryCompaction, type TrajectoryCompactionEvents } from "./trajectory-compaction.ts";
 import {
@@ -377,7 +377,7 @@ export type TrajectoryParams<A extends Agent<any, any, any, any>, Provider> = Om
   abortSignal: AbortSignal;
   handler?: TrajectoryHandler<A>;
   // Re-resolved each active step, so a retry always sees fresh credentials and config; a
-  // resolution error lands in the same mode as the equivalent compiler finish.
+  // resolution error lands in the same mode as the equivalent protocol finish.
   model: (
     invocation: Extract<TreeIR<A>, { role: "tool-invoke-subagent" }> | null,
   ) => Promise<TrajectoryModelResult<Provider>>;
@@ -895,7 +895,7 @@ export class Trajectory<A extends Agent<any, any, any, any>, Provider> {
         tools: arcTools<A>(agent, allTools) as Partial<OwnToolRegistry<B>>,
         messages: history,
         data: data as AgentToolData<B>,
-        runCompiler: params.runCompiler,
+        protocol: params.protocol,
         lowerMessages: irs =>
           lowerMessages(irs as Array<TreeIR<A>>) as Array<CompilerReadyIR<A> & CompilerReadyIR<B>>,
         systemPrompt: async signal =>
@@ -1192,7 +1192,7 @@ export class Trajectory<A extends Agent<any, any, any, any>, Provider> {
         location,
         runtime.model.modalities,
       )(location.history).map(pair => pair.converted),
-      runCompiler: this.params.runCompiler,
+      protocol: this.params.protocol,
       transport: this.params.transport,
       abortSignal: this.turnController.signal,
       quitSignal: this.params.abortSignal,

@@ -1,18 +1,19 @@
 import { describe, expect, it } from "bun:test";
 import OpenAI from "openai";
-import { MockTransport } from "../../transports/mock.ts";
+import { MockTransport } from "../../../transports/mock.ts";
 import { t } from "structural";
-import { ToolBuilder } from "../toolkits/tool-def.ts";
-import { ok } from "../result.ts";
+import { ToolBuilder } from "../../toolkits/tool-def.ts";
+import { ok } from "../../result.ts";
 import type {
   ChatCompletionAssistantMessageParam,
   ChatCompletionToolMessageParam,
 } from "openai/resources/chat/completions";
-import { octoAgent } from "../../ir/octo-ir.ts";
-import { compilerUsage } from "./compiler-interface.ts";
-import { runAgent, toLlmMessages } from "./standard.ts";
-import type { LoweredIR, MalformedToolRequest, OwnToolCall } from "../llm-ir.ts";
-import { defaultCountTokens } from "../execution.ts";
+import { octoAgent } from "../../../ir/octo-ir.ts";
+import { protocolUsage } from "../protocol-interface.ts";
+import { chatCompletionsProtocol } from "./run-chat-completions.ts";
+import { toLlmMessages } from "./compiler-chat-completions.ts";
+import type { LoweredIR, MalformedToolRequest, OwnToolCall } from "../../llm-ir.ts";
+import { defaultCountTokens } from "../../execution.ts";
 
 type Ir = LoweredIR<typeof octoAgent.tools>;
 type ShellToolCall = Extract<OwnToolCall<typeof octoAgent>, { name: "shell" }>;
@@ -75,7 +76,7 @@ describe("standard mixed stream chunks", () => {
           }),
       });
       const tokens: Array<{ text: string; type: string }> = [];
-      const result = await runAgent({
+      const result = await chatCompletionsProtocol({
         model: {
           provider: null,
           model: "test-model",
@@ -148,7 +149,7 @@ describe("toLlmMessages reasoning", () => {
           role: "assistant",
           content: "I will check the files.",
           reasoningContent: "First, inspect the directory.",
-          usage: compilerUsage(1, 1),
+          usage: protocolUsage(1, 1),
           ...(hasTools ? { toolCalls: [shellCall("call_reasoning")] } : {}),
         },
       ]);
@@ -167,7 +168,7 @@ describe("toLlmMessages reasoning", () => {
 
   it.each([undefined, ""])("omits absent or empty reasoning (%s)", async reasoningContent => {
     const messages = await toLlmMessages<typeof octoAgent>([
-      { role: "assistant", content: "Done.", reasoningContent, usage: compilerUsage(1, 1) },
+      { role: "assistant", content: "Done.", reasoningContent, usage: protocolUsage(1, 1) },
     ]);
 
     expect(messages).toEqual([{ role: "assistant", content: "Done." }]);
@@ -195,7 +196,7 @@ describe("toLlmMessages malformed tool requests", () => {
       {
         role: "assistant",
         content: "",
-        usage: compilerUsage(0, 0),
+        usage: protocolUsage(0, 0),
         toolCalls: [malformed],
       },
       { role: "tool-parse-error", malformedRequest: malformed },
@@ -225,7 +226,7 @@ describe("toLlmMessages malformed tool requests", () => {
       {
         role: "assistant",
         content: "",
-        usage: compilerUsage(0, 0),
+        usage: protocolUsage(0, 0),
         toolCalls: [valid, malformed],
       },
       {

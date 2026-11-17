@@ -4,10 +4,10 @@ import OpenAI from "openai";
 import { systemPrompt } from "../prompts/system-prompt.ts";
 import { MockTransport } from "../transports/mock.ts";
 import { AbortError, TransportError } from "./transport.ts";
-import { runAnthropicAgent } from "./compilers/anthropic.ts";
-import type { Compiler } from "./compilers/compiler-interface.ts";
-import { runResponsesAgent } from "./compilers/responses.ts";
-import { runAgent } from "./compilers/standard.ts";
+import { anthropicProtocol } from "./protocols/anthropic/run-anthropic.ts";
+import type { Protocol } from "./protocols/protocol-interface.ts";
+import { responsesProtocol } from "./protocols/responses/run-responses.ts";
+import { chatCompletionsProtocol } from "./protocols/chat-completions/run-chat-completions.ts";
 import { agent as agentBuilder, type AgentIR } from "./llm-ir.ts";
 import { err, ok, type Result } from "./result.ts";
 import { Trajectory } from "./trajectory.ts";
@@ -24,14 +24,14 @@ function fixture(provider: Provider, transport: MockTransport) {
   };
   const openai = new OpenAI({ apiKey: "test", maxRetries: 0, fetch });
   const anthropic = new Anthropic({ apiKey: "test", maxRetries: 0, fetch });
-  const runCompiler: Compiler<null> = params => {
+  const protocol: Protocol<null> = params => {
     switch (provider) {
       case "standard":
-        return runAgent({ ...params, backend: { client: openai } });
+        return chatCompletionsProtocol({ ...params, backend: { client: openai } });
       case "responses":
-        return runResponsesAgent({ ...params, backend: { client: openai } });
+        return responsesProtocol({ ...params, backend: { client: openai } });
       case "anthropic":
-        return runAnthropicAgent({
+        return anthropicProtocol({
           ...params,
           backend: { client: anthropic, maxTokens: 100 },
         });
@@ -49,7 +49,7 @@ function fixture(provider: Provider, transport: MockTransport) {
       ok({ provider: null, model: "test-model", contextWindow: 100_000, modalities: null }),
     getData: async () => ({ yourName: "Test", models: [], lsp: { config: {} } }),
     toolContentTooLargeError: async () => "Unexpected oversized output",
-    runCompiler,
+    protocol,
     lowerMessages: irs => irs.map(original => ({ original, converted: original })),
     transport,
     abortSignal: new AbortController().signal,

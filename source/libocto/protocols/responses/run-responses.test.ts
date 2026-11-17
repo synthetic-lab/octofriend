@@ -1,15 +1,12 @@
 import { describe, expect, it } from "bun:test";
-import { MockTransport } from "../../transports/mock.ts";
+import { MockTransport } from "../../../transports/mock.ts";
 import OpenAI from "openai";
-import { octoAgent } from "../../ir/octo-ir.ts";
-import type { Transport } from "../transport.ts";
-import { runResponsesAgent, toResponseInput } from "./responses.ts";
-import {
-  normalizeOpenAIStrictFunctionArguments,
-  openAIStrictFunctionParameters,
-} from "./responses.ts";
-import { compilerUsage } from "./compiler-interface.ts";
-import type { LoweredIR, OwnToolCall } from "../llm-ir.ts";
+import { octoAgent } from "../../../ir/octo-ir.ts";
+import type { Transport } from "../../transport.ts";
+import { normalizeOpenAIStrictFunctionArguments, responsesProtocol } from "./run-responses.ts";
+import { openAIStrictFunctionParameters, toResponseInput } from "./compiler-responses.ts";
+import { protocolUsage } from "../protocol-interface.ts";
+import type { LoweredIR, OwnToolCall } from "../../llm-ir.ts";
 
 describe("openAIStrictFunctionParameters", () => {
   it("closes object schemas for OpenAI strict function calling", () => {
@@ -123,7 +120,7 @@ describe("openAIStrictFunctionParameters", () => {
   });
 });
 
-describe("runResponsesAgent", () => {
+describe("responsesProtocol", () => {
   it("returns an error if a model calls a tool when no tools were provided", async () => {
     const client = new OpenAI({ apiKey: "test" });
     const headers = new Headers({ "x-test-header": "present" });
@@ -155,7 +152,7 @@ describe("runResponsesAgent", () => {
       },
     });
 
-    const result = await runResponsesAgent<typeof octoAgent>({
+    const result = await responsesProtocol<typeof octoAgent>({
       model: {
         provider: null,
         model: "test-model",
@@ -204,7 +201,7 @@ function assistantWith(calls: ShellToolCall[]): Ir {
   return {
     role: "assistant",
     content: "On it.",
-    usage: compilerUsage(0, 0),
+    usage: protocolUsage(0, 0),
     toolCalls: calls,
   };
 }

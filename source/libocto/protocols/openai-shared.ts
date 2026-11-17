@@ -1,11 +1,17 @@
 import { t } from "structural";
 import type OpenAI from "openai";
-import type { CompilerError } from "./compiler-interface.ts";
+import type { ProtocolError } from "./protocol-interface.ts";
 import { errorToString } from "../result.ts";
 
-export type OpenAIBackend = {
+export type OpenAIReasoningEffort = "low" | "medium" | "high" | "xhigh";
+
+// What the OpenAI compilers need to build a request body; the shipped protocols add a client.
+export type OpenAICompileConfig = {
+  reasoningEffort?: OpenAIReasoningEffort;
+};
+
+export type OpenAIBackend = OpenAICompileConfig & {
   client: OpenAI;
-  reasoningEffort?: "low" | "medium" | "high" | "xhigh";
 };
 
 const OpenAIStatusErrorSchema = t.subtype({
@@ -20,7 +26,7 @@ const OpenAIStatusErrorSchema = t.subtype({
   ),
 });
 
-export function openAIRequestError(curl: string, error: unknown): CompilerError {
+export function openAIRequestError(curl: string, error: unknown): ProtocolError {
   const parsed = OpenAIStatusErrorSchema.sliceResult(error);
   if (parsed instanceof t.Err) {
     return {

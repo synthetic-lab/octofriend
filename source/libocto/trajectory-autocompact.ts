@@ -1,12 +1,12 @@
-import type { Agent, Content, LoweredIR } from "../llm-ir.ts";
-import { defaultCountTokens, type ExecutionModel } from "../execution.ts";
-import type { ToolMap } from "../toolkits/tool-def.ts";
+import type { Agent, Content, LoweredIR } from "./llm-ir.ts";
+import { defaultCountTokens, type ExecutionModel } from "./execution.ts";
+import type { ToolMap } from "./toolkits/tool-def.ts";
 import type {
-  CompilerError,
+  ProtocolError,
   CompilerIR,
-  CompilerResultWithoutToolCalls,
-} from "./compiler-interface.ts";
-import { Result, ok, err } from "../result.ts";
+  ProtocolResultWithoutToolCalls,
+} from "./protocols/protocol-interface.ts";
+import { Result, ok, err } from "./result.ts";
 
 export const AUTOCOMPACT_THRESHOLD = 0.8;
 
@@ -16,7 +16,7 @@ export type CompactionError =
       requestError: string;
       curl: string | null;
     }
-  | Exclude<CompilerError, { type: "unexpected-tool-call" }>;
+  | Exclude<ProtocolError, { type: "unexpected-tool-call" }>;
 
 const COMPACTION_CHECKPOINT_PREFIX = `# Conversation History Summary
 
@@ -54,7 +54,7 @@ export async function generateCompactionCheckpointContent<A extends Agent<any, a
   run,
 }: {
   messages: Array<CompilerIR<A>>;
-  run: (messages: Array<CompilerIR<A>>) => Promise<CompilerResultWithoutToolCalls<A>>;
+  run: (messages: Array<CompilerIR<A>>) => Promise<ProtocolResultWithoutToolCalls<A>>;
 }): Promise<Result<Content["content"], CompactionError>> {
   const summaryMessages: Array<CompilerIR<A>> = [
     ...messages,
@@ -94,7 +94,7 @@ export async function generateCompactionCheckpointContent<A extends Agent<any, a
 }
 
 export function processCompactedHistory<A extends Agent<any, any, any, any>>(
-  compactSummaryResult: CompilerResultWithoutToolCalls<A>,
+  compactSummaryResult: ProtocolResultWithoutToolCalls<A>,
 ): string | undefined {
   if (!compactSummaryResult.success) {
     return;

@@ -164,7 +164,7 @@ export const MenuQuotaIndicator = () => {
   const [fetchFailed, setFetchFailed] = useState(false);
 
   // should only be used if menu is opened before the agent runs
-  // otherwise, quota should come from the store, read from header values in the compiler
+  // otherwise, quota should come from the store, read from header values in the protocol
   useEffect(() => {
     if (storeQuota) return;
     let cancelled = false;

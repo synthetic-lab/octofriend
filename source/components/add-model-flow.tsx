@@ -17,7 +17,7 @@ import { router, Back } from "../router.tsx";
 import { providerForBaseUrl, SYNTHETIC_PROVIDER, CODEX_PROVIDER } from "../providers.ts";
 import { logger } from "../libocto/index.ts";
 import { parse } from "shell-quote";
-import { getDefaultOpenaiClient } from "../compilers/openai.ts";
+import { getDefaultOpenaiClient } from "../protocols/openai.ts";
 import {
   CODEX_OAUTH_FILE,
   hasCodexOAuthTokens,

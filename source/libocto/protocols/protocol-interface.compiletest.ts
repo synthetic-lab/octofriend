@@ -1,12 +1,12 @@
 import type { Agent } from "../llm-ir.ts";
 import type { Transport } from "../transport.ts";
 import type {
-  Compiler,
-  CompilerImplementationParams,
-  CompilerResult,
-  CompilerResultWithoutToolCalls,
-} from "./compiler-interface.ts";
-import { compilerUsage, defineCompiler } from "./compiler-interface.ts";
+  Protocol,
+  ProtocolImplementationParams,
+  ProtocolResult,
+  ProtocolResultWithoutToolCalls,
+} from "./protocol-interface.ts";
+import { protocolUsage, defineProtocol } from "./protocol-interface.ts";
 import type { ExecutionModel } from "../execution.ts";
 
 type ScratchBackend = {
@@ -15,9 +15,9 @@ type ScratchBackend = {
 
 type ScratchAgent = Agent<never, {}, {}, {}>;
 
-const scratchCompiler: Compiler<ScratchBackend> = defineCompiler(
+const scratchProtocol: Protocol<ScratchBackend> = defineProtocol(
   async <A extends Agent<any, any, any, any>>(
-    params: CompilerImplementationParams<A, ScratchBackend>,
+    params: ProtocolImplementationParams<A, ScratchBackend>,
   ) => {
     await params.onTokens("hello", "content");
     await params.onTokens("{}", "tool");
@@ -25,16 +25,16 @@ const scratchCompiler: Compiler<ScratchBackend> = defineCompiler(
     return params.finish({
       curl: "",
       headers: new Headers(),
-      usage: compilerUsage(0, 0),
+      usage: protocolUsage(0, 0),
       abortedOutput: {
         role: "assistant",
         content: "hello",
-        usage: compilerUsage(0, 0),
+        usage: protocolUsage(0, 0),
       },
       parsedOutput: () => ({
         role: "assistant",
         content: "hello",
-        usage: compilerUsage(0, 0),
+        usage: protocolUsage(0, 0),
       }),
     });
   },
@@ -45,7 +45,7 @@ declare const transport: Transport;
 declare const model: Omit<ExecutionModel<unknown>, "countTokens">;
 declare const backend: ScratchBackend;
 
-const withoutTools = scratchCompiler<ScratchAgent>({
+const withoutTools = scratchProtocol<ScratchAgent>({
   model,
   backend,
   irs: [],
@@ -61,18 +61,18 @@ const withoutTools = scratchCompiler<ScratchAgent>({
   },
 });
 
-withoutTools.then(compiled => {
-  if (!compiled.success) return;
+withoutTools.then(result => {
+  if (!result.success) return;
 
-  const noToolCalls: undefined = compiled.data.output.toolCalls;
+  const noToolCalls: undefined = result.data.output.toolCalls;
   void noToolCalls;
 });
 
-declare const toolCapableResult: CompilerResult<ScratchAgent, { someTool: unknown }>;
-declare const noToolsResult: CompilerResultWithoutToolCalls<ScratchAgent>;
+declare const toolCapableResult: ProtocolResult<ScratchAgent, { someTool: unknown }>;
+declare const noToolsResult: ProtocolResultWithoutToolCalls<ScratchAgent>;
 
-const defaultResultAcceptsToolCapable: CompilerResult<ScratchAgent> = toolCapableResult;
-const defaultResultAcceptsNoTools: CompilerResult<ScratchAgent> = noToolsResult;
+const defaultResultAcceptsToolCapable: ProtocolResult<ScratchAgent> = toolCapableResult;
+const defaultResultAcceptsNoTools: ProtocolResult<ScratchAgent> = noToolsResult;
 
 void defaultResultAcceptsToolCapable;
 void defaultResultAcceptsNoTools;

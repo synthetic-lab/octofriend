@@ -1,7 +1,7 @@
 import { prompt } from "./system-prompt.ts";
 import { describe, expect, it } from "bun:test";
 import { t } from "structural";
-import { compilerUsage } from "./compilers/compiler-interface.ts";
+import { protocolUsage } from "./protocols/protocol-interface.ts";
 import { downconvert, lower } from "./ir-operations.ts";
 import {
   agent,
@@ -70,7 +70,7 @@ const call: OwnToolCall<TestAgent> = {
   original: {},
   parsed: {},
 };
-const success: TestIR = { role: "assistant", content: "done", usage: compilerUsage(1, 1) };
+const success: TestIR = { role: "assistant", content: "done", usage: protocolUsage(1, 1) };
 const retryBudget: RetryBudget = { validation: 2, requestError: 2 };
 const unlimited: RetryBudget = { validation: null, requestError: null };
 const validationOutcome: TestIR[] = [
@@ -78,7 +78,7 @@ const validationOutcome: TestIR[] = [
     role: "assistant",
     content: "",
     toolCalls: [call, { ...call, toolCallId: "c2" }],
-    usage: compilerUsage(1, 1),
+    usage: protocolUsage(1, 1),
   },
   { role: "tool-validation-error", toolCall: call, error: "invalid", aborted: false },
   {
@@ -92,7 +92,7 @@ const validation = requestSnapshot(validationOutcome, retryBudget);
 const request = requestSnapshot([requestError], retryBudget);
 
 describe("trajectory retry inspection", () => {
-  it("classifies existing errors without compiler transport metadata", () => {
+  it("classifies existing errors without protocol transport metadata", () => {
     const cases: Array<[TestIR, boolean]> = [
       [requestError, true],
       [{ role: "compaction-error", requestError: "empty summary", curl: null }, true],

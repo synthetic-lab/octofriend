@@ -3,13 +3,13 @@ import { describe, expect, it } from "bun:test";
 import { t } from "structural";
 import { LocalTransport } from "../transports/local.ts";
 import {
-  compilerUsage,
-  type Compiler,
-  type CompilerError,
-  type CompilerParams,
-  type CompilerResult,
-  type CompilerSuccessData,
-} from "./compilers/compiler-interface.ts";
+  protocolUsage,
+  type Protocol,
+  type ProtocolError,
+  type ProtocolParams,
+  type ProtocolResult,
+  type ProtocolSuccessData,
+} from "./protocols/protocol-interface.ts";
 import { downconvert, inspectHistory } from "./ir-operations.ts";
 import {
   agent as agentBuilder,
@@ -89,8 +89,8 @@ type Emit = (tokens: string, type: "content" | "reasoning") => Promise<void>;
 type Response = (
   emit: Emit,
 ) =>
-  | Result<CompilerSuccessData<TestAgent>, CompilerError>
-  | Promise<Result<CompilerSuccessData<TestAgent>, CompilerError>>;
+  | Result<ProtocolSuccessData<TestAgent>, ProtocolError>
+  | Promise<Result<ProtocolSuccessData<TestAgent>, ProtocolError>>;
 
 type Snapshot = {
   scope: Scope;
@@ -102,11 +102,11 @@ function assistant(
   content: string,
   toolCalls?: AssistantMessage<TestAgent["tools"]>["toolCalls"],
 ): AssistantMessage<TestAgent["tools"]> {
-  return { role: "assistant", content, toolCalls, usage: compilerUsage(1, 1) };
+  return { role: "assistant", content, toolCalls, usage: protocolUsage(1, 1) };
 }
 
 function response(output: AssistantMessage<TestAgent["tools"]>): Response {
-  return () => ok({ output, usage: compilerUsage(1, 1), curl: "curl", headers: new Headers() });
+  return () => ok({ output, usage: protocolUsage(1, 1), curl: "curl", headers: new Headers() });
 }
 
 function searchCall(query: string): OwnToolCall<TestAgent> {
@@ -147,25 +147,25 @@ async function fixture(
   // Mirror the persistence adapter's root records independently of canonical history.
   // Appending a whole group internally is not enough if callbacks still publish it piecemeal.
   const persisted: Array<AgentIR<TestAgent>> = [...messages];
-  const compilerCalls: Array<{ scope: Scope; irs: Array<LoweredIR<TestAgent["tools"]>> }> = [];
+  const protocolCalls: Array<{ scope: Scope; irs: Array<LoweredIR<TestAgent["tools"]>> }> = [];
   const controller = new AbortController();
   const data: ToolData = { executed };
   const queue = [...responses];
-  const runCompiler: Compiler<Scope> = async <
+  const protocol: Protocol<Scope> = async <
     A extends Agent<any, any, any, any>,
     Tools extends Partial<OwnToolRegistry<A>> | undefined = undefined,
   >(
-    params: CompilerParams<A, Scope, Tools>,
-  ): Promise<CompilerResult<A, Tools>> => {
-    // The fixture only emits calls from this tree, as in trajectory.test.ts's compiler queue.
-    compilerCalls.push({
+    params: ProtocolParams<A, Scope, Tools>,
+  ): Promise<ProtocolResult<A, Tools>> => {
+    // The fixture only emits calls from this tree, as in trajectory.test.ts's protocol queue.
+    protocolCalls.push({
       scope: params.backend,
       irs: JSON.parse(JSON.stringify(params.irs)),
     });
     const next = queue.shift();
-    if (next == null) throw new Error("Unexpected compiler call during crash recovery");
+    if (next == null) throw new Error("Unexpected protocol call during crash recovery");
     const result = await next(params.onTokens);
-    return result as typeof result & CompilerResult<A, Tools>;
+    return result as typeof result & ProtocolResult<A, Tools>;
   };
   const params: TrajectoryParams<TestAgent, Scope> = {
     agent,
@@ -175,7 +175,7 @@ async function fixture(
     abortSignal: controller.signal,
     getData: async () => data,
     transport,
-    runCompiler,
+    protocol,
     lowerMessages,
     model: async invocation => {
       const scope = invocation == null ? "root" : "research";
@@ -209,7 +209,7 @@ async function fixture(
     },
   };
   const trajectory = new Trajectory(params);
-  return { trajectory, params, snapshots, executed, compilerCalls };
+  return { trajectory, params, snapshots, executed, protocolCalls };
 }
 
 type Fixture = Awaited<ReturnType<typeof fixture>>;
@@ -371,7 +371,7 @@ describe("persisted retry budgets", () => {
           expect(inspect(recovered.trajectory).pendingCalls).toEqual([]);
           await runUntilParked(recovered);
           expect(recovered.executed).toEqual([]);
-          expect(recovered.compilerCalls.map(call => call.scope)).toEqual(
+          expect(recovered.protocolCalls.map(call => call.scope)).toEqual(
             snapshot === beforeParent ? ["root"] : [],
           );
         }
@@ -385,8 +385,8 @@ describe("persisted retry budgets", () => {
         });
         await runUntilParked(continued);
         expect(continued.executed).toEqual([]);
-        expect(continued.compilerCalls.map(call => call.scope)).toEqual(["root"]);
-        expect(continued.compilerCalls[0].irs).toContainEqual({
+        expect(continued.protocolCalls.map(call => call.scope)).toEqual(["root"]);
+        expect(continued.protocolCalls[0].irs).toContainEqual({
           role: "tool-runtime-error",
           toolCall: expect.objectContaining({ toolCallId: "research-call" }),
           error: failure.error,
@@ -444,7 +444,7 @@ describe("persisted retry budgets", () => {
             scope === "root" ? "rectify" : "respond",
           );
           await runUntilParked(recovered);
-          expect(recovered.compilerCalls.map(call => call.scope)).toEqual(
+          expect(recovered.protocolCalls.map(call => call.scope)).toEqual(
             scope === "root" ? ["root"] : ["research", "root"],
           );
           expect(recovered.executed).toEqual([]);
@@ -486,7 +486,7 @@ describe("persisted retry budgets", () => {
         { role: "request-snapshot-begin", retryBudget: { validation: 1, requestError: 1 } },
         { role: "request-snapshot-begin", retryBudget: { validation: 0, requestError: 0 } },
       ]);
-      expect(recording.compilerCalls).toHaveLength(2);
+      expect(recording.protocolCalls).toHaveLength(2);
     });
   }
 
@@ -530,7 +530,7 @@ describe("trajectory crash recovery at persisted IR boundaries", () => {
           await runUntilParked(recovered);
 
           expect(recovered.executed).toEqual([]);
-          expect(recovered.compilerCalls[0]?.scope).toBe(scope);
+          expect(recovered.protocolCalls[0]?.scope).toBe(scope);
         });
 
         it(`continues in the same scope after the complete ${failure.name} retry group is published`, async () => {
@@ -542,8 +542,8 @@ describe("trajectory crash recovery at persisted IR boundaries", () => {
           await runUntilParked(recovered);
 
           expect(recovered.executed).toEqual([]);
-          expect(recovered.compilerCalls[0]?.scope).toBe(scope);
-          expect(recovered.compilerCalls[0]?.irs.some(ir => ir.role === failure.errorRole)).toBe(
+          expect(recovered.protocolCalls[0]?.scope).toBe(scope);
+          expect(recovered.protocolCalls[0]?.irs.some(ir => ir.role === failure.errorRole)).toBe(
             true,
           );
         });
@@ -556,7 +556,7 @@ describe("trajectory crash recovery at persisted IR boundaries", () => {
         await runUntilParked(recovered);
 
         expect(recovered.executed).toEqual([]);
-        expect(recovered.compilerCalls.map(call => call.scope)).toEqual(
+        expect(recovered.protocolCalls.map(call => call.scope)).toEqual(
           scope === "root" ? [] : ["root"],
         );
       });
@@ -568,11 +568,11 @@ describe("trajectory crash recovery at persisted IR boundaries", () => {
         await runUntilParked(recovered);
 
         expect(recovered.executed).toEqual([]);
-        expect(recovered.compilerCalls.map(call => call.scope)).toEqual(
+        expect(recovered.protocolCalls.map(call => call.scope)).toEqual(
           scope === "root" ? [] : ["root"],
         );
         if (scope === "research") {
-          expect(recovered.compilerCalls[0].irs).toContainEqual({
+          expect(recovered.protocolCalls[0].irs).toContainEqual({
             role: "tool-runtime-error",
             toolCall: expect.objectContaining({ toolCallId: "research-call" }),
             error: "connection lost",
@@ -586,7 +586,7 @@ describe("trajectory crash recovery at persisted IR boundaries", () => {
         await runUntilParked(recovered);
 
         expect(recovered.executed).toEqual(["valid"]);
-        expect(recovered.compilerCalls.map(call => call.scope)).toEqual(
+        expect(recovered.protocolCalls.map(call => call.scope)).toEqual(
           scope === "root" ? ["root"] : ["research", "root"],
         );
       });
@@ -602,7 +602,7 @@ describe("trajectory crash recovery at persisted IR boundaries", () => {
         await runUntilParked(recovered);
 
         expect(recovered.executed).toEqual(["pending"]);
-        expect(recovered.compilerCalls.map(call => call.scope)).toEqual(
+        expect(recovered.protocolCalls.map(call => call.scope)).toEqual(
           scope === "root" ? ["root"] : ["research", "root"],
         );
       });
@@ -615,7 +615,7 @@ describe("trajectory crash recovery at persisted IR boundaries", () => {
     await runUntilParked(recovered);
 
     expect(inspect(recovered.trajectory).action).toBe("wait-for-input");
-    expect(recovered.compilerCalls).toEqual([]);
+    expect(recovered.protocolCalls).toEqual([]);
     expect(recovered.executed).toEqual([]);
   });
 });
