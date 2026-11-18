@@ -2505,6 +2505,8 @@ function ToolMessageRenderer({
       return null;
     case "read":
       return <ReadToolRenderer item={parsedToolSchema(item)} />;
+    case "fetch":
+      return <FetchToolRenderer item={parsedToolSchema(item)} animate={animate} />;
     case "partial-read":
       return <PartialReadToolRenderer item={parsedToolSchema(item)} />;
     case "list":
@@ -2763,6 +2765,15 @@ function ManageBackgroundProcessToolRenderer({
 
 function ReadToolRenderer({ item }: { item: ParsedToolSchemaFrom<typeof toolkits.read.toolkit> }) {
   return <ToolCallRow name={item.name} details={item.arguments.filePath} animate={false} />;
+}
+function FetchToolRenderer({
+  item,
+  animate,
+}: {
+  item: ParsedToolSchemaFrom<typeof toolkits.fetch.toolkit>;
+  animate: boolean;
+}) {
+  return <ToolCallRow name={item.name} details={item.arguments.url} animate={animate} />;
 }
 function PartialReadToolRenderer({
   item,

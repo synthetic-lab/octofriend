@@ -12,6 +12,7 @@ export const octoAgent = agent
       list: toolkits.list.toolkit,
       shell: toolkits.shell.toolkit,
       edit: toolkits.edit.toolkit,
+      fetch: toolkits.fetch.toolkit,
       create: toolkits.create.toolkit,
       mcp: toolkits.mcp.toolkit,
       rewrite: toolkits.rewrite.toolkit,
