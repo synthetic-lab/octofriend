@@ -5,16 +5,11 @@ import json5 from "json5";
 import TextInput from "./components/text-input.tsx";
 import { Config, CURRENT_CONFIG_VERSION } from "./config.ts";
 import { useColor } from "./theme.ts";
-import { KbShortcutPanel } from "./components/kb-select/kb-shortcut-panel.tsx";
-import { Item, Keymap } from "./components/kb-select/kb-shortcut-select.tsx";
 import { ModelSetup } from "./components/auto-detect-models.tsx";
 import type { SyntheticModel } from "./synthetic-models.ts";
 import { MenuHeader } from "./components/menu-panel.tsx";
 import { CenteredBox } from "./components/centered-box.tsx";
 import { THEME_COLOR } from "./theme.ts";
-import { AutofixModelMenu } from "./components/autofix-model-menu.tsx";
-import { SYNTHETIC_PROVIDER, keyFromName } from "./providers.ts";
-import { CustomAuthFlow } from "./components/add-model-flow.tsx";
 import { recommendedModel } from "./providers.ts";
 import { Span, useApp } from "paintcannon-react";
 import { useKeyboard } from "./hooks/use-keyboard.ts";
@@ -25,29 +20,11 @@ type SetupStep =
       step: "welcome";
     }
   | {
-      step: "autofix-setup";
-    }
-  | {
-      step: "autofix-complete";
-      autofixConfig: {
-        diffApply: Config["diffApply"];
-        fixJson: Config["fixJson"];
-      };
-    }
-  | {
       step: "name";
       models: Config["models"];
-      autofixConfig?: {
-        diffApply: Config["diffApply"];
-        fixJson: Config["fixJson"];
-      };
     }
   | {
       step: "add-model";
-      autofixConfig?: {
-        diffApply: Config["diffApply"];
-        fixJson: Config["fixJson"];
-      };
     }
   | {
       step: "done";
@@ -100,78 +77,22 @@ function FirstTimeSetupContent({ configPath, syntheticModels }: FirstTimeSetupPr
   }, [step, app]);
   const handleWelcomeContinue = useCallback(() => {
     setStep({
-      step: "autofix-setup",
-    });
-  }, []);
-  const autofixComplete = useCallback(
-    (autofixConfig: { diffApply: Config["diffApply"]; fixJson: Config["fixJson"] }) => {
-      setStep({
-        step: "autofix-complete",
-        autofixConfig,
-      });
-    },
-    [],
-  );
-  const autofixSkip = useCallback(() => {
-    setStep({
       step: "add-model",
     });
   }, []);
-  const autofixCompleteContinue = useCallback(() => {
-    if (step.step === "autofix-complete") {
-      setStep({
-        step: "add-model",
-        autofixConfig: step.autofixConfig,
-      });
-    }
-  }, [step]);
-  const addModelComplete = useCallback(
-    (models: Config["models"]) => {
-      if (step.step === "add-model" && step.autofixConfig) {
-        setStep({
-          step: "name",
-          models,
-          autofixConfig: step.autofixConfig,
-        });
-      } else {
-        setStep({
-          step: "name",
-          models,
-        });
-      }
-    },
-    [step],
-  );
+  const addModelComplete = useCallback((models: Config["models"]) => {
+    setStep({
+      step: "name",
+      models,
+    });
+  }, []);
   const addModelCancel = useCallback(() => {
-    if (step.step === "add-model" && step.autofixConfig) {
-      setStep({
-        step: "autofix-complete",
-        autofixConfig: step.autofixConfig,
-      });
-    } else {
-      setStep({
-        step: "welcome",
-      });
-    }
-  }, [step]);
+    setStep({
+      step: "welcome",
+    });
+  }, []);
   if (step.step === "welcome")
     return <WelcomeScreen syntheticModels={syntheticModels} onContinue={handleWelcomeContinue} />;
-  if (step.step === "autofix-setup") {
-    return (
-      <AutofixSetup
-        onComplete={autofixComplete}
-        onSkip={autofixSkip}
-        onOverrideDefaultApiKey={async envVar => {
-          addOverride({
-            [keyFromName(SYNTHETIC_PROVIDER.name)]: envVar,
-          });
-        }}
-      />
-    );
-  }
-  if (step.step === "autofix-complete") {
-    return <AutofixCompleteScreen onContinue={autofixCompleteContinue} />;
-  }
   if (step.step === "add-model") {
     return (
       <ModelSetup
@@ -180,11 +101,6 @@ function FirstTimeSetupContent({ configPath, syntheticModels }: FirstTimeSetupPr
         onComplete={addModelComplete}
         onCancel={addModelCancel}
         onOverrideDefaultApiKey={addOverride}
-        titleOverride={
-          step.autofixConfig
-            ? undefined
-            : "Okay, we'll skip that for now. Let's set you up with a coding model. Which inference provider do you want to use?"
-        }
       />
     );
   }
@@ -249,10 +165,6 @@ function FirstTimeSetupContent({ configPath, syntheticModels }: FirstTimeSetupPr
               if (defaultApiKeyOverrides) {
                 config.defaultApiKeyOverrides = defaultApiKeyOverrides;
               }
-              if (step.autofixConfig) {
-                config.diffApply = step.autofixConfig.diffApply;
-                config.fixJson = step.autofixConfig.fixJson;
-              }
               const dir = path.dirname(configPath);
               await fs.mkdir(dir, {
                 recursive: true,
@@ -285,208 +197,6 @@ function FirstTimeSetupContent({ configPath, syntheticModels }: FirstTimeSetupPr
           </Span>
         </TerminalFlex>
       )}
-    </CenteredBox>
-  );
-}
-type AutofixStates = "choose" | "synthetic-setup" | "diff-apply-custom" | "fix-json-custom";
-function AutofixSetup({
-  onComplete,
-  onSkip,
-  onOverrideDefaultApiKey,
-}: {
-  onComplete: (config: { diffApply: Config["diffApply"]; fixJson: Config["fixJson"] }) => void;
-  onSkip: () => void;
-  onOverrideDefaultApiKey: (envVar: string) => Promise<void>;
-}) {
-  const [autofixStep, setAutofixStep] = useState<AutofixStates>("choose");
-  const [diffApplyConfig, setDiffApplyConfig] = useState<Config["diffApply"]>();
-  const actions = {
-    e: {
-      label: "💫 Enable autofix models via Synthetic (recommended)",
-      value: "synthetic",
-    },
-    c: {
-      label: "Use custom models...",
-      value: "custom",
-    },
-    s: {
-      label: "Skip for now (can be enabled later)",
-      value: "skip",
-    },
-  } satisfies Keymap<"synthetic" | "custom" | "skip">;
-  const onSelect = useCallback(
-    (item: Item<"synthetic" | "custom" | "skip">) => {
-      if (item.value === "synthetic") {
-        const defaultEnvVar = SYNTHETIC_PROVIDER.envVar;
-        if (process.env[defaultEnvVar]) {
-          onComplete({
-            diffApply: {
-              baseUrl: SYNTHETIC_PROVIDER.baseUrl,
-              model: "hf:syntheticlab/diff-apply",
-            },
-            fixJson: {
-              baseUrl: SYNTHETIC_PROVIDER.baseUrl,
-              model: "hf:syntheticlab/fix-json",
-            },
-          });
-        } else {
-          setAutofixStep("synthetic-setup");
-        }
-      } else if (item.value === "custom") {
-        setAutofixStep("diff-apply-custom");
-      } else {
-        onSkip();
-      }
-    },
-    [onComplete, onSkip],
-  );
-  if (autofixStep === "synthetic-setup") {
-    return (
-      <CustomAuthFlow
-        config={null}
-        authData={{
-          modelType: undefined,
-          baseUrl: SYNTHETIC_PROVIDER.baseUrl,
-        }}
-        onComplete={async auth => {
-          if (auth && auth.type === "env") await onOverrideDefaultApiKey(auth.name);
-          const authField =
-            auth?.type === "command"
-              ? {
-                  auth,
-                }
-              : {};
-          onComplete({
-            diffApply: {
-              baseUrl: SYNTHETIC_PROVIDER.baseUrl,
-              model: "hf:syntheticlab/diff-apply",
-              ...authField,
-            },
-            fixJson: {
-              baseUrl: SYNTHETIC_PROVIDER.baseUrl,
-              model: "hf:syntheticlab/fix-json",
-              ...authField,
-            },
-          });
-        }}
-        onCancel={() => setAutofixStep("choose")}
-      />
-    );
-  }
-  if (autofixStep === "diff-apply-custom") {
-    return (
-      <AutofixModelMenu
-        key="diff-apply-custom"
-        config={null}
-        defaultModel="hf:syntheticlab/diff-apply"
-        modelNickname="diff-apply"
-        onOverrideDefaultApiKey={onOverrideDefaultApiKey}
-        onComplete={config => {
-          setDiffApplyConfig(config);
-          setAutofixStep("fix-json-custom");
-        }}
-        onCancel={() => setAutofixStep("choose")}
-      >
-        <Span>
-          Even good coding models sometimes make minor mistakes generating code diffs, which can
-          cause slow retries and can confuse them, since models often aren't trained as well to
-          handle edit failures as they are successes. Diff-apply is a fast, small model that fixes
-          minor code diff edit inaccuracies. It speeds up iteration and can significantly improve
-          model performance.
-        </Span>
-      </AutofixModelMenu>
-    );
-  }
-  if (autofixStep === "fix-json-custom") {
-    return (
-      <AutofixModelMenu
-        key="fix-json-custom"
-        config={null}
-        defaultModel="hf:syntheticlab/fix-json"
-        modelNickname="fix-json"
-        onOverrideDefaultApiKey={onOverrideDefaultApiKey}
-        onComplete={config => {
-          onComplete({
-            diffApply: diffApplyConfig!,
-            fixJson: config,
-          });
-        }}
-        onCancel={() => setAutofixStep("diff-apply-custom")}
-      >
-        <Span>
-          Octo uses tools to work with your underlying codebase. Some model providers don't support
-          strict constraints on how tool calls are generated, and models can make mistakes
-          generating JSON, the format used for all of Octo's tool calls.
-        </Span>
-        <Span>
-          The fix-json model can automatically fix broken JSON for Octo, helping models avoid
-          failures more quickly and cheaply than retrying the main model. It also may help reduce
-          the main model's confusion.
-        </Span>
-      </AutofixModelMenu>
-    );
-  }
-  return (
-    <KbShortcutPanel header="Optional: Enable autofix models" actions={actions} onSelect={onSelect}>
-      <TerminalFlex
-        style={{
-          marginBottom: 1,
-          flexDirection: "column",
-          gap: 1,
-        }}
-      >
-        <Span>
-          Before we set up your main coding model, we can optionally enable two small helper models
-          that can significantly improve Octo's performance. These are small, fast models trained to
-          auto-fix broken tool calls and diff edits from your main coding model, since even fairly
-          good coding models can sometimes make mistakes.
-        </Span>
-        <Span>
-          Auto-fixing mistakes can help reduce model confusion, since models are often
-          less-well-trained on error recovery than they are at their happy paths.
-        </Span>
-      </TerminalFlex>
-    </KbShortcutPanel>
-  );
-}
-function AutofixCompleteScreen({ onContinue }: { onContinue: () => void }) {
-  useKeyboard(event => {
-    if (event.key === "Enter") onContinue();
-  });
-  return (
-    <CenteredBox>
-      <MenuHeader title="✨ Autofix models enabled!" />
-
-      <Span>
-        Your autofix models are now set up and ready to go. These will help improve Octo's
-        performance by automatically fixing minor mistakes in code diffs and JSON tool calls.
-      </Span>
-
-      <TerminalFlex
-        style={{
-          marginTop: 1,
-        }}
-      >
-        <Span>
-          Now let's set up your main coding model. This is the LLM that will power Octo's code
-          generation, analysis, and conversation capabilities.
-        </Span>
-      </TerminalFlex>
-
-      <TerminalFlex
-        style={{
-          marginTop: 2,
-          justifyContent: "center",
-        }}
-      >
-        <Span
-          style={{
-            color: THEME_COLOR,
-          }}
-        >
-          Press enter to continue to model setup.
-        </Span>
-      </TerminalFlex>
     </CenteredBox>
   );
 }

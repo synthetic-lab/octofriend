@@ -8,15 +8,14 @@ import { listPreviousSessions } from "./session-history/index.ts";
 import { Auth, mergeEnvVar, useConfig, useSetConfig, Config } from "./config.ts";
 import { ModelSetup } from "./components/auto-detect-models.tsx";
 import { modelDisplayName, type SyntheticModel } from "./synthetic-models.ts";
-import { AutofixModelMenu } from "./components/autofix-model-menu.tsx";
 import { ConfirmDialog } from "./components/confirm-dialog.tsx";
 import { readAuthForModel } from "./config.ts";
-import { keyFromName, SYNTHETIC_PROVIDER, providerForBaseUrl } from "./providers.ts";
+import { SYNTHETIC_PROVIDER, providerForBaseUrl } from "./providers.ts";
 import { KbShortcutPanel } from "./components/kb-select/kb-shortcut-panel.tsx";
 import { Item, ShortcutArray, Keymap } from "./components/kb-select/kb-shortcut-select.tsx";
 import { MenuQuotaIndicator } from "./components/menu-quota-indicator.tsx";
 import { CustomAuthFlow } from "./components/add-model-flow.tsx";
-import { Span, useApp } from "paintcannon-react";
+import { useApp } from "paintcannon-react";
 import { TerminalFlex } from "./components/terminal-flex.tsx";
 import { LoadSessionMenu } from "./session-history/load-session-menu.tsx";
 type MenuMode =
@@ -26,8 +25,6 @@ type MenuMode =
   | "settings-menu"
   | "model-select"
   | "add-model"
-  | "diff-apply-toggle"
-  | "fix-json-toggle"
   | "set-default-model"
   | "quit-confirm"
   | "remove-model"
@@ -94,132 +91,10 @@ function MenuContent({
   if (menuMode === "quit-confirm") return <QuitConfirm />;
   if (menuMode === "clear-confirm") return <ClearConversationConfirm />;
   if (menuMode === "remove-model") return <RemoveModelMenu />;
-  if (menuMode === "diff-apply-toggle") return <DiffApplyToggle />;
-  if (menuMode === "fix-json-toggle") return <FixJsonToggle />;
   if (menuMode === "notifications-menu") return <NotificationsMenu />;
   if (menuMode === "usage-menu") return <UsageMenu />;
   const _: "add-model" = menuMode;
   return <AddModelMenuFlow syntheticModels={syntheticModels} />;
-}
-function AutofixToggle({
-  configKey,
-  modelNickname,
-  disableNotification,
-  enableNotification,
-  defaultModel,
-  children,
-}: {
-  disableNotification: string;
-  enableNotification: string;
-  defaultModel: string;
-  modelNickname: string;
-  configKey: "diffApply" | "fixJson";
-  children: React.ReactNode;
-}) {
-  const config = useConfig();
-  const setConfig = useSetConfig();
-  const { setMenuMode } = useMenuState(
-    useShallow(state => ({
-      setMenuMode: state.setMenuMode,
-    })),
-  );
-  const { toggleMenu, notify } = useAppStore(
-    useShallow(state => ({
-      toggleMenu: state.toggleMenu,
-      notify: state.notify,
-    })),
-  );
-  if (config[configKey]) {
-    return (
-      <ConfirmDialog
-        rejectLabel={`Disable ${modelNickname}`}
-        confirmLabel={`Keep ${modelNickname} on (recommended)`}
-        onReject={async () => {
-          const newconf = {
-            ...config,
-          };
-          delete newconf[configKey];
-          await setConfig(newconf);
-          setMenuMode("main-menu");
-          toggleMenu();
-          notify(disableNotification);
-        }}
-        onConfirm={() => {
-          setMenuMode("main-menu");
-        }}
-      />
-    );
-  }
-  return (
-    <AutofixModelMenu
-      defaultModel={defaultModel}
-      modelNickname={modelNickname}
-      config={config}
-      onOverrideDefaultApiKey={async apiEnvVar => {
-        await setConfig({
-          ...config,
-          defaultApiKeyOverrides: {
-            ...(config.defaultApiKeyOverrides || {}),
-            [keyFromName(SYNTHETIC_PROVIDER.name)]: apiEnvVar,
-          },
-        });
-      }}
-      onComplete={async setting => {
-        await setConfig({
-          ...config,
-          [configKey]: setting,
-        });
-        setMenuMode("main-menu");
-        toggleMenu();
-        notify(enableNotification);
-      }}
-      onCancel={() => {
-        setMenuMode("main-menu");
-      }}
-    >
-      {children}
-    </AutofixModelMenu>
-  );
-}
-function DiffApplyToggle() {
-  return (
-    <AutofixToggle
-      defaultModel="hf:syntheticlab/diff-apply"
-      configKey="diffApply"
-      modelNickname="diff-apply"
-      enableNotification="Fast diff apply enabled"
-      disableNotification="Fast diff apply disabled"
-    >
-      <Span>
-        Even good coding models sometimes make minor mistakes generating code diffs, which can cause
-        slow retries and can confuse them, since models often aren't trained as well to handle edit
-        failures as they are successes. Diff-apply is a fast, small model that fixes minor code diff
-        edit inaccuracies. It speeds up iteration and can significantly improve model performance.
-      </Span>
-    </AutofixToggle>
-  );
-}
-function FixJsonToggle() {
-  return (
-    <AutofixToggle
-      defaultModel="hf:syntheticlab/fix-json"
-      configKey="fixJson"
-      modelNickname="fix-json"
-      enableNotification="JSON auto-fix enabled"
-      disableNotification="JSON auto-fix disabled"
-    >
-      <Span>
-        Octo uses tools to work with your underlying codebase. Some model providers don't support
-        strict constraints on how tool calls are generated, and models can make mistakes generating
-        JSON, the format used for all of Octo's tool calls.
-      </Span>
-      <Span>
-        The fix-json model can automatically fix broken JSON for Octo, helping models avoid failures
-        more quickly and cheaply than retrying the main model. It also may help reduce the main
-        model's confusion.
-      </Span>
-    </AutofixToggle>
-  );
 }
 function SwitchModelMenu({ syntheticModels }: { syntheticModels: SyntheticModel[] }) {
   const { setModelOverride, toggleMenu } = useAppStore(
@@ -338,11 +213,7 @@ function SwitchModelMenu({ syntheticModels }: { syntheticModels: SyntheticModel[
     />
   );
 }
-type SettingsValues =
-  | "set-default-model"
-  | "remove-model"
-  | "disable-diff-apply"
-  | "disable-fix-json";
+type SettingsValues = "set-default-model" | "remove-model";
 const SETTINGS_ITEMS = {
   c: {
     label: "Change the default model",
@@ -352,14 +223,6 @@ const SETTINGS_ITEMS = {
     label: "Remove a model",
     value: "remove-model",
   },
-  d: {
-    label: "Disable fast diff application",
-    value: "disable-diff-apply",
-  },
-  t: {
-    label: "Disable auto-fixing JSON tool calls",
-    value: "disable-fix-json",
-  },
 } satisfies Keymap<SettingsValues>;
 function filterSettings(config: Config) {
   let items: Keymap<SettingsValues> = {};
@@ -368,18 +231,6 @@ function filterSettings(config: Config) {
       ...items,
       c: SETTINGS_ITEMS.c,
       r: SETTINGS_ITEMS.r,
-    };
-  }
-  if (config.diffApply) {
-    items = {
-      ...items,
-      d: SETTINGS_ITEMS.d,
-    };
-  }
-  if (config.fixJson) {
-    items = {
-      ...items,
-      t: SETTINGS_ITEMS.t,
     };
   }
   return items;
@@ -416,8 +267,6 @@ function MainMenu() {
     | "vim-toggle"
     | "return"
     | "quit"
-    | "fix-json-toggle"
-    | "diff-apply-toggle"
     | "context-menu"
     | "settings-menu"
     | "clear-confirm"
@@ -469,24 +318,6 @@ function MainMenu() {
       v: {
         label: "♺ Switch to Vim mode",
         value: "vim-toggle" as const,
-      },
-    };
-  }
-  if (config.fixJson == null) {
-    items = {
-      ...items,
-      f: {
-        label: "🪄 Enable auto-fixing JSON tool calls",
-        value: "fix-json-toggle" as const,
-      },
-    };
-  }
-  if (config.diffApply == null) {
-    items = {
-      ...items,
-      d: {
-        label: "💫 Enable fast diff application",
-        value: "diff-apply-toggle" as const,
       },
     };
   }
@@ -628,9 +459,7 @@ function SettingsMenu() {
     },
   };
   const onSelect = useCallback((item: Item<SettingsValues | "back">) => {
-    if (item.value === "disable-diff-apply") setMenuMode("diff-apply-toggle");
-    else if (item.value === "disable-fix-json") setMenuMode("fix-json-toggle");
-    else if (item.value === "back") setMenuMode("main-menu");
+    if (item.value === "back") setMenuMode("main-menu");
     else setMenuMode(item.value);
   }, []);
   return (

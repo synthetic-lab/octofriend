@@ -30,8 +30,6 @@ TODO:
   - [ ] Synthetic auth failures
   - [ ] Anthropic auth failures
   - [ ] OpenAI auth failures
-- [ ] Run the test-connection code for autofix models and all supported auth
-      providers, and show billing- or auth-related errors immediately
 - [ ] Port Aider Polyglot benchmarks to Octo, run inside a container
 - [ ] Add SSH transport
 - [ ] When Octo returns input back to the user, run a special loop with a basic

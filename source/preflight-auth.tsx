@@ -5,7 +5,6 @@ import {
   writeConfig,
   readConfig,
   mergeEnvVar,
-  mergeAutofixEnvVar,
   AuthError,
   readAuthForModel,
 } from "./config.ts";
@@ -181,16 +180,6 @@ function resolveModelFromConfig(
   if (exact) return exact;
   return model;
 }
-function resolveAutofixModelFromConfig<K extends "diffApply" | "fixJson">(
-  config: Config,
-  model: Exclude<Config[K], undefined>,
-  key: K,
-): Exclude<Config[K], undefined> {
-  const candidate = config[key];
-  if (candidate && candidate.baseUrl === model.baseUrl)
-    return candidate as Exclude<Config[K], undefined>;
-  return (candidate ?? model) as Exclude<Config[K], undefined>;
-}
 export function PreflightModelAuth({
   model,
   config,
@@ -337,145 +326,6 @@ export function PreflightModelAuth({
               }
             }}
           />
-        )}
-
-        {!authError && exitMessage && (
-          <HeightlessCenteredBox>
-            <Span
-              style={{
-                color: "gray",
-              }}
-            >
-              {exitMessage}
-            </Span>
-          </HeightlessCenteredBox>
-        )}
-      </TerminalFlex>
-    </PreflightShell>
-  );
-}
-export function PreflightAutofixAuth<K extends "diffApply" | "fixJson">({
-  autofixKey,
-  model,
-  config,
-  configPath,
-}: {
-  autofixKey: K;
-  model: Exclude<Config[K], undefined>;
-  config: Config;
-  configPath: string;
-}) {
-  const app = useApp();
-  const [exitMessage, setExitMessage] = useState<string | null>(null);
-  const [authError, setAuthError] = useState<AuthError | null>(null);
-  const [isRetrying, setIsRetrying] = useState(false);
-  const [currentModel, setCurrentModel] = useState(model);
-  useKeyboard(async event => {
-    if (event.key === "Escape" && authError) {
-      setAuthError(null);
-      setIsRetrying(false);
-    } else if (event.key === "r" && authError && authError.type === "command_failed") {
-      setIsRetrying(true);
-      const valid = await validateAuth();
-      if (valid) {
-        app.exit();
-      }
-    } else if (!(event.key === "Escape")) setExitMessage(null);
-  });
-  const validateAuth = async () => {
-    const reloadedConfig = await readConfig(configPath);
-    const resolvedModel = resolveAutofixModelFromConfig(reloadedConfig, currentModel, autofixKey);
-    setCurrentModel(resolvedModel);
-    const result = await readAuthForModel(resolvedModel, reloadedConfig);
-    if (result.ok === false) {
-      setAuthError(result.error);
-      setIsRetrying(false);
-      return false;
-    }
-    return true;
-  };
-  const modelName = (() => {
-    if (autofixKey === "diffApply") return "diff-apply";
-    const _: "fixJson" = autofixKey;
-    return "fix-json";
-  })();
-  return (
-    <PreflightShell>
-      <TerminalFlex
-        style={{
-          flexDirection: "column",
-          gap: 1,
-        }}
-      >
-        {authError && <AuthErrorPanel error={authError} isRetrying={isRetrying} />}
-
-        {!authError && (
-          <>
-            <HeightlessCenteredBox>
-              <TerminalFlex
-                style={{
-                  justifyContent: "center",
-                }}
-              >
-                <Span
-                  style={{
-                    color: "red",
-                  }}
-                >
-                  {`It looks like we need to set up auth for the ${modelName} model`}
-                </Span>
-              </TerminalFlex>
-            </HeightlessCenteredBox>
-
-            <ModelDetails name={modelName} model={model.model} baseUrl={model.baseUrl} />
-
-            <CustomAuthFlow
-              config={config}
-              authData={{
-                modelType: undefined,
-                baseUrl: model.baseUrl,
-              }}
-              onCancel={() => {
-                setExitMessage("Press CTRL-C to exit");
-              }}
-              onComplete={async auth => {
-                let updatedModel = model;
-                if (auth) {
-                  if (auth.type === "env") {
-                    await writeConfig(
-                      mergeAutofixEnvVar(config, autofixKey, model, auth.name),
-                      configPath,
-                    );
-                  } else if (auth.type === "command") {
-                    const merged = {
-                      ...config,
-                    };
-                    updatedModel = {
-                      ...model,
-                      auth,
-                    };
-                    merged[autofixKey] = updatedModel;
-                    await writeConfig(merged, configPath);
-                  }
-                }
-                setCurrentModel(updatedModel);
-                // Reload config to ensure we validate against the updated state
-                const reloadedConfig = await readConfig(configPath);
-                const resolvedModel = resolveAutofixModelFromConfig(
-                  reloadedConfig,
-                  updatedModel,
-                  autofixKey,
-                );
-                setCurrentModel(resolvedModel);
-                const result = await readAuthForModel(resolvedModel, reloadedConfig);
-                if (result.ok) {
-                  app.exit();
-                } else {
-                  setAuthError(result.error);
-                }
-              }}
-            />
-          </>
         )}
 
         {!authError && exitMessage && (
