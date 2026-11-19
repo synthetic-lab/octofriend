@@ -19,7 +19,7 @@ const KEY_FILE = path.join(CONFIG_DIR, "keys.json5");
 const KeyConfigSchema = t.dict(t.str);
 
 export const APP_METADATA = await readMetadata();
-export const CURRENT_CONFIG_VERSION = 2;
+export const CURRENT_CONFIG_VERSION = 3;
 
 type Migration = (raw: Record<string, any>) => Record<string, any>;
 
@@ -47,6 +47,12 @@ const MIGRATIONS: Record<number, Migration> = {
         notifyCommand,
       },
     };
+  },
+  3: raw => {
+    const migrated = { ...raw };
+    delete migrated["diffApply"];
+    delete migrated["fixJson"];
+    return migrated;
   },
 };
 
@@ -157,20 +163,10 @@ export type CodexModelConfig = t.GetType<typeof CodexModelConfigSchema>;
 export type ModelConfigBase = t.GetType<typeof ModelConfigBaseSchema>;
 export type ModelConfig = t.GetType<typeof ModelConfigSchema>;
 
-const AutofixAuthSchema = ApiKeyAuthConfigSchema;
-const AutofixModelConfigSchema = t.exact({
-  baseUrl: t.str,
-  apiEnvVar: t.optional(t.str), // deprecated: use auth instead
-  auth: t.optional(AutofixAuthSchema),
-  model: t.str,
-});
-
 const ConfigSchema = t.exact({
   configVersion: t.optional(t.num),
   yourName: t.str,
   models: t.array(ModelConfigSchema),
-  diffApply: t.optional(AutofixModelConfigSchema),
-  fixJson: t.optional(AutofixModelConfigSchema),
   vimEmulation: t.optional(
     t.subtype({
       enabled: t.bool,
@@ -200,7 +196,6 @@ const ConfigSchema = t.exact({
   ),
 });
 export type Config = t.GetType<typeof ConfigSchema>;
-export const AUTOFIX_KEYS = ["diffApply", "fixJson"] as const;
 
 // In-memory cache for command-based auth (keyed by command joined with null byte)
 const authCommandCache = new Map<string, string>();
@@ -435,33 +430,6 @@ export function mergeEnvVar(config: Config, model: ApiKeyModelConfig, apiEnvVar:
   return merged;
 }
 
-export function mergeAutofixEnvVar<K extends (typeof AUTOFIX_KEYS)[number]>(
-  config: Config,
-  key: K,
-  model: Exclude<Config[K], undefined>,
-  apiEnvVar: string,
-) {
-  const provider = providerForBaseUrl(model.baseUrl);
-  const merged = { ...config };
-  if (provider) {
-    const providerKey = keyFromName(provider.name);
-    const defaultEnvVar = getDefaultEnvVar(provider, config);
-    if (defaultEnvVar === apiEnvVar) return merged;
-    const overrides = merged.defaultApiKeyOverrides || {};
-    overrides[providerKey] = apiEnvVar;
-    merged.defaultApiKeyOverrides = overrides;
-    if (merged[key]) delete merged[key].apiEnvVar;
-    return merged;
-  }
-
-  merged[key] = {
-    ...model,
-    apiEnvVar,
-  };
-
-  return merged;
-}
-
 function getDefaultEnvVar(provider: ProviderConfig, config: Config) {
   const key = keyFromName(provider.name);
   const defaultEnvVar = (() => {
@@ -498,22 +466,6 @@ function sanitizeConfig(c: Config): Config {
         const updatedModel = { ...model };
         delete updatedModel.apiEnvVar;
         sanitized.models[index] = updatedModel;
-      }
-    }
-  }
-
-  for (const key of AUTOFIX_KEYS) {
-    const model = sanitized[key];
-    if (model) {
-      const provider = providerForBaseUrl(model.baseUrl);
-      if (provider) {
-        const envVar = getDefaultEnvVar(provider, sanitized);
-        if (envVar === model.apiEnvVar) {
-          sanitized[key] = {
-            ...model,
-          };
-          delete sanitized[key].apiEnvVar;
-        }
       }
     }
   }
@@ -672,22 +624,6 @@ async function readAuthForExactBaseUrl(
     }
   }
 
-  // Does it match a fix-json or diff-apply model?
-  if (config?.diffApply?.baseUrl === baseUrl) {
-    const auth = getAuthForModel(config.diffApply);
-    if (auth) {
-      const result = await resolveAuth(auth);
-      if (result.ok) return result;
-    }
-  }
-  if (config?.fixJson?.baseUrl === baseUrl) {
-    const auth = getAuthForModel(config.fixJson);
-    if (auth) {
-      const result = await resolveAuth(auth);
-      if (result.ok) return result;
-    }
-  }
-
   // We can't find auth for it.
   return { ok: false, error: { type: "missing", message: `No auth found for ${baseUrl}` } };
 }
@@ -741,21 +677,6 @@ async function readApiKeyAuthForExactBaseUrl(
         const result = await resolveAuth(auth);
         if (result.ok) return result;
       }
-    }
-  }
-
-  if (config?.diffApply?.baseUrl === baseUrl) {
-    const auth = getAuthForModel(config.diffApply);
-    if (auth && auth.type !== "codex") {
-      const result = await resolveAuth(auth);
-      if (result.ok) return result;
-    }
-  }
-  if (config?.fixJson?.baseUrl === baseUrl) {
-    const auth = getAuthForModel(config.fixJson);
-    if (auth && auth.type !== "codex") {
-      const result = await resolveAuth(auth);
-      if (result.ok) return result;
     }
   }
 

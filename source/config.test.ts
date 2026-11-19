@@ -161,7 +161,7 @@ async function writeConfigFixture(config: unknown): Promise<string> {
 }
 
 describe("config migrations", () => {
-  for (const configVersion of [undefined, 0, 1, 2]) {
+  for (const configVersion of [undefined, 0, 1, 2, 3]) {
     it(`preserves saved Synthetic models from config version ${configVersion}`, async () => {
       const base = {
         nickname: "test",
@@ -192,6 +192,35 @@ describe("config migrations", () => {
       }
     });
   }
+
+  it("removes legacy helper model settings", async () => {
+    const configPath = await writeConfigFixture({
+      configVersion: 2,
+      yourName: "test",
+      models: [],
+      diffApply: {
+        baseUrl: "https://example.test/v1",
+        model: "diff-helper",
+      },
+      fixJson: {
+        baseUrl: "https://example.test/v1",
+        model: "json-helper",
+      },
+    });
+    try {
+      const config = await readConfig(configPath);
+      expect(config).toEqual({
+        configVersion: CURRENT_CONFIG_VERSION,
+        yourName: "test",
+        models: [],
+      });
+      const persisted = await fs.readFile(configPath, "utf8");
+      expect(persisted).not.toContain("diffApply");
+      expect(persisted).not.toContain("fixJson");
+    } finally {
+      await fs.rm(path.dirname(configPath), { recursive: true, force: true });
+    }
+  });
 });
 
 describe("matchModelFromConfig", () => {

@@ -10,12 +10,12 @@ import { Command } from "@commander-js/extra-typings";
 import { mock } from "antipattern";
 import { fileExists } from "../fs-utils.ts";
 import App from "../app.tsx";
-import { readConfig, readAuthForModel, AUTOFIX_KEYS, APP_METADATA } from "../config.ts";
+import { readConfig, readAuthForModel, APP_METADATA } from "../config.ts";
 import { tokenCounts } from "../token-tracker.ts";
 import { Transport, logger, timeout, toolkits } from "../libocto/index.ts";
 import { FirstTimeSetup } from "../first-time-setup.tsx";
 import { loadSyntheticModels, type SyntheticModel } from "../synthetic-models.ts";
-import { PreflightModelAuth, PreflightAutofixAuth } from "../preflight-auth.tsx";
+import { PreflightModelAuth } from "../preflight-auth.tsx";
 import { LocalTransport } from "../transports/local.ts";
 import { DockerTransport, manageContainer } from "../transports/docker.ts";
 import { readUpdates, markUpdatesSeen } from "../update-notifs/update-notifs.ts";
@@ -24,7 +24,6 @@ import { run } from "../protocols/run.ts";
 import type { Backend } from "../protocols/run.ts";
 import { octoAgent } from "../ir/octo-ir.ts";
 import { loadInputHistory } from "../input-history/index.ts";
-import { makeAutofixJson } from "../autofix.ts";
 import { replaceDockerRunArgs, replaceOctoFlags, withOctoFlags } from "./cli-args.ts";
 import type { ParsedCliArgs } from "./cli-args.ts";
 import { deleteSession, listSessions, loadSession } from "../session-history/index.ts";
@@ -429,7 +428,6 @@ bench
         model,
       };
     }
-    const autofixJson = makeAutofixJson(config);
 
     logger.log.info(
       `Benchmarking ${model.nickname} with ${concurrency} concurrent request${concurrency > 1 ? "s" : ""}`,
@@ -467,7 +465,6 @@ bench
           modalities: model.modalities ?? null,
         },
         backend,
-        autofixJson,
         irs: [
           {
             role: "user",
@@ -701,7 +698,6 @@ cli
       systemPrompt = async () => sys;
     }
 
-    const autofixJson = makeAutofixJson(config);
     const abortController = new AbortController();
 
     let seenReasoning = false;
@@ -716,7 +712,6 @@ cli
       backend,
       systemPrompt,
       irs: messages,
-      autofixJson,
       onTokens: async (chunk, type) => {
         if (type === "reasoning") seenReasoning = true;
 
@@ -762,28 +757,6 @@ async function loadConfig(path: string | undefined, syntheticModels: SyntheticMo
     configPath = reloaded.configPath;
     defaultModel = config.models[0];
     if (!(await readAuthForModel(defaultModel, config)).ok) process.exit(1);
-  }
-
-  for (const key of AUTOFIX_KEYS) {
-    let autofixModel = config[key];
-    if (autofixModel) {
-      if (!(await readAuthForModel(autofixModel, config)).ok) {
-        await renderInteractive(
-          <PreflightAutofixAuth
-            autofixKey={key}
-            model={autofixModel}
-            config={config}
-            configPath={configPath}
-          />,
-          { captureCtrlC: false },
-        );
-        const reloaded = await loadConfigWithoutReauth(path, syntheticModels);
-        config = reloaded.config;
-        configPath = reloaded.configPath;
-        autofixModel = config[key];
-        if (autofixModel && !(await readAuthForModel(autofixModel, config)).ok) process.exit(1);
-      }
-    }
   }
 
   return {

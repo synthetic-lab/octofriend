@@ -18,7 +18,6 @@ import {
   messageText,
   ok,
   protocols,
-  toolkits,
   type ExecutionModel,
   type TrajectoryMode,
   type TrajectoryModelResult,
@@ -45,7 +44,6 @@ import { create } from "zustand";
 import { useShallow } from "zustand/shallow";
 import { toLlmIR } from "./ir/convert-history-ir.ts";
 import { run, type Backend } from "./protocols/run.ts";
-import { autofixEdit, makeAutofixJson } from "./autofix.ts";
 import {
   octoPermissionGate,
   whitelistKey,
@@ -358,23 +356,6 @@ export const useAppStore = create<UiState>((set, get) => {
       protocol,
       lowerMessages,
       transport,
-      errorCorrection: {
-        json: (...args) => makeAutofixJson(currentConfig())(...args),
-        tools: {
-          edit: async ({ toolCall, abortSignal: fixSignal, transport: fixTransport }) => {
-            if (fixSignal.aborted) return null;
-            const file = await toolkits.attemptUntrackedRead(
-              fixTransport,
-              fixSignal,
-              toolCall.parsed.filePath,
-            );
-            if (!file.success || fixSignal.aborted) return null;
-            const fix = await autofixEdit(currentConfig(), file.data, toolCall.parsed, fixSignal);
-            if (fix == null) return null;
-            return { ...toolCall.parsed, ...fix };
-          },
-        },
-      },
       requestErrorRetries: {
         maxRetryCount: MAX_RETRY_COUNT,
         backoffMs: 2000,

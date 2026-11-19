@@ -1,5 +1,5 @@
 import { t, toTypescript } from "structural";
-import { toolkits } from "../libocto/index.ts";
+import { toolkits } from "../source/libocto/index.ts";
 type DiffEdit = t.GetType<typeof toolkits.edit.DiffEditSchema>;
 
 export const DiffApplySuccess = t.subtype({
