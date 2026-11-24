@@ -26,7 +26,7 @@ import tseslint from "typescript-eslint";
 
 export default tseslint.config(
   {
-    ignores: ["dist/", "coverage/", "training/", ".agents/", ".claude/", ".octofriend/"],
+    ignores: ["**/dist/", "**/coverage/", "**/training/", ".agents/", ".claude/", ".octofriend/"],
   },
   {
     // Core ESLint rules, applied to all linted files.
@@ -36,10 +36,10 @@ export default tseslint.config(
         {
           paths: [
             {
-              // Use source/components/text-input.tsx so input respects disabled scopes.
+              // Use octofriend/source/components/text-input.tsx so input respects disabled scopes.
               name: "paintcannon-react",
               importNames: ["Textarea"],
-              message: "Use TextInput from `source/components/text-input.tsx` instead.",
+              message: "Use TextInput from `octofriend/source/components/text-input.tsx` instead.",
             },
             {
               name: "child_process",
@@ -64,7 +64,7 @@ export default tseslint.config(
         },
       ],
 
-      // Terminal output has to go through source/logger.ts, which buffers while
+      // Terminal output has to go through octofriend/source/logger.ts, which buffers while
       // paintcannon owns the pty.
       "no-console": "error",
 
@@ -213,20 +213,24 @@ export default tseslint.config(
     },
   },
   {
-    files: ["source/transports/local.ts"],
+    files: ["octofriend/source/transports/local.ts"],
     rules: {
       "no-restricted-properties": "off",
     },
   },
   {
-    files: ["source/transports/**", "source/libocto/transport.ts"],
+    files: [
+      "octofriend/source/transports/**",
+      "libocto/source/transport.ts",
+      "libocto/testing/mock-transport.ts",
+    ],
     rules: {
       "no-restricted-imports": "off",
       "no-restricted-syntax": "off",
     },
   },
   {
-    files: ["source/logger.ts", "source/libocto/logger.ts"],
+    files: ["octofriend/source/logger.ts", "libocto/source/logger.ts"],
     rules: {
       "no-console": "off",
     },
@@ -234,9 +238,9 @@ export default tseslint.config(
   {
     // Build scripts, test harnesses, and demos run outside the Octo process.
     files: [
-      "build.ts",
-      "scripts/**",
-      "demos/**",
+      "octofriend/build.ts",
+      "octofriend/scripts/**",
+      "octofriend/demos/**",
       "**/*.test.ts",
       "**/*.test.tsx",
       "**/*.compiletest.*",
@@ -247,7 +251,7 @@ export default tseslint.config(
   },
   {
     // Training data tooling runs standalone, outside the Octo process.
-    files: ["training/**"],
+    files: ["octofriend/training/**"],
     rules: {
       "no-restricted-imports": "off",
       "no-restricted-syntax": "off",

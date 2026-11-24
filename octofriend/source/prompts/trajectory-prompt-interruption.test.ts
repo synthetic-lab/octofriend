@@ -1,0 +1,139 @@
+import { describe, expect, it } from "bun:test";
+import Anthropic from "@anthropic-ai/sdk";
+import OpenAI from "openai";
+import { systemPrompt } from "./system-prompt.ts";
+import { MockTransport } from "libocto/testing";
+import {
+  AbortError,
+  type TransportError,
+  protocols,
+  agent as agentBuilder,
+  type AgentIR,
+  err,
+  ok,
+  type Result,
+  Trajectory,
+} from "libocto";
+
+const providers = ["standard", "responses", "anthropic"] as const;
+type Provider = (typeof providers)[number];
+const agent = agentBuilder.definePermissionless({ systemPrompt, tools: {}, agents: {} });
+
+function fixture(provider: Provider, transport: MockTransport) {
+  let networkCalls = 0;
+  const fetch = async () => {
+    networkCalls++;
+    throw new Error("No provider request should be made during prompt preparation");
+  };
+  const openai = new OpenAI({ apiKey: "test", maxRetries: 0, fetch });
+  const anthropic = new Anthropic({ apiKey: "test", maxRetries: 0, fetch });
+  const protocol: protocols.Protocol<null> = params => {
+    switch (provider) {
+      case "standard":
+        return protocols.chatCompletions.run({ ...params, backend: { client: openai } });
+      case "responses":
+        return protocols.responses.run({ ...params, backend: { client: openai } });
+      case "anthropic":
+        return protocols.anthropic.run({
+          ...params,
+          backend: { client: anthropic, maxTokens: 100 },
+        });
+    }
+  };
+  const commits: Array<Array<AgentIR<typeof agent>>> = [];
+  const messages: Array<AgentIR<typeof agent>> = [
+    { role: "user", content: [{ type: "text", content: "Hello" }] },
+  ];
+  let rollbacks = 0;
+  const trajectory = new Trajectory({
+    agent,
+    messages,
+    model: async () =>
+      ok({ provider: null, model: "test-model", contextWindow: 100_000, modalities: null }),
+    getData: async () => ({ yourName: "Test", models: [], lsp: { config: {} } }),
+    toolContentTooLargeError: async () => "Unexpected oversized output",
+    protocol,
+    lowerMessages: irs => irs.map(original => ({ original, converted: original })),
+    transport,
+    abortSignal: new AbortController().signal,
+    loopController: async step => {
+      await step();
+    },
+    handler: {
+      onMessages: event => {
+        commits.push(event.irs);
+      },
+      discardResponseProgress: () => {
+        rollbacks++;
+      },
+    },
+  });
+  return {
+    trajectory,
+    commits,
+    messages,
+    networkCalls: () => networkCalls,
+    rollbacks: () => rollbacks,
+  };
+}
+
+for (const provider of providers) {
+  describe(`${provider} prompt preparation`, () => {
+    it.each([
+      { name: "transport AbortError", error: new AbortError() },
+      { name: "DOM AbortError", error: new DOMException("Aborted", "AbortError") },
+    ])(
+      "finalizes interruption when ESC cancels an awaited prompt with $name",
+      async ({ error }) => {
+        const transport = new MockTransport({});
+        let entered!: () => void;
+        const promptEntered = new Promise<void>(resolve => {
+          entered = resolve;
+        });
+        transport.shell = async signal => {
+          return new Promise<Result<string, TransportError>>(resolve => {
+            signal.addEventListener("abort", () => resolve(err(error as TransportError)), {
+              once: true,
+            });
+            entered();
+          });
+        };
+        const recording = fixture(provider, transport);
+        const running = recording.trajectory.run();
+        await promptEntered;
+        expect(recording.trajectory.messages).toEqual(recording.messages);
+        expect(recording.commits).toEqual([]);
+        const mode = recording.trajectory.mode;
+        if (mode.mode !== "responding") throw new Error("Expected response mode");
+        await mode.control.interrupt();
+        await expect(running).resolves.toBeUndefined();
+
+        const snapshot: Array<AgentIR<typeof agent>> = [
+          { role: "request-snapshot-begin", retryBudget: { validation: null, requestError: 0 } },
+          { role: "interrupted-by-user", reason: "The user interrupted the response." },
+          { role: "request-snapshot-end" },
+        ];
+        expect(recording.commits).toEqual([snapshot]);
+        expect(recording.trajectory.messages).toEqual([...recording.messages, ...snapshot]);
+        expect(recording.rollbacks()).toBe(1);
+        expect(recording.networkCalls()).toBe(0);
+      },
+    );
+
+    it.each([
+      { name: "ordinary failure", error: new Error("prompt preparation failed") },
+      { name: "AbortError without cancellation", error: new AbortError() },
+    ])("does not hide $name while the request signal is live", async ({ error }) => {
+      const transport = new MockTransport({});
+      transport.shell = async () => {
+        throw error;
+      };
+      const recording = fixture(provider, transport);
+      await expect(recording.trajectory.run()).rejects.toBe(error);
+      expect(recording.trajectory.messages).toEqual(recording.messages);
+      expect(recording.commits).toEqual([]);
+      expect(recording.rollbacks()).toBe(0);
+      expect(recording.networkCalls()).toBe(0);
+    });
+  });
+}

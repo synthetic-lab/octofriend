@@ -17,5 +17,5 @@ function canary-octo
     if test $compile_status -ne 0
         return $compile_status
     end
-    "$_OCTOFRIEND_DIR/bin/octo.sh" $argv
+    "$_OCTOFRIEND_DIR/octofriend/bin/octo.sh" $argv
 end

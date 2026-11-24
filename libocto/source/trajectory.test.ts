@@ -1,0 +1,3491 @@
+import { prompt } from "./system-prompt.ts";
+import { afterEach, beforeEach, describe, expect, it } from "bun:test";
+import { t } from "structural";
+import { MockTransport } from "libocto/testing";
+import type { Transport } from "./transport.ts";
+import { defaultCountTokens, type ExecutionModel } from "./execution.ts";
+import type { ImageInfo } from "./images.ts";
+import type { MultimodalConfig } from "./modalities.ts";
+import { err, ok, type Result } from "./result.ts";
+import { ToolBuilder, type ToolReturn } from "./toolkits/tool-def.ts";
+import {
+  agent,
+  type Agent,
+  type AgentIR,
+  type AssistantMessage,
+  type Checkpoint,
+  type LoweredIR,
+  type LowerOutputIR,
+  type OwnToolCall,
+  type OwnToolRegistry,
+  type TreeIR,
+  type UserMessage,
+} from "./llm-ir.ts";
+import {
+  protocolUsage,
+  type AutofixJsonFn,
+  type Protocol,
+  type ProtocolError,
+  type ProtocolParams,
+  type ProtocolResult,
+  type ProtocolSuccessData,
+} from "./protocols/protocol-interface.ts";
+import type { ErrorCorrection } from "./trajectory-assistant-request.ts";
+import { subagentPrompt } from "./protocols/ir-prompts.ts";
+import type { PermissionDecision } from "./permissions.ts";
+import {
+  Trajectory,
+  type ClearControl,
+  type InputControl,
+  type RectifyControl,
+  type RetryControl,
+  type TrajectoryEvents,
+  type TrajectoryLoopController,
+  type TrajectoryMode,
+} from "./trajectory.ts";
+
+type TestData = { marker: string };
+type RunResult = Result<ToolReturn<"research", never>, string>;
+
+let runImpl: (query: string) => Promise<RunResult>;
+const factoryDataSeen: TestData[] = [];
+const factoryModelSeen: Array<ExecutionModel<unknown>> = [];
+const runDataSeen: TestData[] = [];
+const runModelSeen: Array<ExecutionModel<unknown>> = [];
+
+const searchTool = new ToolBuilder<TestData>()
+  .declare({
+    name: "search",
+    description: "Searches the web",
+    ArgumentsSchema: t.subtype({ query: t.str }),
+    subagents: ["research"] as const,
+  })
+  .define(async ({ model, data }) => {
+    factoryModelSeen.push(model);
+    factoryDataSeen.push(data);
+    return {
+      validate: async (_signal: AbortSignal, _transport: Transport, toolCall: any) => {
+        if (toolCall.parsed.arguments.query === "invalid") return err("invalid query");
+        return ok(null);
+      },
+      run: async ({ toolCall, model, data }) => {
+        runDataSeen.push(data);
+        runModelSeen.push(model);
+        return runImpl(toolCall.parsed.arguments.query);
+      },
+    };
+  });
+
+const shellTool = new ToolBuilder<TestData>()
+  .declare({
+    name: "shell",
+    description: "Runs a shell command, returning custom IR",
+    ArgumentsSchema: t.subtype({ command: t.str }),
+  })
+  .withCustomIR({
+    result: toolCall => (args: { transcript: string }) => ({
+      role: "shell-result" as const,
+      toolCall,
+      transcript: args.transcript,
+    }),
+  })
+  .define(async () => ({
+    run: async ({ customIR }: any) => customIR.result({ transcript: "ran ok" }),
+  }));
+
+// The capability is uniform down the tree, so each fixture's tree stays uniform: the
+// permissioned test agent and the plain agent each own their own research subagent.
+const testPrompt = prompt.declare(async () => "Test prompt");
+
+const researchAgent = agent.definePermissioned({
+  systemPrompt: prompt.declare(async () => "You are the research subagent."),
+  tools: { shell: shellTool },
+  agents: {},
+});
+const plainResearchAgent = agent.definePermissionless({
+  systemPrompt: testPrompt,
+  tools: {},
+  agents: {},
+});
+
+const _testAgent = agent.definePermissioned({
+  systemPrompt: testPrompt,
+  tools: { search: searchTool, shell: shellTool },
+  agents: { research: researchAgent },
+});
+type TestAgent = typeof _testAgent;
+type TestInvocation = Extract<TreeIR<TestAgent>, { role: "tool-invoke-subagent" }>;
+
+const _plainAgent = agent.definePermissionless({
+  systemPrompt: testPrompt,
+  tools: { search: searchTool },
+  agents: { research: plainResearchAgent },
+});
+
+const transport: Transport = new MockTransport({});
+const exitControllers: AbortController[] = [];
+const waitingSteps: Promise<boolean>[] = [];
+
+afterEach(async () => {
+  for (const exit of exitControllers.splice(0)) exit.abort();
+  await Promise.all(waitingSteps.splice(0));
+});
+
+async function startWaitingStep<A extends Agent<any, any, any, any>, Model>(
+  traj: Trajectory<A, Model>,
+  mode: TrajectoryMode<TestAgent>["mode"],
+): Promise<{ finished: Promise<boolean> }> {
+  const before = traj.mode;
+  const finished = traj.step();
+  waitingSteps.push(finished);
+  const deadline = Date.now() + 1000;
+  do {
+    if (Date.now() >= deadline) throw new Error(`Timed out waiting for ${mode}`);
+    await new Promise(resolve => setTimeout(resolve, 0));
+  } while (traj.mode === before || traj.mode.mode !== mode);
+  return { finished };
+}
+
+function text(content: string): UserMessage["content"] {
+  return [{ type: "text", content }];
+}
+
+function img(filePath: string): Extract<UserMessage["content"][number], { type: "image" }> {
+  const image: ImageInfo = {
+    mimeType: "image/png",
+    base64Data: "",
+    dataUrl: "",
+    filePath,
+    sizeBytes: 0,
+  };
+  return { type: "image", image };
+}
+
+function searchCall(query: string, toolCallId: string): OwnToolCall<TestAgent> {
+  return { type: "tool-call", name: "search", toolCallId, original: { query }, parsed: { query } };
+}
+
+function shellCall(command: string, toolCallId: string): OwnToolCall<TestAgent> {
+  return {
+    type: "tool-call",
+    name: "shell",
+    toolCallId,
+    original: { command },
+    parsed: { command },
+  };
+}
+
+function assistantMessage(opts: {
+  content?: string;
+  toolCalls?: Array<OwnToolCall<TestAgent>>;
+}): AssistantMessage<TestAgent["tools"]> {
+  return {
+    role: "assistant",
+    content: opts.content ?? "",
+    usage: protocolUsage(1, 1),
+    toolCalls: opts.toolCalls,
+  };
+}
+
+type Emit = (tokens: string, type: "reasoning" | "content") => Promise<void>;
+type ProtocolQueueItemParams = {
+  autofixJson?: AutofixJsonFn;
+  abortSignal: AbortSignal;
+};
+type ProtocolQueueItem = (
+  onTokens: Emit,
+  params: ProtocolQueueItemParams,
+) =>
+  | Result<ProtocolSuccessData<TestAgent>, ProtocolError>
+  | Promise<Result<ProtocolSuccessData<TestAgent>, ProtocolError>>;
+
+function okResult(
+  output: AssistantMessage<TestAgent["tools"]>,
+): Result<ProtocolSuccessData<TestAgent>, ProtocolError> {
+  return ok({ output, curl: "curl", headers: new Headers(), usage: protocolUsage(1, 1) });
+}
+
+const plainOk: ProtocolQueueItem = () => okResult(assistantMessage({ content: "done" }));
+const assistantSnapshot = ["request-snapshot-begin", "assistant", "request-snapshot-end"] as const;
+
+function requestError(message: string): Extract<ProtocolError, { type: "request-error" }> {
+  return { type: "request-error", requestError: message, curl: "curl" };
+}
+
+function rateLimitError(): Extract<ProtocolError, { type: "rate-limit-error" }> {
+  return {
+    type: "rate-limit-error",
+    requestError: "slow down",
+    curl: "curl",
+    headers: new Headers(),
+  };
+}
+
+function makeProtocol(queue: ProtocolQueueItem[]) {
+  const calls: Array<{
+    irs: Array<LoweredIR<any>>;
+    tools: string[];
+    systemPrompt: string | undefined;
+  }> = [];
+  const protocol: Protocol<null> = async <
+    A extends Agent<any, any, any, any>,
+    Tools extends Partial<OwnToolRegistry<A>> | undefined = undefined,
+  >(
+    params: ProtocolParams<A, null, Tools>,
+  ): Promise<ProtocolResult<A, Tools>> => {
+    calls.push({
+      irs: [...params.irs] as Array<LoweredIR<any>>,
+      tools: Object.keys(params.tools ?? {}),
+      systemPrompt: await params.systemPrompt?.(),
+    });
+    const next = queue.shift();
+    if (next == null) throw new Error("unexpected protocol call");
+    const result = await next(params.onTokens, params);
+    return result as typeof result & ProtocolResult<A, Tools>;
+  };
+  return { protocol, calls };
+}
+
+function makeTrajectory(opts?: {
+  agent?: TestAgent;
+  getData?: () => Promise<TestData>;
+  permission?: (toolCall: OwnToolCall<TestAgent>) => Promise<PermissionDecision>;
+  contextWindow?: number;
+  modalities?: MultimodalConfig | null;
+  maxToolOutput?: number;
+  countTokens?: (irs: Array<LoweredIR<TestAgent["tools"]>>) => Promise<number>;
+  toolContentTooLargeError?: (ir: unknown) => Promise<string>;
+  requestErrorRetries?: { maxRetryCount?: number; backoffMs: number; maxBackoffMs?: number };
+  validationRetries?: number;
+  errorCorrection?: ErrorCorrection<TestAgent>;
+  loopController?: TrajectoryLoopController;
+  messages?: Array<AgentIR<TestAgent>>;
+  onMessages?: (event: TrajectoryEvents<TestAgent>["onMessages"]) => void | Promise<void>;
+  modelAuthError?: (invocation: TestInvocation | null) => string | undefined;
+}) {
+  const rec = {
+    modes: [] as Array<TrajectoryMode<TestAgent>["mode"]>,
+    modeObjs: [] as Array<TrajectoryMode<TestAgent>>,
+    roles: [] as string[],
+    messages: [] as Array<TrajectoryEvents<TestAgent>["onMessages"]>,
+    timeline: [] as string[],
+    rewinds: [] as Array<TrajectoryEvents<TestAgent>["rewind"]>,
+    interruptions: [] as Array<TrajectoryEvents<TestAgent>["interrupted"]>,
+    capCalls: [] as unknown[],
+    loweringModalities: [] as Array<MultimodalConfig | null>,
+    arc: {
+      startResponse: 0,
+      responseProgress: 0,
+      onResponseHeaders: 0,
+      compaction: 0,
+      autofixJson: 0,
+      autofixTool: 0,
+      requestRetry: 0,
+      rollbacks: 0,
+    },
+    modelCalls: 0,
+    modelInvocations: [] as Array<TestInvocation | null>,
+  };
+  const exit = new AbortController();
+  exitControllers.push(exit);
+
+  const build = async (queue: ProtocolQueueItem[]) => {
+    const { protocol, calls } = makeProtocol(queue);
+    const traj = new Trajectory({
+      agent: opts?.agent ?? _testAgent,
+      model: async invocation => {
+        rec.modelCalls++;
+        rec.modelInvocations.push(invocation);
+        const authError = opts?.modelAuthError?.(invocation);
+        if (authError != null) return err({ type: "auth-error", authError });
+        return ok({
+          provider: null,
+          model: "test-model",
+          contextWindow: opts?.contextWindow ?? 10_000,
+          modalities: opts?.modalities ?? null,
+          countTokens: opts?.countTokens,
+        });
+      },
+      maxToolOutput: opts?.maxToolOutput,
+      toolContentTooLargeError:
+        opts?.toolContentTooLargeError ??
+        (async ir => {
+          rec.capCalls.push(ir);
+          return "OUTPUT TOO LARGE";
+        }),
+      requestErrorRetries: opts?.requestErrorRetries,
+      validationRetries: opts?.validationRetries,
+      errorCorrection: opts?.errorCorrection,
+      loopController: opts?.loopController,
+      messages: opts?.messages ?? [],
+      getData: opts?.getData ?? (async () => ({ marker: "fresh" })),
+      protocol,
+      lowerMessages: (messages, modalities) => {
+        rec.loweringModalities.push(modalities);
+        const pairs: Array<LowerOutputIR<TestAgent>> = [];
+        for (const original of messages) {
+          if (original.role === "shell-result") {
+            pairs.push({
+              original,
+              converted: {
+                role: "tool-output",
+                toolCall: original.toolCall,
+                content: text(original.transcript),
+              },
+            });
+          } else {
+            pairs.push({ original, converted: original });
+          }
+        }
+        return pairs;
+      },
+      transport,
+      abortSignal: exit.signal,
+      permission: async toolCall => {
+        return opts?.permission ? opts.permission(toolCall) : { decision: "allow" };
+      },
+      handler: {
+        modeChange: ({ mode }) => {
+          rec.modes.push(mode.mode);
+          rec.modeObjs.push(mode);
+          rec.timeline.push(`mode:${mode.mode}`);
+        },
+        onMessages: async event => {
+          rec.messages.push(event);
+          for (const ir of event.irs) {
+            rec.roles.push(ir.role);
+            rec.timeline.push(`ir:${ir.role}`);
+          }
+          await opts?.onMessages?.(event);
+        },
+        steeringChange: ({ upcoming, queued }) => {
+          rec.timeline.push(`steering:${upcoming.length}u${queued.length}q`);
+        },
+        rewind: payload => {
+          rec.rewinds.push(payload);
+        },
+        interrupted: payload => {
+          rec.interruptions.push(payload);
+        },
+        startResponse: () => {
+          rec.arc.startResponse++;
+        },
+        responseProgress: () => {
+          rec.arc.responseProgress++;
+        },
+        onResponseHeaders: () => {
+          rec.arc.onResponseHeaders++;
+        },
+        startCompaction: () => {
+          rec.arc.compaction++;
+        },
+        autofixingJson: () => {
+          rec.arc.autofixJson++;
+        },
+        autofixingTool: () => {
+          rec.arc.autofixTool++;
+        },
+        requestRetry: () => {
+          rec.arc.requestRetry++;
+        },
+        discardResponseProgress: () => {
+          rec.arc.rollbacks++;
+        },
+      },
+    });
+    return { traj, protocolCalls: calls };
+  };
+  return { build, rec, exit };
+}
+
+function inputControl<A extends Agent<any, any, any, any>, Model>(traj: Trajectory<A, Model>) {
+  const mode = traj.mode;
+  if ("control" in mode && "enqueueSteering" in mode.control) {
+    return mode.control as InputControl;
+  }
+  throw new Error(`mode ${mode.mode} has no input control`);
+}
+
+function interruptNow(traj: Trajectory<any, null>) {
+  const mode = traj.mode;
+  if ("control" in mode && "interrupt" in mode.control) return mode.control.interrupt();
+  throw new Error(`mode ${mode.mode} has no interrupt control`);
+}
+
+function rectifyControl(traj: Trajectory<any, null>): RectifyControl {
+  const mode = traj.mode;
+  if (mode.mode !== "request-error" && mode.mode !== "compaction-error") {
+    throw new Error(`expected an error mode with rectify control, got ${mode.mode}`);
+  }
+  return mode.control;
+}
+
+function retryControl(traj: Trajectory<any, null>): RetryControl & Partial<ClearControl> {
+  const mode = traj.mode;
+  if (
+    mode.mode !== "payment-error" &&
+    mode.mode !== "rate-limit-error" &&
+    mode.mode !== "auth-error"
+  ) {
+    throw new Error(`expected an error mode with retry control, got ${mode.mode}`);
+  }
+  return mode.control;
+}
+
+beforeEach(() => {
+  runImpl = async query => ok({ type: "output", content: text(`results: ${query}`) });
+  factoryDataSeen.length = 0;
+  factoryModelSeen.length = 0;
+  runDataSeen.length = 0;
+  runModelSeen.length = 0;
+});
+
+describe("trajectory", () => {
+  it("meaningfulTailIR reflects appends and supplies original rewind targets", async () => {
+    const { build, rec } = makeTrajectory();
+    const { traj } = await build([plainOk]);
+    expect([...traj.meaningfulTailIR()]).toEqual([]);
+
+    await inputControl(traj).enqueueSteering(text("hi"));
+    expect(await traj.step()).toBe(true);
+    const [tail, prev] = traj.meaningfulTailIR();
+    expect(tail === traj.messages[2]).toBe(true);
+    expect(prev === traj.messages[0]).toBe(true);
+    expect(tail.role).toBe("assistant");
+    expect(prev.role).toBe("user");
+    expect(rec.roles).toEqual([
+      "user",
+      "request-snapshot-begin",
+      "assistant",
+      "request-snapshot-end",
+    ]);
+
+    await startWaitingStep(traj, "ready-for-request");
+    const mode = traj.mode;
+    if (mode.mode !== "ready-for-request") throw new Error("Expected input mode");
+    await mode.control.rewindTo(prev);
+    expect([...traj.meaningfulTailIR()]).toEqual([]);
+    expect(traj.messages).toEqual([]);
+    expect(rec.rewinds[0].removed.map(ir => ir.role)).toEqual([
+      "user",
+      "request-snapshot-begin",
+      "assistant",
+      "request-snapshot-end",
+    ]);
+    expect(rec.rewinds[0].content).toEqual(text("hi"));
+  });
+
+  it("announces ready only when the next step is waiting for input", async () => {
+    const { build, rec } = makeTrajectory();
+    const { traj, protocolCalls } = await build([plainOk]);
+
+    inputControl(traj).enqueueSteering(text("hi"));
+    expect(await traj.step()).toBe(true);
+
+    expect(rec.roles).toEqual(["user", ...assistantSnapshot]);
+    expect(protocolCalls.length).toBe(1);
+    expect(protocolCalls[0].irs.map(m => m.role)).toEqual(["user"]);
+    expect(rec.modes).toEqual(["responding"]);
+
+    await startWaitingStep(traj, "ready-for-request");
+    expect(rec.modes).toEqual(["responding", "ready-for-request"]);
+    expect(traj.mode.mode).toBe("ready-for-request");
+  });
+
+  it("coalesces multiple steering messages into one user message", async () => {
+    const { build } = makeTrajectory();
+    const { traj, protocolCalls } = await build([plainOk]);
+
+    inputControl(traj).enqueueSteering(text("one"));
+    inputControl(traj).enqueueSteering(text("two"));
+    expect(await traj.step()).toBe(true);
+
+    const userIr = protocolCalls[0].irs[0];
+    if (userIr.role !== "user") throw new Error("impossible");
+    expect(userIr.content).toEqual([{ type: "text", content: "one\ntwo" }]);
+  });
+
+  it("runs an allowed tool batch and responds with its output", async () => {
+    const { build, rec } = makeTrajectory();
+    const { traj, protocolCalls } = await build([
+      () => okResult(assistantMessage({ toolCalls: [searchCall("cats", "c1")] })),
+      plainOk,
+    ]);
+
+    inputControl(traj).enqueueSteering(text("search for cats"));
+    expect(await traj.step()).toBe(true);
+    expect(traj.mode.mode).toBe("responding");
+
+    expect(await traj.step()).toBe(true);
+
+    expect(rec.roles).toEqual(["user", ...assistantSnapshot, "tool-output", ...assistantSnapshot]);
+    expect(protocolCalls[1].irs.map(m => m.role)).toEqual(["user", "assistant", "tool-output"]);
+    expect(rec.modes).toContain("tool-call-permission");
+    expect(rec.modes).toContain("running-tool");
+    await startWaitingStep(traj, "ready-for-request");
+    expect(traj.mode.mode).toBe("ready-for-request");
+  });
+
+  it("resolves fresh data separately for every tool execution", async () => {
+    let marker = "first";
+    const { build } = makeTrajectory({ getData: async () => ({ marker }) });
+    const { traj } = await build([
+      () =>
+        okResult(
+          assistantMessage({
+            toolCalls: [searchCall("cats", "c1"), searchCall("dogs", "c2")],
+          }),
+        ),
+      plainOk,
+    ]);
+    runImpl = async query => {
+      marker = query === "cats" ? "second" : "unused";
+      return ok({ type: "output", content: text(query) });
+    };
+
+    inputControl(traj).enqueueSteering(text("search"));
+    expect(await traj.step()).toBe(true);
+    expect(await traj.step()).toBe(true);
+    expect(runDataSeen).toEqual([{ marker: "first" }, { marker: "second" }]);
+  });
+
+  it("resolves fresh data for every tool factory load", async () => {
+    let marker = "first";
+    const { build } = makeTrajectory({ getData: async () => ({ marker }) });
+    const { traj } = await build([
+      () => okResult(assistantMessage({ toolCalls: [searchCall("cats", "c1")] })),
+      plainOk,
+    ]);
+
+    inputControl(traj).enqueueSteering(text("search"));
+    expect(await traj.step()).toBe(true);
+    marker = "second";
+    expect(await traj.step()).toBe(true);
+    expect(factoryDataSeen).toEqual([{ marker: "first" }, { marker: "second" }]);
+  });
+
+  it("reloads tools for a batch and reuses that runtime data for its response", async () => {
+    let generation = 0;
+    const generationSearchTool = new ToolBuilder<TestData>()
+      .declare({
+        name: "search",
+        description: "Searches the web",
+        ArgumentsSchema: t.subtype({ query: t.str }),
+        subagents: ["research"] as const,
+      })
+      .define(async () => {
+        const loadedGeneration = ++generation;
+        return {
+          run: async () => ok({ type: "output", content: text(`generation ${loadedGeneration}`) }),
+        };
+      });
+    const { build, rec } = makeTrajectory({
+      agent: { ..._testAgent, tools: { search: generationSearchTool, shell: shellTool } },
+    });
+    const { traj } = await build([
+      () => okResult(assistantMessage({ toolCalls: [searchCall("cats", "c1")] })),
+      plainOk,
+    ]);
+
+    inputControl(traj).enqueueSteering(text("run"));
+    expect(await traj.step()).toBe(true);
+    expect(rec.modelCalls).toBe(1);
+    expect(generation).toBe(1);
+    expect(await traj.step()).toBe(true);
+
+    const result = traj.messages[4];
+    if (result.role !== "tool-output") throw new Error("impossible");
+    expect(result.content).toEqual(text("generation 2"));
+    expect(rec.modelCalls).toBe(2);
+    expect(generation).toBe(2);
+  });
+
+  it("uses freshly resolved context and modalities for the whole batch and response", async () => {
+    const vision: MultimodalConfig = {
+      image: { enabled: true, maxSizeMB: 1, acceptedMimeTypes: ["image/png"] },
+    };
+    const opts = { contextWindow: 10_000, modalities: null as MultimodalConfig | null };
+    const { build, rec } = makeTrajectory(opts);
+    const { traj } = await build([
+      () => okResult(assistantMessage({ toolCalls: [searchCall("huge", "c1")] })),
+      plainOk,
+    ]);
+    runImpl = async () => {
+      // Config changes during execution must not change this step's resolved model context.
+      opts.modalities = null;
+      return ok({ type: "output", content: text("x".repeat(1000)) });
+    };
+
+    inputControl(traj).enqueueSteering(text("run"));
+    expect(await traj.step()).toBe(true);
+    expect(rec.loweringModalities.length).toBeGreaterThan(0);
+    expect(rec.loweringModalities.every(modalities => modalities === null)).toBe(true);
+    rec.loweringModalities.length = 0;
+    opts.contextWindow = 1000;
+    opts.modalities = vision;
+    expect(await traj.step()).toBe(true);
+
+    expect(rec.capCalls.length).toBe(1);
+    expect(rec.roles).toEqual([
+      "user",
+      ...assistantSnapshot,
+      "tool-runtime-error",
+      ...assistantSnapshot,
+    ]);
+    expect(rec.modelCalls).toBe(2);
+    expect(factoryModelSeen).toHaveLength(2);
+    // Pending-call scans use null; two size-check lowerings and both request lowerings use vision.
+    expect(rec.loweringModalities.filter(modalities => modalities === vision)).toHaveLength(4);
+    expect(rec.loweringModalities).toContain(null);
+    expect(rec.loweringModalities.at(-1)).toBe(vision);
+  });
+
+  it("only runs current calls when validation retries and later batches reuse IDs", async () => {
+    const queries: string[] = [];
+    const { build } = makeTrajectory();
+    const { traj, protocolCalls } = await build([
+      () =>
+        okResult(
+          assistantMessage({
+            toolCalls: [searchCall("invalid", "c1"), searchCall("skipped", "c2")],
+          }),
+        ),
+      () => okResult(assistantMessage({ toolCalls: [searchCall("a", "c1")] })),
+      () => okResult(assistantMessage({ toolCalls: [searchCall("b", "c1")] })),
+      plainOk,
+    ]);
+    runImpl = async query => {
+      queries.push(query);
+      return ok({ type: "output", content: text(query) });
+    };
+
+    inputControl(traj).enqueueSteering(text("run"));
+    expect(await traj.step()).toBe(true);
+    expect(protocolCalls.length).toBe(1);
+    expect(queries).toEqual([]);
+    expect(await traj.step()).toBe(true);
+    expect(protocolCalls.length).toBe(2);
+    expect(queries).toEqual([]);
+    expect(await traj.step()).toBe(true);
+    expect(queries).toEqual(["a"]);
+    expect(await traj.step()).toBe(true);
+    expect(queries).toEqual(["a", "b"]);
+    expect(traj.messages.filter(ir => ir.role === "tool-output").length).toBe(2);
+  });
+
+  it("records a tool's error as tool-runtime-error and continues", async () => {
+    const { build, rec } = makeTrajectory();
+    const { traj, protocolCalls } = await build([
+      () => okResult(assistantMessage({ toolCalls: [searchCall("cats", "c1")] })),
+      plainOk,
+    ]);
+    runImpl = async () => err("the search blew up");
+
+    inputControl(traj).enqueueSteering(text("run"));
+    expect(await traj.step()).toBe(true);
+    expect(await traj.step()).toBe(true);
+
+    expect(rec.roles).toEqual([
+      "user",
+      ...assistantSnapshot,
+      "tool-runtime-error",
+      ...assistantSnapshot,
+    ]);
+    const result = traj.messages[4];
+    if (result.role !== "tool-runtime-error") throw new Error("impossible");
+    expect(result.error).toBe("the search blew up");
+    expect(protocolCalls[1].irs.map(m => m.role)).toEqual([
+      "user",
+      "assistant",
+      "tool-runtime-error",
+    ]);
+    await startWaitingStep(traj, "ready-for-request");
+    expect(traj.mode.mode).toBe("ready-for-request");
+  });
+
+  it("appends a tool's custom IR directly to history", async () => {
+    const { build, rec } = makeTrajectory();
+    const { traj, protocolCalls } = await build([
+      () => okResult(assistantMessage({ toolCalls: [shellCall("ls", "c1")] })),
+      plainOk,
+    ]);
+
+    inputControl(traj).enqueueSteering(text("run"));
+    expect(await traj.step()).toBe(true);
+    expect(await traj.step()).toBe(true);
+
+    expect(rec.roles).toEqual(["user", ...assistantSnapshot, "shell-result", ...assistantSnapshot]);
+    const result = traj.messages[4];
+    if (result.role !== "shell-result") throw new Error("impossible");
+    expect(result.transcript).toBe("ran ok");
+    expect(result.toolCall.toolCallId).toBe("c1");
+    const lowered = protocolCalls[1].irs;
+    expect(lowered.map(m => m.role)).toEqual(["user", "assistant", "tool-output"]);
+    if (lowered[2].role !== "tool-output") throw new Error("impossible");
+    expect(lowered[2].content).toEqual(text("ran ok"));
+    await startWaitingStep(traj, "ready-for-request");
+    expect(traj.mode.mode).toBe("ready-for-request");
+  });
+
+  it.each(["reject", "throw", "exit"] as const)(
+    "keeps custom IR answers when a later call triggers %s cleanup",
+    async stop => {
+      const { build, exit } = makeTrajectory({
+        permission: async toolCall => {
+          if (toolCall.toolCallId !== "c2") return { decision: "allow" };
+          if (stop === "reject") return { decision: "reject", steering: text("stop") };
+          if (stop === "exit") exit.abort();
+          return { decision: "allow" };
+        },
+      });
+      const { traj } = await build([
+        () =>
+          okResult(
+            assistantMessage({
+              toolCalls: [shellCall("ls", "c1"), searchCall("a", "c2"), searchCall("b", "c3")],
+            }),
+          ),
+        plainOk,
+      ]);
+      runImpl = async () => {
+        throw new Error("boom in tool");
+      };
+
+      inputControl(traj).enqueueSteering(text("run"));
+      expect(await traj.step()).toBe(true);
+      if (stop === "throw") {
+        await expect(traj.step()).rejects.toThrow("boom in tool");
+      } else if (stop === "exit") {
+        await traj.run();
+      } else {
+        expect(await traj.step()).toBe(true);
+      }
+
+      const answers = traj.messages.filter(ir => "toolCall" in ir);
+      if (stop === "exit") {
+        expect(answers.map(ir => ir.role)).toEqual(["shell-result"]);
+        expect(answers.map(ir => ir.toolCall.toolCallId)).toEqual(["c1"]);
+        return;
+      }
+      expect(answers.map(ir => ir.role)).toEqual([
+        "shell-result",
+        stop === "reject" ? "tool-reject" : "tool-skip-output",
+        "tool-skip-output",
+      ]);
+      expect(answers.map(ir => ir.toolCall.toolCallId)).toEqual(["c1", "c2", "c3"]);
+    },
+  );
+
+  it("runs a delegated child before resuming the parent's unanswered calls", async () => {
+    const queries: string[] = [];
+    const permissions: string[] = [];
+    const task = [...text("Inspect this diagram"), img("diagram.png")];
+    const { build, rec } = makeTrajectory({
+      permission: async call => {
+        permissions.push(call.name);
+        return { decision: "allow" };
+      },
+    });
+    const { traj, protocolCalls } = await build([
+      () =>
+        okResult(
+          assistantMessage({
+            toolCalls: [
+              searchCall("before", "c1"),
+              searchCall("delegate", "c2"),
+              searchCall("after", "c3"),
+            ],
+          }),
+        ),
+      // Reusing a parent ID must not answer a call in the parent's batch.
+      () => okResult(assistantMessage({ toolCalls: [shellCall("ls", "c3")] })),
+      () => okResult(assistantMessage({ content: "child findings" })),
+      plainOk,
+    ]);
+    runImpl = async query => {
+      queries.push(query);
+      return query === "delegate"
+        ? ok({ type: "invoke-subagent", name: "research", message: task })
+        : ok({ type: "output", content: text(query) });
+    };
+
+    await inputControl(traj).enqueueSteering(text("run"));
+    expect(await traj.step()).toBe(true);
+    expect(await traj.step()).toBe(true);
+    expect(queries).toEqual(["before", "delegate"]);
+    expect(protocolCalls).toHaveLength(2);
+    expect(protocolCalls[1].irs).toEqual([{ role: "user", content: subagentPrompt(task) }]);
+    expect(protocolCalls[0].tools).toEqual(["search", "shell"]);
+    expect(protocolCalls[1].tools).toEqual(["shell"]);
+    expect(protocolCalls[1].systemPrompt).toBe("You are the research subagent.");
+
+    const child = traj.messages.at(-1);
+    if (child?.role !== "subagent-trajectory") throw new Error("Expected child trajectory");
+    expect(child.task).toBe(task);
+    expect(child.toolCall.toolCallId).toBe("c2");
+    expect(child.ir.map(ir => ir.role)).toEqual(["user", ...assistantSnapshot]);
+    expect(traj.mode).toMatchObject({ root: false, subagent: "research", mode: "responding" });
+
+    await inputControl(traj).enqueueSteering(text("after all the tools"));
+    expect(await traj.step()).toBe(true);
+    expect(queries).toEqual(["before", "delegate"]);
+    expect(child.ir.map(ir => ir.role)).toEqual([
+      "user",
+      ...assistantSnapshot,
+      "shell-result",
+      ...assistantSnapshot,
+    ]);
+    expect(protocolCalls[2].irs.map(ir => ir.role)).toEqual(["user", "assistant", "tool-output"]);
+    expect(traj.messages.at(-1)).toBe(child);
+    const childEvents = rec.messages.filter(event => !event.root);
+    expect(childEvents.map(event => event.irs.map(ir => ir.role))).toEqual([
+      [...assistantSnapshot],
+      ["shell-result"],
+      [...assistantSnapshot],
+    ]);
+    for (const event of childEvents) {
+      expect(event.scope.parentSubagentIR).toBe(child);
+      expect(event.scope.toplevelSubagentIR).toBe(child);
+      expect(event.scope.path).toEqual([{ subagent: "research", toolCallId: "c2" }]);
+    }
+
+    expect(await traj.step()).toBe(true);
+    expect(queries).toEqual(["before", "delegate", "after"]);
+    expect(permissions).toEqual(["search", "search", "shell", "search"]);
+    expect(traj.messages.map(ir => ir.role)).toEqual([
+      "user",
+      ...assistantSnapshot,
+      "tool-output",
+      "tool-invoke-subagent",
+      "subagent-trajectory",
+      "tool-output",
+      "user",
+      ...assistantSnapshot,
+    ]);
+    const continuation = protocolCalls[3].irs;
+    expect(continuation.map(ir => ir.role)).toEqual([
+      "user",
+      "assistant",
+      "tool-output",
+      "tool-output",
+      "tool-output",
+      "user",
+    ]);
+    expect(continuation[3]).toMatchObject({
+      role: "tool-output",
+      toolCall: { toolCallId: "c2" },
+      content: text("child findings"),
+    });
+    expect(continuation[4]).toMatchObject({ role: "tool-output", toolCall: { toolCallId: "c3" } });
+    expect(continuation[5]).toEqual({ role: "user", content: text("after all the tools") });
+    expect(rec.modeObjs.filter(mode => mode.mode === "responding").map(mode => mode.root)).toEqual([
+      true,
+      false,
+      false,
+      true,
+    ]);
+    await startWaitingStep(traj, "ready-for-request");
+  });
+
+  it.each(["success", "failure"] as const)(
+    "resumes a batch containing consecutive delegations after child %s",
+    async outcome => {
+      const queries: string[] = [];
+      const { build, rec } = makeTrajectory();
+      const { traj, protocolCalls } = await build([
+        () =>
+          okResult(
+            assistantMessage({
+              toolCalls: [searchCall("first", "c1"), searchCall("second", "c2")],
+            }),
+          ),
+        outcome === "success" ? plainOk : () => err(requestError("child failed")),
+        plainOk,
+        plainOk,
+      ]);
+      runImpl = async query => {
+        queries.push(query);
+        return ok({ type: "invoke-subagent", name: "research", message: text(query) });
+      };
+
+      await inputControl(traj).enqueueSteering(text("delegate twice"));
+      expect(await traj.step()).toBe(true);
+      expect(await traj.step()).toBe(true);
+      expect(queries).toEqual(["first"]);
+      expect(await traj.step()).toBe(true);
+      expect(queries).toEqual(["first", "second"]);
+      expect(await traj.step()).toBe(true);
+      expect(queries).toEqual(["first", "second"]);
+      expect(protocolCalls).toHaveLength(4);
+      expect(protocolCalls[3].irs.map(ir => ir.role)).toEqual([
+        "user",
+        "assistant",
+        outcome === "success" ? "tool-output" : "tool-runtime-error",
+        "tool-output",
+      ]);
+      if (outcome === "failure") {
+        expect(protocolCalls[3].irs[2]).toMatchObject({
+          role: "tool-runtime-error",
+          error: "child failed",
+          toolCall: { toolCallId: "c1" },
+        });
+      }
+      expect(traj.messages.filter(ir => ir.role === "subagent-trajectory")).toHaveLength(2);
+      expect(rec.modes).not.toContain("request-error");
+      await startWaitingStep(traj, "ready-for-request");
+    },
+  );
+
+  it("records a child model-resolution failure in the child and retries the same invocation", async () => {
+    let failing = true;
+    const { build, rec } = makeTrajectory({
+      modelAuthError: invocation =>
+        failing && invocation?.model === "child-model" ? "child credentials missing" : undefined,
+    });
+    const { traj, protocolCalls } = await build([
+      () => okResult(assistantMessage({ toolCalls: [searchCall("delegate", "c1")] })),
+      plainOk,
+      plainOk,
+    ]);
+    let delegations = 0;
+    runImpl = async () => {
+      delegations++;
+      return ok({
+        type: "invoke-subagent",
+        name: "research",
+        model: "child-model",
+        message: text("go"),
+      });
+    };
+    await inputControl(traj).enqueueSteering(text("run"));
+    expect(await traj.step()).toBe(true);
+    expect(await traj.step()).toBe(true);
+    expect(protocolCalls).toHaveLength(1);
+    expect(factoryModelSeen).toHaveLength(2);
+    const invocation = traj.messages[4];
+    const child = traj.messages[5];
+    if (invocation.role !== "tool-invoke-subagent" || child.role !== "subagent-trajectory") {
+      throw new Error("Expected delegation");
+    }
+    expect(child.ir.at(-1)).toEqual({ role: "auth-error", authError: "child credentials missing" });
+    expect(rec.modelInvocations).toEqual([null, null, invocation]);
+    const waiting = await startWaitingStep(traj, "auth-error");
+    expect(traj.mode).toMatchObject({ root: false, subagent: "research" });
+    failing = false;
+    retryControl(traj).retry();
+    expect(await waiting.finished).toBe(true);
+    expect(rec.modelInvocations[3]).toBe(invocation);
+    expect(await traj.step()).toBe(true);
+    expect(rec.modelInvocations[4]).toBeNull();
+    expect(protocolCalls).toHaveLength(3);
+    expect(delegations).toBe(1);
+    await startWaitingStep(traj, "ready-for-request");
+  });
+
+  it.each([false, true])(
+    "resumes a tail invocation without rerunning its tool (auth failure=%s)",
+    async authFailure => {
+      let failing = authFailure;
+      const task = text("Resume this delegated task");
+      const toolCall = searchCall("delegate", "c1");
+      const { build, rec } = makeTrajectory({
+        messages: [
+          { role: "user", content: text("run") },
+          assistantMessage({ toolCalls: [toolCall] }),
+          { role: "tool-invoke-subagent", toolCall, subagent: "research", message: task },
+        ],
+        modelAuthError: () => (failing ? "credentials expired" : undefined),
+      });
+      const { traj, protocolCalls } = await build([plainOk, plainOk]);
+      runImpl = async () => {
+        throw new Error("delegating tool must not run again");
+      };
+
+      expect(await traj.step()).toBe(true);
+      const child = traj.messages.at(-1);
+      if (child?.role !== "subagent-trajectory") throw new Error("Expected child trajectory");
+      expect(child.task).toBe(task);
+      if (authFailure) {
+        expect(protocolCalls).toHaveLength(0);
+        expect(child.ir.map(ir => ir.role)).toEqual(["user", "auth-error"]);
+        const waiting = await startWaitingStep(traj, "auth-error");
+        expect(traj.mode).toMatchObject({ root: false, subagent: "research", mode: "auth-error" });
+        failing = false;
+        retryControl(traj).retry();
+        expect(await waiting.finished).toBe(true);
+        expect(child.ir.map(ir => ir.role)).toEqual([
+          "user",
+          "auth-error",
+          "error-retry",
+          ...assistantSnapshot,
+        ]);
+      }
+      expect(protocolCalls).toHaveLength(1);
+      expect(protocolCalls[0].irs).toEqual([{ role: "user", content: subagentPrompt(task) }]);
+      expect(await traj.step()).toBe(true);
+      expect(protocolCalls).toHaveLength(2);
+      expect(protocolCalls[1].irs[2]).toMatchObject({
+        role: "tool-output",
+        toolCall: { toolCallId: "c1" },
+      });
+      expect(rec.modes).not.toContain("running-tool");
+      expect(traj.messages.filter(ir => ir.role === "subagent-trajectory")).toHaveLength(1);
+      await startWaitingStep(traj, "ready-for-request");
+    },
+  );
+
+  it.each([undefined, "leaf-model"])(
+    "resumes nested parents and selects each invocation's model (leaf=%s)",
+    async leafModel => {
+      let marker = "data-0";
+      const promptDataSeen: string[] = [];
+      const promptModelSeen: number[] = [];
+      const dataPrompt = (name: string) =>
+        prompt.withData<{ marker: string }>().declare(async args => {
+          expect(args.transport).toBe(transport);
+          expect(args.signal).toBeInstanceOf(AbortSignal);
+          promptDataSeen.push(`${name}:${args.data.marker}`);
+          promptModelSeen.push(args.model.contextWindow);
+          return `${name} prompt`;
+        });
+      const leaf = agent.definePermissionless({
+        systemPrompt: dataPrompt("leaf"),
+        tools: {},
+        agents: {},
+      });
+      const middle = agent.definePermissionless({
+        systemPrompt: dataPrompt("middle"),
+        tools: { search: searchTool },
+        agents: { research: leaf },
+      });
+      const root = agent.definePermissionless({
+        systemPrompt: dataPrompt("root"),
+        tools: { search: searchTool },
+        agents: { research: middle },
+      });
+      const exit = new AbortController();
+      exitControllers.push(exit);
+      const queries: string[] = [];
+      runImpl = async query => {
+        queries.push(query);
+        return query.endsWith("delegate")
+          ? ok({
+              type: "invoke-subagent",
+              name: "research",
+              message: text(query),
+              model: query === "root delegate" ? "middle-model" : leafModel,
+            })
+          : ok({ type: "output", content: text(query) });
+      };
+      const { protocol: baseProtocol, calls } = makeProtocol([
+        () =>
+          okResult(
+            assistantMessage({
+              toolCalls: [searchCall("root delegate", "c1"), searchCall("root after", "c2")],
+            }),
+          ),
+        () =>
+          okResult(
+            assistantMessage({
+              toolCalls: [searchCall("middle delegate", "c1"), searchCall("middle after", "c2")],
+            }),
+          ),
+        () => okResult(assistantMessage({ content: "leaf findings" })),
+        () => okResult(assistantMessage({ content: "middle findings" })),
+        plainOk,
+      ]);
+      const events: Array<TrajectoryEvents<typeof root>["onMessages"]> = [];
+      const resolutions: Array<Extract<
+        TreeIR<typeof root>,
+        { role: "tool-invoke-subagent" }
+      > | null> = [];
+      const models: string[] = [];
+      const scopedProtocol: Protocol<string> = async <
+        A extends Agent<any, any, any, any>,
+        Tools extends Partial<OwnToolRegistry<A>> | undefined = undefined,
+      >(
+        params: ProtocolParams<A, string, Tools>,
+      ): Promise<ProtocolResult<A, Tools>> => {
+        models.push(params.backend);
+        const result = await baseProtocol({ ...params, backend: null });
+        marker = `data-${calls.length}`;
+        return result;
+      };
+      const traj = new Trajectory({
+        agent: root,
+        model: async invocation => {
+          resolutions.push(invocation);
+          return ok({
+            provider: invocation?.model ?? "default-model",
+            model: invocation?.model ?? "default-model",
+            contextWindow:
+              invocation?.model === "middle-model"
+                ? 20_000
+                : invocation?.model === "leaf-model"
+                  ? 30_000
+                  : 10_000,
+            modalities: null,
+          });
+        },
+        toolContentTooLargeError: async () => "OUTPUT TOO LARGE",
+        messages: [],
+        getData: async () => ({ marker }),
+        protocol: scopedProtocol,
+        lowerMessages: messages => messages.map(original => ({ original, converted: original })),
+        transport,
+        abortSignal: exit.signal,
+        handler: {
+          onMessages: event => {
+            events.push(event);
+          },
+        },
+      });
+
+      expect(promptDataSeen).toEqual([]);
+      await inputControl(traj).enqueueSteering(text("run nested work"));
+      expect(await traj.step()).toBe(true);
+      expect(await traj.step()).toBe(true);
+      expect(queries).toEqual(["root delegate"]);
+      const outer = traj.messages.at(-1);
+      if (outer?.role !== "subagent-trajectory") throw new Error("Expected outer trajectory");
+      expect(await traj.step()).toBe(true);
+      expect(queries).toEqual(["root delegate", "middle delegate"]);
+      const inner = outer.ir.at(-1);
+      if (inner?.role !== "subagent-trajectory") throw new Error("Expected inner trajectory");
+      const leafEvent = events.at(-1);
+      if (leafEvent == null || leafEvent.root) throw new Error("Expected leaf event");
+      expect(leafEvent.irs.map(ir => ir.role)).toEqual([...assistantSnapshot]);
+      expect(leafEvent.irs).toEqual(inner.ir.slice(1));
+      for (let index = 0; index < leafEvent.irs.length; index++) {
+        expect(leafEvent.irs[index]).toBe(inner.ir[index + 1]);
+      }
+      expect(leafEvent.scope.parentSubagentIR).toBe(inner);
+      expect(leafEvent.scope.toplevelSubagentIR).toBe(outer);
+      expect(leafEvent.scope.path).toEqual([
+        { subagent: "research", toolCallId: "c1" },
+        { subagent: "research", toolCallId: "c1" },
+      ]);
+
+      expect(await traj.step()).toBe(true);
+      expect(queries).toEqual(["root delegate", "middle delegate", "middle after"]);
+      expect(calls[3].irs[2]).toMatchObject({
+        role: "tool-output",
+        content: text("leaf findings"),
+      });
+      expect(await traj.step()).toBe(true);
+      expect(queries).toEqual(["root delegate", "middle delegate", "middle after", "root after"]);
+      expect(calls[4].irs[2]).toMatchObject({
+        role: "tool-output",
+        content: text("middle findings"),
+      });
+      expect(calls.map(call => call.tools)).toEqual([
+        ["search"],
+        ["search"],
+        [],
+        ["search"],
+        ["search"],
+      ]);
+      expect(calls.map(call => call.systemPrompt)).toEqual([
+        "root prompt",
+        "middle prompt",
+        "leaf prompt",
+        "middle prompt",
+        "root prompt",
+      ]);
+      expect(promptDataSeen).toEqual([
+        "root:data-0",
+        "middle:data-1",
+        "leaf:data-2",
+        "middle:data-3",
+        "root:data-4",
+      ]);
+      expect(outer.ir.map(ir => ir.role)).toEqual([
+        "user",
+        ...assistantSnapshot,
+        "tool-invoke-subagent",
+        "subagent-trajectory",
+        "tool-output",
+        ...assistantSnapshot,
+      ]);
+      expect(traj.messages[5]).toBe(outer);
+      expect(outer.ir[5]).toBe(inner);
+      expect(models).toEqual([
+        "default-model",
+        "middle-model",
+        leafModel ?? "default-model",
+        "middle-model",
+        "default-model",
+      ]);
+      const leafContextWindow = leafModel == null ? 10_000 : 30_000;
+      expect(factoryModelSeen.map(model => model.contextWindow)).toEqual([
+        10_000, 10_000, 20_000, 20_000, 10_000,
+      ]);
+      expect(promptModelSeen).toEqual([10_000, 20_000, leafContextWindow, 20_000, 10_000]);
+      expect(runModelSeen.map(model => model.contextWindow)).toEqual([
+        10_000, 20_000, 20_000, 10_000,
+      ]);
+      expect(resolutions).toHaveLength(7);
+      expect(resolutions[0]).toBeNull();
+      expect(resolutions[1]).toBeNull();
+      expect(resolutions[2] === traj.messages[4]).toBe(true);
+      expect(resolutions[3] === traj.messages[4]).toBe(true);
+      expect(resolutions[4] === outer.ir[4]).toBe(true);
+      expect(resolutions[5] === traj.messages[4]).toBe(true);
+      expect(resolutions[6]).toBeNull();
+      await startWaitingStep(traj, "ready-for-request");
+    },
+  );
+
+  it.each(["tool-invoke-subagent", "subagent-trajectory"] as const)(
+    "does not start child work when quitting during the %s notification",
+    async role => {
+      const { build, exit } = makeTrajectory({
+        onMessages: async event => {
+          if (!event.irs.some(ir => ir.role === role)) return;
+          exit.abort();
+          await new Promise(resolve => setTimeout(resolve, 0));
+        },
+      });
+      const { traj, protocolCalls } = await build([
+        () =>
+          okResult(
+            assistantMessage({
+              toolCalls: [searchCall("delegate", "c1"), searchCall("after", "c2")],
+            }),
+          ),
+      ]);
+      runImpl = async () => ok({ type: "invoke-subagent", name: "research", message: text("go") });
+      await inputControl(traj).enqueueSteering(text("run"));
+      await traj.run();
+      expect(protocolCalls).toHaveLength(1);
+      expect(traj.mode.mode).toBe("aborted");
+      const children = traj.messages.filter(ir => ir.role === "subagent-trajectory");
+      expect(children).toHaveLength(role === "subagent-trajectory" ? 1 : 0);
+      if (children.length > 0) expect(children[0].ir.map(ir => ir.role)).toEqual(["user"]);
+      expect(traj.messages.filter(ir => ir.role === "tool-skip-output")).toEqual([]);
+      const recovered = makeTrajectory({ messages: JSON.parse(JSON.stringify(traj.messages)) });
+      const { traj: resumed } = await recovered.build([plainOk, plainOk]);
+      const ran: string[] = [];
+      runImpl = async query => {
+        ran.push(query);
+        return ok({ type: "output", content: text(query) });
+      };
+      expect(await resumed.step()).toBe(true);
+      expect(await resumed.step()).toBe(true);
+      expect(ran).toEqual(["after"]);
+      expect(resumed.messages.filter(ir => ir.role === "subagent-trajectory")).toHaveLength(1);
+    },
+  );
+
+  it("closes the newly inserted child when interrupted during its notification", async () => {
+    const { build } = makeTrajectory({
+      onMessages: async event => {
+        if (event.irs.some(ir => ir.role === "subagent-trajectory")) await interruptNow(traj);
+      },
+    });
+    const { traj, protocolCalls } = await build([
+      () =>
+        okResult(
+          assistantMessage({
+            toolCalls: [searchCall("delegate", "c1"), searchCall("after", "c2")],
+          }),
+        ),
+    ]);
+    runImpl = async () => ok({ type: "invoke-subagent", name: "research", message: text("go") });
+    await inputControl(traj).enqueueSteering(text("run"));
+    expect(await traj.step()).toBe(true);
+    expect(await traj.step()).toBe(true);
+    const child = traj.messages.find(ir => ir.role === "subagent-trajectory");
+    expect(child?.ir.at(-1)?.role).toBe("interrupted-by-user");
+    expect(
+      traj.messages.filter(ir => ir.role === "tool-skip-output").map(ir => ir.toolCall.toolCallId),
+    ).toEqual(["c2"]);
+    expect(protocolCalls).toHaveLength(1);
+    await startWaitingStep(traj, "ready-for-request");
+  });
+
+  it("skips unanswered tool calls when a tool throws, then rethrows", async () => {
+    const { build } = makeTrajectory();
+    const { traj } = await build([
+      () =>
+        okResult(assistantMessage({ toolCalls: [searchCall("a", "c1"), searchCall("b", "c2")] })),
+    ]);
+    runImpl = async query => {
+      if (query === "a") throw new Error("boom in tool");
+      return ok({ type: "output", content: text(query) });
+    };
+
+    inputControl(traj).enqueueSteering(text("run em"));
+    expect(await traj.step()).toBe(true);
+    await expect(traj.step()).rejects.toThrow("boom in tool");
+
+    expect(traj.messages.map(m => m.role)).toEqual([
+      "user",
+      ...assistantSnapshot,
+      "tool-skip-output",
+      "tool-skip-output",
+    ]);
+    const skip = traj.messages[4];
+    if (skip.role !== "tool-skip-output") throw new Error("impossible");
+    expect(skip.toolCall.toolCallId).toBe("c1");
+    expect(skip.reason).toBe("The tool batch failed unexpectedly, so this tool was skipped");
+  });
+
+  it("rejects a call with a marker, skips the remainder, steers, and responds again", async () => {
+    const { build, rec } = makeTrajectory({
+      permission: async () => ({ decision: "reject", steering: text("do it differently") }),
+    });
+    const { traj, protocolCalls } = await build([
+      () =>
+        okResult(assistantMessage({ toolCalls: [searchCall("a", "c1"), searchCall("b", "c2")] })),
+      plainOk,
+    ]);
+
+    inputControl(traj).enqueueSteering(text("run em"));
+    expect(await traj.step()).toBe(true);
+    expect(await traj.step()).toBe(true);
+
+    expect(rec.roles).toEqual([
+      "user",
+      ...assistantSnapshot,
+      "tool-reject",
+      "tool-skip-output",
+      "user",
+      ...assistantSnapshot,
+    ]);
+    const continuation = protocolCalls[1].irs;
+    expect(continuation.map(m => m.role)).toEqual([
+      "user",
+      "assistant",
+      "tool-skip-output",
+      "tool-skip-output",
+      "user",
+    ]);
+    const skip = continuation[3];
+    if (skip.role !== "tool-skip-output") throw new Error("impossible");
+    expect(skip.reason).toBe("A previous tool call was rejected, so this tool was skipped");
+    const steering = continuation[4];
+    if (steering.role !== "user") throw new Error("impossible");
+    expect(steering.content).toEqual(text("do it differently"));
+    await startWaitingStep(traj, "ready-for-request");
+    expect(traj.mode.mode).toBe("ready-for-request");
+  });
+
+  it("runs every call in an allowed batch, gating each one", async () => {
+    const queries: string[] = [];
+    const { build, rec } = makeTrajectory();
+    const { traj } = await build([
+      () =>
+        okResult(
+          assistantMessage({
+            toolCalls: [searchCall("a", "c1"), searchCall("b", "c2"), searchCall("c", "c3")],
+          }),
+        ),
+      plainOk,
+    ]);
+    runImpl = async query => {
+      queries.push(query);
+      return ok({ type: "output", content: text(query) });
+    };
+
+    inputControl(traj).enqueueSteering(text("run em all"));
+    expect(await traj.step()).toBe(true);
+    expect(await traj.step()).toBe(true);
+
+    expect(queries).toEqual(["a", "b", "c"]);
+    await startWaitingStep(traj, "ready-for-request");
+    expect(rec.modes).toEqual([
+      "responding",
+      "tool-call",
+      "tool-call-permission",
+      "running-tool",
+      "tool-call-permission",
+      "running-tool",
+      "tool-call-permission",
+      "running-tool",
+      "responding",
+      "ready-for-request",
+    ]);
+    expect(rec.roles).toEqual([
+      "user",
+      ...assistantSnapshot,
+      "tool-output",
+      "tool-output",
+      "tool-output",
+      ...assistantSnapshot,
+    ]);
+    expect(traj.mode.mode).toBe("ready-for-request");
+  });
+
+  it("keeps settled outputs when a later call is rejected", async () => {
+    const { build, rec } = makeTrajectory({
+      permission: async toolCall =>
+        toolCall.name === "search" && toolCall.parsed.query === "b"
+          ? { decision: "reject", steering: text("not b") }
+          : { decision: "allow" },
+    });
+    const { traj, protocolCalls } = await build([
+      () =>
+        okResult(
+          assistantMessage({
+            toolCalls: [searchCall("a", "c1"), searchCall("b", "c2"), searchCall("c", "c3")],
+          }),
+        ),
+      plainOk,
+    ]);
+
+    inputControl(traj).enqueueSteering(text("run em"));
+    expect(await traj.step()).toBe(true);
+    expect(await traj.step()).toBe(true);
+
+    expect(rec.roles).toEqual([
+      "user",
+      ...assistantSnapshot,
+      "tool-output",
+      "tool-reject",
+      "tool-skip-output",
+      "user",
+      ...assistantSnapshot,
+    ]);
+    const continuation = protocolCalls[1].irs;
+    expect(continuation.map(m => m.role)).toEqual([
+      "user",
+      "assistant",
+      "tool-output",
+      "tool-skip-output",
+      "tool-skip-output",
+      "user",
+    ]);
+    const loweredReject = continuation[3];
+    if (loweredReject.role !== "tool-skip-output") throw new Error("impossible");
+    expect(loweredReject.reason).toBe("Tool call rejected by user.");
+    const skip = continuation[4];
+    if (skip.role !== "tool-skip-output") throw new Error("impossible");
+    expect(skip.reason).toBe("A previous tool call was rejected, so this tool was skipped");
+    await startWaitingStep(traj, "ready-for-request");
+    expect(traj.mode.mode).toBe("ready-for-request");
+  });
+
+  it("interrupt mid-batch keeps settled output, skips the rest, and waits for input", async () => {
+    const { build, rec } = makeTrajectory();
+    const { traj, protocolCalls } = await build([
+      () =>
+        okResult(
+          assistantMessage({
+            toolCalls: [searchCall("a", "c1"), searchCall("b", "c2"), searchCall("c", "c3")],
+          }),
+        ),
+    ]);
+    runImpl = async query => {
+      if (query === "b") interruptNow(traj);
+      return ok({ type: "output", content: text(query) });
+    };
+
+    inputControl(traj).enqueueSteering(text("run em all"));
+    expect(await traj.step()).toBe(true);
+    expect(await traj.step()).toBe(true);
+
+    expect(rec.roles).toEqual([
+      "user",
+      ...assistantSnapshot,
+      "tool-output",
+      "tool-output",
+      "tool-skip-output",
+    ]);
+    const skip = traj.messages[6];
+    if (skip.role !== "tool-skip-output") throw new Error("impossible");
+    expect(skip.reason).toBe("The user aborted the response, so this tool was skipped");
+    expect(skip.toolCall.toolCallId).toBe("c3");
+    await startWaitingStep(traj, "ready-for-request");
+    expect(traj.mode.mode).toBe("ready-for-request");
+    expect(protocolCalls.length).toBe(1);
+  });
+
+  it("interrupt at the permission gate skips the whole batch and waits for input", async () => {
+    const { build, rec } = makeTrajectory({
+      permission: async () => {
+        interruptNow(traj);
+        return { decision: "allow" };
+      },
+    });
+    const { traj, protocolCalls } = await build([
+      () =>
+        okResult(assistantMessage({ toolCalls: [searchCall("a", "c1"), searchCall("b", "c2")] })),
+    ]);
+
+    inputControl(traj).enqueueSteering(text("run em"));
+    expect(await traj.step()).toBe(true);
+    expect(await traj.step()).toBe(true);
+
+    expect(rec.roles).toEqual([
+      "user",
+      ...assistantSnapshot,
+      "tool-skip-output",
+      "tool-skip-output",
+    ]);
+    await startWaitingStep(traj, "ready-for-request");
+    expect(traj.mode.mode).toBe("ready-for-request");
+    expect(protocolCalls.length).toBe(1);
+  });
+
+  it("returns false when the exit signal fires while waiting for input", async () => {
+    const { build, exit } = makeTrajectory();
+    const { traj, protocolCalls } = await build([]);
+
+    exit.abort();
+    expect(await traj.step()).toBe(false);
+    expect(protocolCalls.length).toBe(0);
+  });
+
+  it("run() drives steps until the exit signal and lands aborted", async () => {
+    const { build, exit } = makeTrajectory();
+    const { traj } = await build([]);
+
+    exit.abort();
+    await traj.run();
+    expect(traj.mode.mode).toBe("aborted");
+  });
+
+  it.each([false, true])(
+    "quit mid-batch preserves pending calls and drops late results (rejects=%s)",
+    async rejects => {
+      const { build, rec, exit } = makeTrajectory();
+      const { traj, protocolCalls } = await build([
+        () =>
+          okResult(
+            assistantMessage({
+              toolCalls: [searchCall("a", "c1"), searchCall("b", "c2"), searchCall("c", "c3")],
+            }),
+          ),
+      ]);
+      runImpl = async query => {
+        if (query === "b") {
+          exit.abort();
+          await new Promise<void>(resolve => setTimeout(resolve, 0));
+          if (rejects) throw new DOMException("Quit", "AbortError");
+        }
+        return ok({ type: "output", content: text(query) });
+      };
+      await inputControl(traj).enqueueSteering(text("run em"));
+      await traj.run();
+      expect(rec.roles).toEqual(["user", ...assistantSnapshot, "tool-output"]);
+      expect(traj.mode.mode).toBe("aborted");
+      expect(protocolCalls).toHaveLength(1);
+
+      const recovered = makeTrajectory({ messages: JSON.parse(JSON.stringify(traj.messages)) });
+      const { traj: resumed } = await recovered.build([plainOk]);
+      const ran: string[] = [];
+      runImpl = async query => {
+        ran.push(query);
+        return ok({ type: "output", content: text(query) });
+      };
+      expect(await resumed.step()).toBe(true);
+      expect(ran).toEqual(["b", "c"]);
+    },
+  );
+
+  it("quit at a permission gate preserves the entire batch and checks permission again on reload", async () => {
+    const decision = Promise.withResolvers<PermissionDecision>();
+    const { build, rec, exit } = makeTrajectory({ permission: () => decision.promise });
+    const { traj, protocolCalls } = await build([
+      () =>
+        okResult(assistantMessage({ toolCalls: [searchCall("a", "c1"), searchCall("b", "c2")] })),
+    ]);
+    await inputControl(traj).enqueueSteering(text("run em"));
+    const running = traj.run();
+    while (!rec.modes.includes("tool-call-permission"))
+      await new Promise(resolve => setTimeout(resolve, 0));
+    exit.abort();
+    await running;
+    const saved = JSON.stringify(traj.messages);
+    decision.resolve({ decision: "allow" });
+    await new Promise(resolve => setTimeout(resolve, 0));
+    expect(JSON.stringify(traj.messages)).toBe(saved);
+    expect(rec.roles).toEqual(["user", ...assistantSnapshot]);
+    expect(traj.mode.mode).toBe("aborted");
+    expect(protocolCalls).toHaveLength(1);
+
+    const permissions: string[] = [];
+    const recovered = makeTrajectory({
+      messages: JSON.parse(saved),
+      permission: async call => {
+        permissions.push(call.toolCallId);
+        return { decision: "allow" };
+      },
+    });
+    const { traj: resumed } = await recovered.build([plainOk]);
+    expect(await resumed.step()).toBe(true);
+    expect(permissions).toEqual(["c1", "c2"]);
+  });
+
+  it("quit mid-batch keeps earlier answers and leaves only the unanswered calls pending", async () => {
+    let parked = false;
+    const { build, rec, exit } = makeTrajectory({
+      permission: async toolCall => {
+        if (toolCall.toolCallId === "c2") {
+          parked = true;
+          await new Promise(() => {});
+        }
+        return { decision: "allow" };
+      },
+    });
+    const { traj, protocolCalls } = await build([
+      () =>
+        okResult(assistantMessage({ toolCalls: [searchCall("a", "c1"), searchCall("b", "c2")] })),
+    ]);
+    await inputControl(traj).enqueueSteering(text("run em"));
+    const running = traj.run();
+    while (!parked) await new Promise(resolve => setTimeout(resolve, 0));
+    exit.abort();
+    await running;
+    expect(rec.roles).toEqual(["user", ...assistantSnapshot, "tool-output"]);
+    expect(traj.mode.mode).toBe("aborted");
+    expect(protocolCalls).toHaveLength(1);
+  });
+
+  for (const operation of ["response", "compaction"] as const) {
+    for (const childScope of [false, true]) {
+      it.each([false, true])(
+        `quit during ${childScope ? "child" : "root"} ${operation} preserves the last commit (rejects=%s)`,
+        async rejects => {
+          const content = operation === "compaction" ? "x".repeat(12000) : "continue";
+          const child: Extract<AgentIR<TestAgent>, { role: "subagent-trajectory" }> = {
+            role: "subagent-trajectory",
+            subagent: "research",
+            toolCall: searchCall("delegate", "delegation"),
+            task: text("inspect"),
+            ir: [{ role: "user", content: text(content) }],
+          };
+          const messages: Array<AgentIR<TestAgent>> = childScope
+            ? [
+                assistantMessage({ toolCalls: [child.toolCall, searchCall("parent", "pending")] }),
+                {
+                  role: "tool-invoke-subagent",
+                  subagent: "research",
+                  toolCall: child.toolCall,
+                  message: child.task,
+                },
+                child,
+              ]
+            : [{ role: "user", content: text(content) }];
+          const saved = JSON.stringify(messages);
+          const { build, rec, exit } = makeTrajectory({ messages, contextWindow: 3000 });
+          const { traj, protocolCalls } = await build([
+            async emit => {
+              await emit("partial", "content");
+              exit.abort();
+              await emit("late", "content");
+              if (rejects) throw new DOMException("Quit", "AbortError");
+              return okResult(assistantMessage({ content: "late result" }));
+            },
+          ]);
+          await traj.run();
+          expect(JSON.stringify(traj.messages)).toBe(saved);
+          expect(rec.roles).toEqual([]);
+          expect(traj.mode.mode).toBe("aborted");
+          expect(protocolCalls).toHaveLength(1);
+          if (operation === "response") expect(rec.arc.responseProgress).toBe(1);
+
+          const recovered = makeTrajectory({ messages: JSON.parse(saved), contextWindow: 3000 });
+          const { traj: resumed, protocolCalls: resumedCalls } = await recovered.build([
+            plainOk,
+            plainOk,
+            plainOk,
+          ]);
+          expect(resumed.mode.root).toBe(!childScope);
+          if (operation === "compaction") expect(await resumed.step()).toBe(true);
+          expect(await resumed.step()).toBe(true);
+          if (childScope) expect(await resumed.step()).toBe(true);
+          expect(resumedCalls).toHaveLength(
+            1 + Number(childScope) + Number(operation === "compaction"),
+          );
+          await startWaitingStep(resumed, "ready-for-request");
+        },
+      );
+    }
+  }
+
+  it.each(["json", "tool"] as const)(
+    "quit during %s correction discards the unfinished attempt even if correction rejects",
+    async correction => {
+      const { build, rec, exit } = makeTrajectory({
+        messages: [{ role: "user", content: text("run") }],
+        errorCorrection: {
+          json: async () => {
+            exit.abort();
+            throw new DOMException("Quit", "AbortError");
+          },
+          tools: {
+            search: async () => {
+              exit.abort();
+              throw new DOMException("Quit", "AbortError");
+            },
+          },
+        },
+      });
+      const { traj } = await build([
+        async (_emit, params) => {
+          if (correction === "json") {
+            if (params.autofixJson == null) throw new Error("Expected JSON correction");
+            await params.autofixJson("{", params.abortSignal);
+          }
+          return okResult(
+            assistantMessage({
+              toolCalls: [searchCall("invalid", "bad"), searchCall("sibling", "sibling")],
+            }),
+          );
+        },
+      ]);
+      await traj.run();
+      expect(rec.roles).toEqual([]);
+      expect(traj.messages).toEqual([{ role: "user", content: text("run") }]);
+      expect(traj.mode.mode).toBe("aborted");
+    },
+  );
+
+  it("quit during retry waiting preserves the failed snapshot for reload", async () => {
+    const { build, rec, exit } = makeTrajectory({
+      requestErrorRetries: { maxRetryCount: 1, backoffMs: 60_000 },
+    });
+    const { traj, protocolCalls } = await build([() => err(requestError("retry me"))]);
+    await inputControl(traj).enqueueSteering(text("run"));
+    await traj.step();
+    const saved = JSON.stringify(traj.messages);
+    const waiting = await startWaitingStep(traj, "request-error-retrying");
+    exit.abort();
+    expect(await waiting.finished).toBe(false);
+    await traj.run();
+    expect(JSON.stringify(traj.messages)).toBe(saved);
+    expect(rec.interruptions).toEqual([]);
+    expect(protocolCalls).toHaveLength(1);
+    const recovered = makeTrajectory({ messages: JSON.parse(saved) });
+    const { traj: resumed } = await recovered.build([plainOk]);
+    expect(resumed.mode.mode).toBe("responding");
+    expect(await resumed.step()).toBe(true);
+  });
+
+  it("quit drains a commit already being persisted without closing its pending tool calls", async () => {
+    const entered = Promise.withResolvers<void>();
+    const release = Promise.withResolvers<void>();
+    const { build, rec, exit } = makeTrajectory({
+      onMessages: async event => {
+        if (!event.irs.some(ir => ir.role === "assistant")) return;
+        exit.abort();
+        entered.resolve();
+        await release.promise;
+      },
+    });
+    const { traj } = await build([
+      () => okResult(assistantMessage({ toolCalls: [searchCall("pending", "c1")] })),
+    ]);
+    await inputControl(traj).enqueueSteering(text("run"));
+    let finished = false;
+    const running = (async () => {
+      await traj.run();
+      finished = true;
+    })();
+    await entered.promise;
+    await new Promise(resolve => setTimeout(resolve, 0));
+    expect(finished).toBe(false);
+    release.resolve();
+    await running;
+    expect(rec.roles).toEqual(["user", ...assistantSnapshot]);
+    expect(traj.mode.mode).toBe("aborted");
+  });
+
+  it("returns false when the exit signal fires while parked in an error mode", async () => {
+    const { build, exit } = makeTrajectory();
+    const { traj } = await build([() => err(requestError("boom"))]);
+
+    inputControl(traj).enqueueSteering(text("go"));
+    expect(await traj.step()).toBe(true);
+    const waiting = await startWaitingStep(traj, "request-error");
+    expect(traj.mode.mode).toBe("request-error");
+
+    exit.abort();
+    expect(await waiting.finished).toBe(false);
+    await traj.run();
+    expect(traj.mode.mode).toBe("aborted");
+  });
+
+  it("interrupt mid-response keeps the partial assistant message and waits for input", async () => {
+    const { build, rec } = makeTrajectory();
+    const queue: ProtocolQueueItem[] = [];
+    const { traj, protocolCalls } = await build(queue);
+
+    inputControl(traj).enqueueSteering(text("hi"));
+    queue.push(async onTokens => {
+      await onTokens("partial answer", "content");
+      interruptNow(traj);
+      return okResult(assistantMessage({ content: "full answer" }));
+    }, plainOk);
+
+    expect(await traj.step()).toBe(true);
+    const waiting = await startWaitingStep(traj, "ready-for-request");
+    expect(rec.roles).toEqual([
+      "user",
+      "request-snapshot-begin",
+      "assistant",
+      "interrupted-by-user",
+      "request-snapshot-end",
+    ]);
+    const partial = traj.messages[2];
+    if (partial.role !== "assistant") throw new Error("impossible");
+    expect(partial.content).toBe("partial answer");
+    // The first streamed token flips the responding mode's receivedTokens, doubling the
+    // modeChange: request start (false), then first token (true).
+    expect(
+      rec.modeObjs.filter(mode => mode.mode === "responding").map(m => m.receivedTokens),
+    ).toEqual([false, true]);
+    expect(rec.modes).toEqual(["responding", "responding", "ready-for-request"]);
+    expect(rec.arc.responseProgress).toBe(1);
+    expect(rec.arc.onResponseHeaders).toBe(1);
+    expect(protocolCalls.length).toBe(1);
+
+    inputControl(traj).enqueueSteering(text("again"));
+    expect(await waiting.finished).toBe(true);
+    expect(protocolCalls.length).toBe(2);
+    await startWaitingStep(traj, "ready-for-request");
+    expect(traj.mode.mode).toBe("ready-for-request");
+  });
+
+  it("interrupt with only reasoning tokens records just the interruption and waits for input", async () => {
+    const { build, rec } = makeTrajectory();
+    const queue: ProtocolQueueItem[] = [];
+    const { traj, protocolCalls } = await build(queue);
+
+    inputControl(traj).enqueueSteering(text("hi"));
+    queue.push(async onTokens => {
+      await onTokens("thinking", "reasoning");
+      interruptNow(traj);
+      return okResult(assistantMessage({ content: "unreached full answer" }));
+    }, plainOk);
+
+    expect(await traj.step()).toBe(true);
+    const waiting = await startWaitingStep(traj, "ready-for-request");
+    expect(rec.roles).toEqual([
+      "user",
+      "request-snapshot-begin",
+      "interrupted-by-user",
+      "request-snapshot-end",
+    ]);
+    const marker = traj.messages[2];
+    if (marker.role !== "interrupted-by-user") throw new Error("impossible");
+    expect(marker.reason).toBe("The user interrupted the response.");
+    // The reasoning token still flips receivedTokens before the interrupt lands.
+    expect(rec.modes).toEqual(["responding", "responding", "ready-for-request"]);
+    expect(rec.arc.rollbacks).toBe(1);
+    expect(protocolCalls.length).toBe(1);
+
+    inputControl(traj).enqueueSteering(text("again"));
+    expect(await waiting.finished).toBe(true);
+    expect(protocolCalls.length).toBe(2);
+    await startWaitingStep(traj, "ready-for-request");
+    expect(traj.mode.mode).toBe("ready-for-request");
+  });
+
+  it("interrupt mid-turn with only reasoning tokens discards the tokens and waits for input", async () => {
+    const { build, rec } = makeTrajectory();
+    const { traj } = await build([
+      () => okResult(assistantMessage({ toolCalls: [searchCall("a", "c1")] })),
+      async onTokens => {
+        await onTokens("thinking", "reasoning");
+        interruptNow(traj);
+        return okResult(assistantMessage({ content: "unreached full answer" }));
+      },
+    ]);
+
+    inputControl(traj).enqueueSteering(text("run"));
+    expect(await traj.step()).toBe(true);
+    expect(await traj.step()).toBe(true);
+
+    expect(rec.roles).toEqual([
+      "user",
+      ...assistantSnapshot,
+      "tool-output",
+      "request-snapshot-begin",
+      "interrupted-by-user",
+      "request-snapshot-end",
+    ]);
+    expect(rec.arc.rollbacks).toBe(1);
+    await startWaitingStep(traj, "ready-for-request");
+    expect(traj.mode.mode).toBe("ready-for-request");
+  });
+
+  it("rewindTo trims from a target IR and restores its content for editing", async () => {
+    const { build, rec } = makeTrajectory();
+    const queue: ProtocolQueueItem[] = [];
+    const { traj, protocolCalls } = await build(queue);
+
+    queue.push(
+      plainOk,
+      async onTokens => {
+        await onTokens("thinking", "reasoning");
+        interruptNow(traj);
+        return okResult(assistantMessage({ content: "unreached" }));
+      },
+      plainOk,
+    );
+
+    inputControl(traj).enqueueSteering(text("first"));
+    expect(await traj.step()).toBe(true);
+    const firstWaiting = await startWaitingStep(traj, "ready-for-request");
+    expect(rec.roles).toEqual(["user", ...assistantSnapshot]);
+
+    inputControl(traj).enqueueSteering(text("second"));
+    expect(await firstWaiting.finished).toBe(true);
+    const waiting = await startWaitingStep(traj, "ready-for-request");
+    expect(rec.roles).toEqual([
+      "user",
+      ...assistantSnapshot,
+      "user",
+      "request-snapshot-begin",
+      "interrupted-by-user",
+      "request-snapshot-end",
+    ]);
+
+    const mode = traj.mode;
+    if (mode.mode !== "ready-for-request") throw new Error("impossible");
+    const target = traj.messages[4];
+    await mode.control.rewindTo(target);
+
+    expect(traj.messages.length).toBe(4);
+    expect(rec.rewinds.length).toBe(1);
+    expect(rec.rewinds[0].removed.map(ir => ir.role)).toEqual([
+      "user",
+      "request-snapshot-begin",
+      "interrupted-by-user",
+      "request-snapshot-end",
+    ]);
+    expect(rec.rewinds[0].content).toEqual(text("second"));
+    expect(rec.roles).toEqual([
+      "user",
+      ...assistantSnapshot,
+      "user",
+      "request-snapshot-begin",
+      "interrupted-by-user",
+      "request-snapshot-end",
+    ]);
+    expect(traj.mode.mode).toBe("ready-for-request");
+
+    // Unknown targets are no-ops.
+    await mode.control.rewindTo({ role: "user", content: text("ghost") });
+    expect(traj.messages.length).toBe(4);
+    expect(rec.rewinds.length).toBe(1);
+
+    inputControl(traj).enqueueSteering(text("edited second"));
+    expect(await waiting.finished).toBe(true);
+    expect(protocolCalls.length).toBe(3);
+    await startWaitingStep(traj, "ready-for-request");
+    expect(rec.roles).toEqual([
+      "user",
+      ...assistantSnapshot,
+      "user",
+      "request-snapshot-begin",
+      "interrupted-by-user",
+      "request-snapshot-end",
+      "user",
+      ...assistantSnapshot,
+    ]);
+  });
+
+  it("rectifies a request error by retrying with a fresh resolution", async () => {
+    const { build, rec } = makeTrajectory();
+    const { traj, protocolCalls } = await build([() => err(requestError("boom")), plainOk]);
+
+    inputControl(traj).enqueueSteering(text("go"));
+    expect(await traj.step()).toBe(true);
+    const waiting = await startWaitingStep(traj, "request-error");
+    expect(rec.modes).toEqual(["responding", "request-error"]);
+
+    rectifyControl(traj).retry();
+    expect(await waiting.finished).toBe(true);
+    await startWaitingStep(traj, "ready-for-request");
+
+    expect(protocolCalls.length).toBe(2);
+    expect(rec.modelCalls).toBe(2);
+    expect(factoryModelSeen).toHaveLength(2);
+    expect(rec.modes).toEqual(["responding", "request-error", "responding", "ready-for-request"]);
+  });
+
+  it("rewinds past the last user message, fires the rewind event once, and ignores stale rewinds", async () => {
+    const { build, rec } = makeTrajectory();
+    const { traj, protocolCalls } = await build([
+      async onTokens => {
+        await onTokens("partial response", "content");
+        return err(requestError("boom"));
+      },
+      plainOk,
+    ]);
+
+    const readyControl = inputControl(traj);
+    readyControl.enqueueSteering(text("please do the thing"));
+    expect(await traj.step()).toBe(true);
+    expect(rec.roles).toEqual([
+      "user",
+      "request-snapshot-begin",
+      "assistant",
+      "request-error",
+      "request-snapshot-end",
+    ]);
+    const waiting = await startWaitingStep(traj, "request-error");
+
+    readyControl.enqueueSteering(text("staged while parked"));
+    const control = rectifyControl(traj);
+    await control.rewind();
+    await control.rewind();
+    while (traj.mode.mode !== "ready-for-request") {
+      await new Promise(resolve => setTimeout(resolve, 0));
+    }
+
+    expect(rec.rewinds.length).toBe(1);
+    expect(rec.rewinds[0].content).toEqual(text("please do the thing"));
+    expect(rec.rewinds[0].removed.map(ir => ir.role)).toEqual([
+      "user",
+      "request-snapshot-begin",
+      "assistant",
+      "request-error",
+      "request-snapshot-end",
+    ]);
+    expect(rec.timeline.filter(e => e.startsWith("steering"))).toEqual([
+      "steering:1u0q",
+      "steering:0u0q",
+      "steering:0u1q",
+      "steering:0u0q",
+    ]);
+    expect(traj.messages.length).toBe(0);
+    expect(traj.mode.mode).toBe("ready-for-request");
+    expect(protocolCalls.length).toBe(1);
+
+    inputControl(traj).enqueueSteering(text("edited request"));
+    expect(await waiting.finished).toBe(true);
+    expect(protocolCalls[1].irs.map(m => m.role)).toEqual(["user"]);
+  });
+
+  it("retries auth errors with a fresh resolution", async () => {
+    const { build, rec } = makeTrajectory();
+    const { traj, protocolCalls } = await build([
+      () => err({ type: "auth-error", authError: "no key" }),
+      plainOk,
+    ]);
+
+    inputControl(traj).enqueueSteering(text("auth please"));
+    expect(await traj.step()).toBe(true);
+    const waiting = await startWaitingStep(traj, "auth-error");
+
+    retryControl(traj).retry();
+    expect(await waiting.finished).toBe(true);
+    await startWaitingStep(traj, "ready-for-request");
+
+    expect(protocolCalls.length).toBe(2);
+    expect(rec.modelCalls).toBe(2);
+    expect(traj.mode.mode).toBe("ready-for-request");
+  });
+
+  it("clears auth errors back to waiting for input", async () => {
+    const { build } = makeTrajectory();
+    const { traj, protocolCalls } = await build([
+      () => err({ type: "auth-error", authError: "no key" }),
+    ]);
+
+    inputControl(traj).enqueueSteering(text("auth please"));
+    expect(await traj.step()).toBe(true);
+    await startWaitingStep(traj, "auth-error");
+
+    retryControl(traj).clear?.();
+    while (traj.mode.mode !== "ready-for-request") {
+      await new Promise(resolve => setTimeout(resolve, 0));
+    }
+
+    expect(protocolCalls.length).toBe(1);
+    expect(traj.mode.mode).toBe("ready-for-request");
+  });
+
+  it("maps a model-resolution auth failure to the auth-error mode without a protocol call", async () => {
+    let failing = true;
+    const { build, rec } = makeTrajectory({
+      modelAuthError: () => (failing ? "no key" : undefined),
+    });
+    const { traj, protocolCalls } = await build([plainOk]);
+
+    inputControl(traj).enqueueSteering(text("hi"));
+    expect(await traj.step()).toBe(true);
+
+    expect(protocolCalls.length).toBe(0);
+    const waiting = await startWaitingStep(traj, "auth-error");
+    expect(rec.modes).toEqual(["auth-error"]);
+    expect(traj.mode).toEqual(expect.objectContaining({ mode: "auth-error", authError: "no key" }));
+
+    failing = false;
+    retryControl(traj).retry();
+    expect(await waiting.finished).toBe(true);
+    await startWaitingStep(traj, "ready-for-request");
+
+    expect(protocolCalls.length).toBe(1);
+    expect(rec.modelCalls).toBe(2);
+    expect(traj.mode.mode).toBe("ready-for-request");
+  });
+
+  it.each(["retry", "clear"] as const)(
+    "%s resumes runtime loading before running pending tools or folding queued steering",
+    async resolution => {
+      let failing = false;
+      const queries: string[] = [];
+      const { build, rec } = makeTrajectory({
+        modelAuthError: () => (failing ? "credentials changed" : undefined),
+      });
+      const { traj, protocolCalls } = await build([
+        () => okResult(assistantMessage({ toolCalls: [searchCall("cats", "c1")] })),
+        plainOk,
+      ]);
+      runImpl = async query => {
+        queries.push(query);
+        return ok({ type: "output", content: text(query) });
+      };
+
+      inputControl(traj).enqueueSteering(text("run"));
+      expect(await traj.step()).toBe(true);
+      inputControl(traj).enqueueSteering(text("after the batch"));
+      failing = true;
+      expect(await traj.step()).toBe(true);
+      const waiting = await startWaitingStep(traj, "auth-error");
+      expect(traj.mode).toEqual(
+        expect.objectContaining({
+          mode: "auth-error",
+          authError: "credentials changed",
+        }),
+      );
+      expect(queries).toEqual([]);
+      expect(protocolCalls.length).toBe(1);
+      expect(rec.roles).toEqual(["user", ...assistantSnapshot, "auth-error"]);
+      expect(rec.modelCalls).toBe(2);
+
+      failing = false;
+      const control = retryControl(traj);
+      if (resolution === "retry") control.retry();
+      else control.clear?.();
+      expect(await waiting.finished).toBe(true);
+      expect(queries).toEqual(["cats"]);
+      expect(rec.roles).toEqual([
+        "user",
+        ...assistantSnapshot,
+        "auth-error",
+        "error-retry",
+        "tool-output",
+        "user",
+        ...assistantSnapshot,
+      ]);
+      expect(protocolCalls.length).toBe(2);
+      expect(rec.modelCalls).toBe(3);
+      expect(factoryModelSeen).toHaveLength(2);
+    },
+  );
+
+  it("quit after a batch runtime-loading error preserves pending calls without running them", async () => {
+    let failing = false;
+    const { build, rec, exit } = makeTrajectory({
+      modelAuthError: () => (failing ? "no key" : undefined),
+    });
+    const { traj, protocolCalls } = await build([
+      () =>
+        okResult(
+          assistantMessage({
+            toolCalls: [searchCall("a", "c1"), searchCall("b", "c2")],
+          }),
+        ),
+    ]);
+    runImpl = async () => {
+      throw new Error("must not run");
+    };
+
+    inputControl(traj).enqueueSteering(text("run"));
+    expect(await traj.step()).toBe(true);
+    failing = true;
+    expect(await traj.step()).toBe(true);
+    await startWaitingStep(traj, "auth-error");
+    expect(traj.mode.mode).toBe("auth-error");
+
+    exit.abort();
+    await traj.run();
+    expect(traj.mode.mode).toBe("aborted");
+    expect(rec.roles).toEqual(["user", ...assistantSnapshot, "auth-error"]);
+    expect(traj.messages.filter(ir => ir.role === "tool-skip-output")).toEqual([]);
+    expect(protocolCalls.length).toBe(1);
+  });
+
+  it("maps retryable error finishes to retry modes and drives retries", async () => {
+    const { build, rec } = makeTrajectory();
+    const { traj } = await build([() => err(rateLimitError()), plainOk]);
+
+    inputControl(traj).enqueueSteering(text("hi"));
+    expect(await traj.step()).toBe(true);
+    const waiting = await startWaitingStep(traj, "rate-limit-error");
+    expect(rec.modes).toEqual(["responding", "rate-limit-error"]);
+
+    retryControl(traj).retry();
+    expect(await waiting.finished).toBe(true);
+    await startWaitingStep(traj, "ready-for-request");
+
+    expect(rec.modes).toEqual([
+      "responding",
+      "rate-limit-error",
+      "responding",
+      "ready-for-request",
+    ]);
+  });
+
+  it("maps exhausted retry budgets to the matching error mode", async () => {
+    const first = makeTrajectory({ requestErrorRetries: { maxRetryCount: 1, backoffMs: 1 } });
+    const firstBuild = await first.build([
+      () => err(rateLimitError()),
+      () => err(rateLimitError()),
+    ]);
+
+    inputControl(firstBuild.traj).enqueueSteering(text("hi"));
+    expect(await firstBuild.traj.step()).toBe(true);
+    expect(firstBuild.protocolCalls).toHaveLength(1);
+    expect(await firstBuild.traj.step()).toBe(true);
+    expect(firstBuild.protocolCalls).toHaveLength(2);
+    expect(first.rec.arc.requestRetry).toBe(1);
+    await startWaitingStep(firstBuild.traj, "rate-limit-error");
+    expect(firstBuild.traj.mode).toEqual(
+      expect.objectContaining({ mode: "rate-limit-error", requestError: "slow down" }),
+    );
+
+    const second = makeTrajectory({ requestErrorRetries: { maxRetryCount: 1, backoffMs: 1 } });
+    const secondBuild = await second.build([
+      () => err(requestError("boom")),
+      () => err(requestError("boom")),
+    ]);
+
+    inputControl(secondBuild.traj).enqueueSteering(text("hi"));
+    expect(await secondBuild.traj.step()).toBe(true);
+    expect(secondBuild.protocolCalls).toHaveLength(1);
+    expect(await secondBuild.traj.step()).toBe(true);
+    expect(secondBuild.protocolCalls).toHaveLength(2);
+    expect(second.rec.arc.requestRetry).toBe(1);
+    await startWaitingStep(secondBuild.traj, "request-error");
+    expect(secondBuild.traj.mode).toEqual(
+      expect.objectContaining({ mode: "request-error", requestError: "boom", curl: "curl" }),
+    );
+  });
+
+  it("maps payment errors to a retry mode and recovers", async () => {
+    const { build, rec } = makeTrajectory();
+    const { traj, protocolCalls } = await build([
+      () =>
+        err({
+          type: "payment-error",
+          requestError: "pay up",
+          curl: "curl",
+          headers: new Headers(),
+        }),
+      plainOk,
+    ]);
+
+    inputControl(traj).enqueueSteering(text("hi"));
+    expect(await traj.step()).toBe(true);
+    const waiting = await startWaitingStep(traj, "payment-error");
+    expect(rec.modes).toEqual(["responding", "payment-error"]);
+
+    retryControl(traj).retry();
+    expect(await waiting.finished).toBe(true);
+    await startWaitingStep(traj, "ready-for-request");
+
+    expect(protocolCalls.length).toBe(2);
+    expect(rec.modes).toEqual(["responding", "payment-error", "responding", "ready-for-request"]);
+  });
+
+  it("announces request-error-retrying while backing off, then recovers", async () => {
+    const { build, rec } = makeTrajectory({
+      requestErrorRetries: { maxRetryCount: 1, backoffMs: 1 },
+    });
+    const { traj, protocolCalls } = await build([() => err(requestError("boom")), plainOk]);
+
+    inputControl(traj).enqueueSteering(text("hi"));
+    expect(await traj.step()).toBe(true);
+    expect(protocolCalls).toHaveLength(1);
+    expect(rec.arc.requestRetry).toBe(0);
+    expect(rec.roles).toEqual([
+      "user",
+      "request-snapshot-begin",
+      "request-error",
+      "request-snapshot-end",
+    ]);
+    expect(await traj.step()).toBe(true);
+
+    expect(protocolCalls.length).toBe(2);
+    await startWaitingStep(traj, "ready-for-request");
+    expect(rec.modes).toEqual([
+      "responding",
+      "request-error-retrying",
+      "responding",
+      "ready-for-request",
+    ]);
+    expect(rec.modeObjs[1]).toEqual(
+      expect.objectContaining({ error: "boom", attempt: 1, delayMs: 1 }),
+    );
+    expect(rec.arc.requestRetry).toBe(1);
+    expect(rec.arc.startResponse).toBe(2);
+    expect(traj.mode.mode).toBe("ready-for-request");
+  });
+
+  it("maps validation budget exhaustion to a request-error mode", async () => {
+    const { build, rec } = makeTrajectory({ validationRetries: 0 });
+    const { traj, protocolCalls } = await build([
+      () => okResult(assistantMessage({ toolCalls: [searchCall("invalid", "c1")] })),
+    ]);
+
+    inputControl(traj).enqueueSteering(text("run"));
+    expect(await traj.step()).toBe(true);
+
+    expect(rec.roles).toEqual([
+      "user",
+      "request-snapshot-begin",
+      "assistant",
+      "tool-validation-error",
+      "request-snapshot-end",
+    ]);
+    await startWaitingStep(traj, "request-error");
+    expect(traj.mode).toEqual(
+      expect.objectContaining({
+        mode: "request-error",
+        requestError: "The model repeatedly produced invalid tool calls",
+        curl: null,
+      }),
+    );
+    expect(protocolCalls.length).toBe(1);
+  });
+
+  it("announces autofix-tool and runs the corrected call", async () => {
+    const queries: string[] = [];
+    const { build, rec } = makeTrajectory({
+      errorCorrection: {
+        tools: {
+          search: async () => ({ query: "fixed" }),
+        },
+      },
+    });
+    const { traj } = await build([
+      () => okResult(assistantMessage({ toolCalls: [searchCall("invalid", "c1")] })),
+      plainOk,
+    ]);
+    runImpl = async query => {
+      queries.push(query);
+      return ok({ type: "output", content: text(query) });
+    };
+
+    inputControl(traj).enqueueSteering(text("run"));
+    expect(await traj.step()).toBe(true);
+    const assistant = traj.messages[2];
+    if (assistant.role !== "assistant") throw new Error("impossible");
+    expect(assistant.toolCalls?.[0]).toEqual(
+      expect.objectContaining({
+        original: { query: "invalid" },
+        parsed: { query: "fixed" },
+      }),
+    );
+    expect(await traj.step()).toBe(true);
+
+    expect(rec.modes).toContain("autofix-tool");
+    expect(rec.arc.autofixTool).toBe(1);
+    expect(queries).toEqual(["fixed"]);
+    expect(rec.roles).toEqual(["user", ...assistantSnapshot, "tool-output", ...assistantSnapshot]);
+    await startWaitingStep(traj, "ready-for-request");
+    expect(traj.mode.mode).toBe("ready-for-request");
+  });
+
+  it("announces autofix-json when the protocol runs a json correction", async () => {
+    const { build, rec } = makeTrajectory({
+      errorCorrection: {
+        json: async () => ({ success: true, fixed: {} }),
+      },
+    });
+    const { traj } = await build([
+      async (onTokens, params) => {
+        if (params.autofixJson == null) throw new Error("expected autofixJson to be offered");
+        await params.autofixJson("{bad json", params.abortSignal);
+        return okResult(assistantMessage({ content: "done" }));
+      },
+    ]);
+
+    inputControl(traj).enqueueSteering(text("hi"));
+    expect(await traj.step()).toBe(true);
+
+    await startWaitingStep(traj, "ready-for-request");
+    expect(rec.modes).toEqual(["responding", "autofix-json", "ready-for-request"]);
+    expect(rec.arc.autofixJson).toBe(1);
+    expect(traj.mode.mode).toBe("ready-for-request");
+  });
+
+  it("folds steering queued during a batch into the continuation", async () => {
+    const { build, rec } = makeTrajectory();
+    const { traj, protocolCalls } = await build([
+      () => okResult(assistantMessage({ toolCalls: [searchCall("a", "c1")] })),
+      plainOk,
+    ]);
+    runImpl = async query => {
+      inputControl(traj).enqueueSteering(text("while you ran"));
+      return ok({ type: "output", content: text(query) });
+    };
+
+    inputControl(traj).enqueueSteering(text("run"));
+    expect(await traj.step()).toBe(true);
+    expect(await traj.step()).toBe(true);
+
+    expect(rec.roles).toEqual([
+      "user",
+      ...assistantSnapshot,
+      "tool-output",
+      "user",
+      ...assistantSnapshot,
+    ]);
+    expect(protocolCalls[1].irs.map(m => m.role)).toEqual([
+      "user",
+      "assistant",
+      "tool-output",
+      "user",
+    ]);
+  });
+
+  it("classifies a ready-mode submit as upcoming and drains it before any mode change", async () => {
+    const { build, rec } = makeTrajectory();
+    const { traj } = await build([plainOk]);
+
+    inputControl(traj).enqueueSteering(text("hi"));
+    expect(await traj.step()).toBe(true);
+
+    await startWaitingStep(traj, "ready-for-request");
+    expect(rec.timeline).toEqual([
+      "steering:1u0q",
+      "steering:0u0q",
+      "ir:user",
+      "mode:responding",
+      "ir:request-snapshot-begin",
+      "ir:assistant",
+      "ir:request-snapshot-end",
+      "mode:ready-for-request",
+    ]);
+  });
+
+  it("classifies steering pushed mid-turn as queued and folds it before the continuation mode", async () => {
+    const { build, rec } = makeTrajectory();
+    const { traj } = await build([
+      () => okResult(assistantMessage({ toolCalls: [searchCall("a", "c1")] })),
+      plainOk,
+    ]);
+    runImpl = async query => {
+      inputControl(traj).enqueueSteering(text("while you ran"));
+      return ok({ type: "output", content: text(query) });
+    };
+
+    inputControl(traj).enqueueSteering(text("run"));
+    expect(await traj.step()).toBe(true);
+    expect(await traj.step()).toBe(true);
+
+    await startWaitingStep(traj, "ready-for-request");
+    expect(rec.timeline).toEqual([
+      "steering:1u0q",
+      "steering:0u0q",
+      "ir:user",
+      "mode:responding",
+      "ir:request-snapshot-begin",
+      "ir:assistant",
+      "ir:request-snapshot-end",
+      "mode:tool-call",
+      "mode:tool-call-permission",
+      "mode:running-tool",
+      "steering:0u1q",
+      "ir:tool-output",
+      "steering:0u0q",
+      "ir:user",
+      "mode:responding",
+      "ir:request-snapshot-begin",
+      "ir:assistant",
+      "ir:request-snapshot-end",
+      "mode:ready-for-request",
+    ]);
+  });
+
+  it("cancels queued compaction and reports dropped steering on interrupt", async () => {
+    const { build, rec } = makeTrajectory();
+    const queue: ProtocolQueueItem[] = [];
+    const { traj } = await build(queue);
+
+    inputControl(traj).enqueueSteering(text("hi"));
+    queue.push(async onTokens => {
+      await onTokens("thinking", "reasoning");
+      inputControl(traj).requestCompaction();
+      inputControl(traj).enqueueSteering(text("queued one"));
+      inputControl(traj).enqueueSteering(text("queued two"));
+      interruptNow(traj);
+      return okResult(assistantMessage({ content: "unreached full answer" }));
+    }, plainOk);
+
+    expect(await traj.step()).toBe(true);
+    const waiting = await startWaitingStep(traj, "ready-for-request");
+
+    expect(rec.interruptions).toEqual([
+      { droppedSteering: [text("queued one"), text("queued two")] },
+    ]);
+    expect(rec.roles).toEqual([
+      "user",
+      "request-snapshot-begin",
+      "interrupted-by-user",
+      "request-snapshot-end",
+    ]);
+
+    await inputControl(traj).enqueueSteering(text("continue"));
+    expect(await waiting.finished).toBe(true);
+    expect(rec.arc.compaction).toBe(0);
+  });
+
+  it("unpauses for repeated compactions without losing concurrent steering", async () => {
+    const { build, rec } = makeTrajectory({
+      messages: [
+        { role: "user", content: text("original request") },
+        assistantMessage({ content: "original answer" }),
+      ],
+    });
+    const queue: ProtocolQueueItem[] = [];
+    const { traj, protocolCalls } = await build(queue);
+    queue.push(async () => {
+      expect(inputControl(traj).requestCompaction()).toBe(false);
+      await inputControl(traj).enqueueSteering(text("follow up"));
+      return okResult(assistantMessage({ content: "manual summary" }));
+    }, plainOk);
+
+    const waiting = await startWaitingStep(traj, "ready-for-request");
+    expect(inputControl(traj).requestCompaction()).toBe(true);
+    await waiting.finished;
+    expect(rec.roles).toEqual(["request-snapshot-begin", "checkpoint", "request-snapshot-end"]);
+    expect(protocolCalls).toHaveLength(1);
+    expect(traj.hasCompactableHistory).toBe(false);
+
+    await traj.step();
+    const second = await startWaitingStep(traj, "ready-for-request");
+    expect(rec.roles).toEqual([
+      "request-snapshot-begin",
+      "checkpoint",
+      "request-snapshot-end",
+      "user",
+      ...assistantSnapshot,
+    ]);
+    expect(rec.arc.compaction).toBe(1);
+    expect(protocolCalls).toHaveLength(2);
+    expect(protocolCalls[1].irs.map(ir => ir.role)).toEqual(["lowered-checkpoint", "user"]);
+    expect(protocolCalls[1].irs.at(-1)).toEqual({ role: "user", content: text("follow up") });
+
+    queue.push(plainOk, plainOk);
+    expect(inputControl(traj).requestCompaction()).toBe(true);
+    await inputControl(traj).enqueueSteering(text("next follow up"));
+    await second.finished;
+    expect(rec.arc.compaction).toBe(2);
+    expect(protocolCalls).toHaveLength(3);
+    expect(protocolCalls[2].irs.at(-2)).toEqual({
+      role: "user",
+      content: text("next follow up"),
+    });
+    await traj.step();
+    expect(protocolCalls).toHaveLength(4);
+    expect(protocolCalls[3].irs.map(ir => ir.role)).toEqual(["lowered-checkpoint"]);
+    await startWaitingStep(traj, "ready-for-request");
+  });
+
+  it.each(["allow", "reject"])(
+    "keeps compaction and steering queued until the permission decision is %s",
+    async decision => {
+      let resolvePermission!: (decision: PermissionDecision) => void;
+      const permission = new Promise<PermissionDecision>(resolve => {
+        resolvePermission = resolve;
+      });
+      const { build, rec } = makeTrajectory({ permission: () => permission });
+      const { traj, protocolCalls } = await build([
+        () =>
+          okResult(assistantMessage({ toolCalls: [searchCall("a", "c1"), searchCall("b", "c2")] })),
+        plainOk,
+        plainOk,
+      ]);
+      await inputControl(traj).enqueueSteering(text("run both"));
+      await traj.step();
+      const waiting = await startWaitingStep(traj, "tool-call-permission");
+      expect(inputControl(traj).requestCompaction()).toBe(true);
+      await inputControl(traj).enqueueSteering(text("follow up after permission"));
+      expect(rec.arc.compaction).toBe(0);
+      expect(protocolCalls).toHaveLength(1);
+
+      resolvePermission(
+        decision === "allow"
+          ? { decision: "allow" }
+          : { decision: "reject", steering: text("do it differently") },
+      );
+      await waiting.finished;
+      expect(rec.arc.compaction).toBe(1);
+      expect(protocolCalls).toHaveLength(2);
+      await traj.step();
+      await startWaitingStep(traj, "ready-for-request");
+
+      expect(rec.arc.compaction).toBe(1);
+      expect(protocolCalls).toHaveLength(3);
+      expect(protocolCalls[1].irs.at(-2)).toEqual({
+        role: "user",
+        content: text("follow up after permission"),
+      });
+      expect(protocolCalls[2].irs.map(ir => ir.role)).toEqual(["lowered-checkpoint"]);
+    },
+  );
+
+  it("keeps session compaction queued through child compaction and the rest of the tool batch", async () => {
+    const { build, rec } = makeTrajectory({ contextWindow: 1000 });
+    const queue: ProtocolQueueItem[] = [];
+    const { traj, protocolCalls } = await build(queue);
+    const childRequest = assistantMessage({ toolCalls: [shellCall("ls", "child-call")] });
+    childRequest.usage = protocolUsage(1200, 1);
+    queue.push(
+      () =>
+        okResult(
+          assistantMessage({
+            toolCalls: [searchCall("delegate", "c1"), searchCall("after", "c2")],
+          }),
+        ),
+      () => okResult(childRequest),
+      async () => {
+        expect(inputControl(traj).requestCompaction()).toBe(true);
+        expect(inputControl(traj).requestCompaction()).toBe(false);
+        await inputControl(traj).enqueueSteering(text("follow up at the root"));
+        return okResult(assistantMessage({ content: "child summary" }));
+      },
+      () => okResult(assistantMessage({ content: "child findings" })),
+      () => okResult(assistantMessage({ content: "session summary" })),
+      plainOk,
+    );
+    const ran: string[] = [];
+    runImpl = async query => {
+      ran.push(query);
+      return query === "delegate"
+        ? ok({ type: "invoke-subagent", name: "research", message: text("Inspect the workspace") })
+        : ok({ type: "output", content: text("remaining tool result") });
+    };
+
+    await inputControl(traj).enqueueSteering(text("run"));
+    await traj.step();
+    await traj.step();
+    expect(protocolCalls).toHaveLength(2);
+    await traj.step();
+    await traj.step();
+
+    expect(ran).toEqual(["delegate"]);
+    expect(rec.arc.compaction).toBe(1);
+    expect(protocolCalls).toHaveLength(4);
+
+    await traj.step();
+    expect(protocolCalls).toHaveLength(5);
+    await traj.step();
+    await startWaitingStep(traj, "ready-for-request");
+
+    expect(ran).toEqual(["delegate", "after"]);
+    expect(rec.arc.compaction).toBe(2);
+    expect(protocolCalls).toHaveLength(6);
+    expect(
+      protocolCalls[4].irs.filter(ir => ir.role === "tool-output").map(ir => ir.content),
+    ).toEqual([text("child findings"), text("remaining tool result")]);
+    expect(protocolCalls[4].irs.at(-2)).toEqual({
+      role: "user",
+      content: text("follow up at the root"),
+    });
+    expect(protocolCalls[5].irs.map(ir => ir.role)).toEqual(["lowered-checkpoint"]);
+    expect(rec.modeObjs.filter(mode => mode.mode === "compacting").map(mode => mode.root)).toEqual([
+      false,
+      true,
+    ]);
+  });
+
+  it("records an interrupted idle compaction and does not retry it on the next message", async () => {
+    const { build, rec } = makeTrajectory({
+      messages: [
+        { role: "user", content: text("existing history") },
+        assistantMessage({ content: "finished response" }),
+      ],
+    });
+    const queue: ProtocolQueueItem[] = [];
+    const { traj } = await build(queue);
+    queue.push(async () => {
+      await interruptNow(traj);
+      return okResult(assistantMessage({ content: "incomplete summary" }));
+    }, plainOk);
+
+    inputControl(traj).requestCompaction();
+    await traj.step();
+    const waiting = await startWaitingStep(traj, "ready-for-request");
+    expect(rec.roles).toEqual([
+      "request-snapshot-begin",
+      "interrupted-by-user",
+      "request-snapshot-end",
+    ]);
+
+    await inputControl(traj).enqueueSteering(text("continue"));
+    expect(await waiting.finished).toBe(true);
+    expect(rec.roles).toEqual([
+      "request-snapshot-begin",
+      "interrupted-by-user",
+      "request-snapshot-end",
+      "user",
+      ...assistantSnapshot,
+    ]);
+    expect(rec.arc.compaction).toBe(1);
+  });
+
+  for (const childScope of [false, true]) {
+    it.each(["success", "error"] as const)(
+      `commits interrupted ${childScope ? "child" : "root"} compaction as a snapshot and stays stopped on reload (%s)`,
+      async finish => {
+        const user: UserMessage = { role: "user", content: text("x".repeat(12000)) };
+        const child: Extract<AgentIR<TestAgent>, { role: "subagent-trajectory" }> = {
+          role: "subagent-trajectory",
+          subagent: "research",
+          toolCall: searchCall("delegate", "delegation"),
+          task: text("inspect"),
+          ir: [user],
+        };
+        const messages: Array<AgentIR<TestAgent>> = childScope
+          ? [
+              assistantMessage({ toolCalls: [child.toolCall, searchCall("pending", "pending")] }),
+              {
+                role: "tool-invoke-subagent",
+                subagent: "research",
+                toolCall: child.toolCall,
+                message: child.task,
+              },
+              child,
+            ]
+          : [user];
+        const { build, rec } = makeTrajectory({ messages, contextWindow: 3000 });
+        const { traj, protocolCalls } = await build([
+          async emit => {
+            await emit("partial summary", "content");
+            await interruptNow(traj);
+            if (finish === "error") return err(requestError("cancelled"));
+            return okResult(assistantMessage({ content: "discarded summary" }));
+          },
+        ]);
+        const ran: string[] = [];
+        runImpl = async query => {
+          ran.push(query);
+          return ok({ type: "output", content: text(query) });
+        };
+
+        expect(await traj.step()).toBe(true);
+        expect(
+          rec.messages.map(event => ({ root: event.root, roles: event.irs.map(ir => ir.role) })),
+        ).toEqual([
+          {
+            root: !childScope,
+            roles: ["request-snapshot-begin", "interrupted-by-user", "request-snapshot-end"],
+          },
+          ...(childScope ? [{ root: true, roles: ["tool-skip-output" as const] }] : []),
+        ]);
+        expect(protocolCalls).toHaveLength(1);
+        if (childScope) expect(traj.inspectSubagentTrajectory(child)).toEqual({ type: "aborted" });
+
+        const saved = JSON.stringify(traj.messages);
+        const recovered = makeTrajectory({ messages: JSON.parse(saved), contextWindow: 3000 });
+        const { traj: resumed, protocolCalls: resumedCalls } = await recovered.build([]);
+        await startWaitingStep(resumed, "ready-for-request");
+        expect(JSON.stringify(resumed.messages)).toBe(saved);
+        expect(resumedCalls).toEqual([]);
+        expect(ran).toEqual([]);
+      },
+    );
+  }
+
+  it("uses existing retries for manual compaction without repeating a completed summary", async () => {
+    const { build, rec } = makeTrajectory({
+      messages: [{ role: "user", content: text("existing history") }],
+      requestErrorRetries: { maxRetryCount: 1, backoffMs: 1 },
+    });
+    const { traj, protocolCalls } = await build([
+      () => err(requestError("summary failed")),
+      () => err({ type: "auth-error", authError: "expired credentials" }),
+      plainOk,
+      () => err(requestError("response failed")),
+      plainOk,
+    ]);
+
+    inputControl(traj).requestCompaction();
+    await traj.step();
+    expect(protocolCalls).toHaveLength(1);
+    await traj.step();
+    expect(protocolCalls).toHaveLength(2);
+    const waiting = await startWaitingStep(traj, "auth-error");
+    retryControl(traj).retry();
+    await waiting.finished;
+    expect(protocolCalls).toHaveLength(3);
+    await traj.step();
+    expect(protocolCalls).toHaveLength(4);
+    await traj.step();
+    await startWaitingStep(traj, "ready-for-request");
+
+    expect(rec.roles).toEqual([
+      "request-snapshot-begin",
+      "compaction-error",
+      "request-snapshot-end",
+      "request-snapshot-begin",
+      "auth-error",
+      "request-snapshot-end",
+      "error-retry",
+      "request-snapshot-begin",
+      "checkpoint",
+      "request-snapshot-end",
+      "request-snapshot-begin",
+      "request-error",
+      "request-snapshot-end",
+      ...assistantSnapshot,
+    ]);
+    expect(rec.arc.compaction).toBe(3);
+    expect(protocolCalls).toHaveLength(5);
+    expect(protocolCalls[3].irs.map(ir => ir.role)).toEqual(["lowered-checkpoint"]);
+    expect(protocolCalls[4].irs.map(ir => ir.role)).toEqual(["lowered-checkpoint"]);
+  });
+
+  it("compacts an over-full history, then responds", async () => {
+    const { build, rec } = makeTrajectory({
+      contextWindow: 300,
+      messages: [{ role: "user", content: text("x".repeat(2000)) }],
+    });
+    const { traj, protocolCalls } = await build([
+      () => okResult(assistantMessage({ content: "summary text" })),
+      plainOk,
+    ]);
+
+    inputControl(traj).enqueueSteering(text("hi"));
+    expect(await traj.step()).toBe(true);
+    expect(protocolCalls).toHaveLength(1);
+    expect(rec.modes).toEqual(["compacting"]);
+    expect(rec.messages.map(event => event.irs.map(ir => ir.role))).toEqual([
+      ["user"],
+      ["request-snapshot-begin", "checkpoint", "request-snapshot-end"],
+    ]);
+    expect(await traj.step()).toBe(true);
+
+    await startWaitingStep(traj, "ready-for-request");
+    expect(rec.modes).toEqual(["compacting", "responding", "ready-for-request"]);
+    expect(rec.arc.compaction).toBe(1);
+    expect(rec.roles).toEqual([
+      "user",
+      "request-snapshot-begin",
+      "checkpoint",
+      "request-snapshot-end",
+      ...assistantSnapshot,
+    ]);
+    expect(traj.messages.map(m => m.role)).toEqual([
+      "user",
+      "user",
+      "request-snapshot-begin",
+      "checkpoint",
+      "request-snapshot-end",
+      ...assistantSnapshot,
+    ]);
+    expect(protocolCalls.length).toBe(2);
+    expect(protocolCalls[0].irs.map(m => m.role)).toEqual(["user", "user", "user"]);
+    expect(protocolCalls[1].irs.map(m => m.role)).toEqual(["lowered-checkpoint"]);
+  });
+
+  it("honors interruption during root checkpoint persistence and keeps the checkpoint", async () => {
+    let interruptReturned = false;
+    const { build, rec } = makeTrajectory({
+      contextWindow: 300,
+      messages: [{ role: "user", content: text("x".repeat(2000)) }],
+      onMessages: async event => {
+        if (!event.irs.some(ir => ir.role === "checkpoint")) return;
+        expect(event.root).toBe(true);
+        expect(traj.mode.mode).toBe("compacting");
+        await interruptNow(traj);
+        interruptReturned = true;
+      },
+    });
+    const { traj, protocolCalls } = await build([
+      () => okResult(assistantMessage({ content: "completed summary" })),
+      plainOk,
+    ]);
+
+    expect(await traj.step()).toBe(true);
+    expect(interruptReturned).toBe(true);
+    expect(rec.messages.map(event => event.irs.map(ir => ir.role))).toEqual([
+      ["request-snapshot-begin", "checkpoint", "request-snapshot-end"],
+      ["interrupted-by-user"],
+    ]);
+    const checkpoint = traj.messages[2];
+    if (checkpoint.role !== "checkpoint") throw new Error("Expected checkpoint");
+    expect(checkpoint.content).toContainEqual({ type: "text", content: "completed summary" });
+    expect(rec.messages[0].irs[1]).toBe(checkpoint);
+
+    const waiting = await startWaitingStep(traj, "ready-for-request");
+    expect(protocolCalls).toHaveLength(1);
+    expect(rec.modes).toEqual(["compacting", "ready-for-request"]);
+    await inputControl(traj).enqueueSteering(text("new request"));
+    expect(await waiting.finished).toBe(true);
+    expect(protocolCalls).toHaveLength(2);
+    expect(protocolCalls[1].irs.map(ir => ir.role)).toEqual(["lowered-checkpoint", "user"]);
+    expect(traj.messages[2]).toBe(checkpoint);
+  });
+
+  it("closes the child and pending parent work when interrupted during child checkpoint persistence", async () => {
+    const task = text("Inspect the workspace");
+    const child: Extract<AgentIR<TestAgent>, { role: "subagent-trajectory" }> = {
+      role: "subagent-trajectory",
+      subagent: "research",
+      task,
+      toolCall: searchCall("delegate", "delegation"),
+      ir: [
+        { role: "user", content: subagentPrompt(task) },
+        { role: "checkpoint", content: text("x".repeat(12000)) },
+      ],
+    };
+    const pending = searchCall("must not run", "pending");
+    let interruptReturned = false;
+    const { build, rec } = makeTrajectory({
+      contextWindow: 3000,
+      messages: [
+        assistantMessage({ toolCalls: [child.toolCall, pending] }),
+        {
+          role: "tool-invoke-subagent",
+          subagent: "research",
+          toolCall: child.toolCall,
+          message: task,
+        },
+        child,
+      ],
+      onMessages: async event => {
+        if (!event.irs.some(ir => ir.role === "checkpoint")) return;
+        if (event.root) throw new Error("Expected child checkpoint");
+        expect(event.scope.parentSubagentIR).toBe(child);
+        expect(traj.mode).toMatchObject({ mode: "compacting", root: false, subagent: "research" });
+        await interruptNow(traj);
+        interruptReturned = true;
+      },
+    });
+    const { traj, protocolCalls } = await build([
+      () => okResult(assistantMessage({ content: "completed child summary" })),
+    ]);
+    const executed: string[] = [];
+    runImpl = async query => {
+      executed.push(query);
+      return ok({ type: "output", content: text(query) });
+    };
+
+    expect(await traj.step()).toBe(true);
+    expect(interruptReturned).toBe(true);
+    expect(traj.inspectSubagentTrajectory(child)).toEqual({ type: "aborted" });
+    expect(child.ir.map(ir => ir.role)).toEqual([
+      "user",
+      "checkpoint",
+      "request-snapshot-begin",
+      "checkpoint",
+      "request-snapshot-end",
+      "interrupted-by-user",
+    ]);
+    const checkpoint = child.ir[3];
+    if (checkpoint.role !== "checkpoint") throw new Error("Expected checkpoint");
+    expect(checkpoint.content).toContainEqual({ type: "text", content: "completed child summary" });
+    expect(
+      rec.messages.map(event => ({ root: event.root, roles: event.irs.map(ir => ir.role) })),
+    ).toEqual([
+      { root: false, roles: ["request-snapshot-begin", "checkpoint", "request-snapshot-end"] },
+      { root: false, roles: ["interrupted-by-user"] },
+      { root: true, roles: ["tool-skip-output"] },
+    ]);
+    expect(traj.messages.filter(ir => ir.role === "tool-skip-output")).toEqual([
+      {
+        role: "tool-skip-output",
+        toolCall: pending,
+        reason: "The user aborted the response, so this tool was skipped",
+      },
+    ]);
+    await startWaitingStep(traj, "ready-for-request");
+    expect(protocolCalls).toHaveLength(1);
+    expect(executed).toEqual([]);
+  });
+
+  it.each([true, false])(
+    "renders checkpoints for root=%s without changing stored IR",
+    async root => {
+      const task = [
+        ...text("Investigate the attached diagram"),
+        img("diagram.png"),
+        ...text("Report only when the investigation is complete"),
+      ];
+      const checkpoint: Checkpoint = { role: "checkpoint", content: text("Existing summary") };
+      const child: Extract<AgentIR<TestAgent>, { role: "subagent-trajectory" }> = {
+        role: "subagent-trajectory",
+        subagent: "research",
+        toolCall: searchCall("delegate", "delegation"),
+        task,
+        ir: [{ role: "user", content: subagentPrompt(task) }, checkpoint],
+      };
+      const { build } = makeTrajectory({
+        messages: root
+          ? [checkpoint]
+          : [
+              {
+                role: "tool-invoke-subagent",
+                subagent: child.subagent,
+                toolCall: child.toolCall,
+                message: task,
+              },
+              child,
+            ],
+      });
+      const { traj, protocolCalls } = await build([plainOk]);
+
+      expect(await traj.step()).toBe(true);
+      const rendered = protocolCalls[0].irs[0];
+      if (rendered.role !== "lowered-checkpoint") throw new Error("Expected checkpoint");
+      expect(rendered.content).toEqual(
+        root
+          ? checkpoint.content
+          : [...checkpoint.content, ...text("\n\n"), ...subagentPrompt(task)],
+      );
+      expect(checkpoint.content).toEqual(text("Existing summary"));
+      expect(child.task).toBe(task);
+      if (!root) expect(child.ir[1]).toBe(checkpoint);
+    },
+  );
+
+  it("keeps child directives in repeated compactions and tool-output token counts", async () => {
+    const task = text("Inspect the workspace and report the result");
+    const originalCheckpoint: Checkpoint = { role: "checkpoint", content: text("x".repeat(12000)) };
+    const child: Extract<AgentIR<TestAgent>, { role: "subagent-trajectory" }> = {
+      role: "subagent-trajectory",
+      subagent: "research",
+      task,
+      toolCall: searchCall("delegate", "delegation"),
+      ir: [{ role: "user", content: subagentPrompt(task) }, originalCheckpoint],
+    };
+    const counted: Array<Array<LoweredIR<TestAgent["tools"]>>> = [];
+    const { build } = makeTrajectory({
+      contextWindow: 3000,
+      messages: [
+        assistantMessage({ toolCalls: [child.toolCall] }),
+        {
+          role: "tool-invoke-subagent",
+          subagent: child.subagent,
+          toolCall: child.toolCall,
+          message: task,
+        },
+        child,
+      ],
+      countTokens: async irs => {
+        counted.push(irs);
+        return defaultCountTokens(irs);
+      },
+    });
+    const firstRequest = assistantMessage({ toolCalls: [shellCall("pwd", "first")] });
+    const secondRequest = assistantMessage({ toolCalls: [shellCall("ls", "second")] });
+    firstRequest.usage = protocolUsage(4000, 1);
+    secondRequest.usage = protocolUsage(4000, 1);
+    const { traj, protocolCalls } = await build([
+      () => okResult(assistantMessage({ content: "First summary" })),
+      () => okResult(firstRequest),
+      () => okResult(assistantMessage({ content: "Second summary" })),
+      () => okResult(secondRequest),
+      () => okResult(assistantMessage({ content: "Third summary" })),
+      plainOk,
+    ]);
+
+    for (let attempt = 1; attempt <= 6; attempt++) {
+      expect(await traj.step()).toBe(true);
+      expect(protocolCalls).toHaveLength(attempt);
+    }
+    expect(protocolCalls).toHaveLength(6);
+    // Six autocompaction calls count isolated trailing IRs; the other four are the two
+    // full-history-with/history-without pairs for the two tool outputs.
+    expect(counted).toHaveLength(10);
+    const wholeHistoryCounts = counted.filter(irs => irs.length > 1);
+    expect(wholeHistoryCounts).toHaveLength(4);
+    const checkpoints = child.ir.filter(ir => ir.role === "checkpoint");
+    expect(checkpoints).toHaveLength(4);
+    expect(checkpoints[0]).toBe(originalCheckpoint);
+
+    const renderedContent = (checkpoint: Checkpoint) => [
+      ...checkpoint.content,
+      ...text("\n\n"),
+      ...subagentPrompt(task),
+    ];
+    for (let index = 0; index < checkpoints.length; index++) {
+      expect(JSON.stringify(checkpoints[index].content)).not.toContain("You are a subagent");
+      if (index === 0) continue;
+      const request = protocolCalls[index * 2 - 1].irs[0];
+      if (request.role !== "lowered-checkpoint") throw new Error("Expected checkpoint");
+      expect(request.content).toEqual(renderedContent(checkpoints[index]));
+    }
+    for (let index = 0; index < wholeHistoryCounts.length; index++) {
+      const checkpoint = wholeHistoryCounts[index][0];
+      if (checkpoint.role !== "lowered-checkpoint") throw new Error("Expected checkpoint");
+      expect(checkpoint.content).toEqual(renderedContent(checkpoints[Math.floor(index / 2) + 1]));
+    }
+    // Each subsequent compaction sees the same rendering as the preceding normal request.
+    expect(protocolCalls[2].irs[0]).toEqual(protocolCalls[1].irs[0]);
+    expect(protocolCalls[4].irs[0]).toEqual(protocolCalls[3].irs[0]);
+  });
+
+  it("approximates the active child context separately from the primary agent's context", async () => {
+    const rootRequest = assistantMessage({ toolCalls: [searchCall("delegate", "c1")] });
+    rootRequest.usage = protocolUsage(10, 5);
+    const invocation: TestInvocation = {
+      role: "tool-invoke-subagent",
+      subagent: "research",
+      toolCall: searchCall("delegate", "c1"),
+      message: text("Inspect the workspace"),
+    };
+    const { build, rec } = makeTrajectory({
+      messages: [
+        rootRequest,
+        invocation,
+        {
+          role: "subagent-trajectory",
+          subagent: "research",
+          task: text("Inspect the workspace"),
+          toolCall: invocation.toolCall,
+          ir: [{ role: "user", content: text("12345678") }],
+        },
+      ],
+    });
+    const { traj } = await build([]);
+
+    expect(await traj.approximateContextLength()).toBe(2);
+    expect(await traj.primaryAgentApproximateContext()).toBe(15);
+    expect(rec.modelInvocations).toEqual([invocation, null]);
+  });
+
+  it.each(["resolution", "counter"] as const)(
+    "falls back to default approximation after %s failure",
+    async failure => {
+      const { build } = makeTrajectory({
+        messages: [{ role: "user", content: text("12345678") }],
+        modelAuthError: () => (failure === "resolution" ? "No model available" : undefined),
+        countTokens:
+          failure === "counter"
+            ? async () => {
+                throw new Error("Counter unavailable");
+              }
+            : undefined,
+      });
+      const { traj } = await build([]);
+
+      expect(await traj.approximateContextLength()).toBe(2);
+      expect(await traj.primaryAgentApproximateContext()).toBe(2);
+    },
+  );
+
+  it("rectifies a compaction error and recovers on retry", async () => {
+    const { build, rec } = makeTrajectory({
+      contextWindow: 300,
+      messages: [{ role: "user", content: text("x".repeat(2000)) }],
+    });
+    const { traj, protocolCalls } = await build([
+      () => err(requestError("boom")),
+      () => okResult(assistantMessage({ content: "summary text" })),
+      plainOk,
+    ]);
+
+    inputControl(traj).enqueueSteering(text("hi"));
+    expect(await traj.step()).toBe(true);
+
+    const waiting = await startWaitingStep(traj, "compaction-error");
+    expect(rec.modes).toEqual(["compacting", "compaction-error"]);
+    expect(rec.roles).toEqual([
+      "user",
+      "request-snapshot-begin",
+      "compaction-error",
+      "request-snapshot-end",
+    ]);
+    expect(traj.mode).toEqual(
+      expect.objectContaining({ mode: "compaction-error", requestError: "boom", curl: "curl" }),
+    );
+
+    rectifyControl(traj).retry();
+    expect(await waiting.finished).toBe(true);
+    expect(protocolCalls).toHaveLength(2);
+    expect(rec.messages.at(-1)?.irs.map(ir => ir.role)).toEqual([
+      "request-snapshot-begin",
+      "checkpoint",
+      "request-snapshot-end",
+    ]);
+    expect(await traj.step()).toBe(true);
+    await startWaitingStep(traj, "ready-for-request");
+
+    expect(protocolCalls.length).toBe(3);
+    expect(rec.modes).toEqual([
+      "compacting",
+      "compaction-error",
+      "compacting",
+      "responding",
+      "ready-for-request",
+    ]);
+    expect(rec.roles).toEqual([
+      "user",
+      "request-snapshot-begin",
+      "compaction-error",
+      "request-snapshot-end",
+      "error-retry",
+      "request-snapshot-begin",
+      "checkpoint",
+      "request-snapshot-end",
+      ...assistantSnapshot,
+    ]);
+  });
+
+  it("suppresses the ready announce when steering arrives mid-response", async () => {
+    const { build, rec } = makeTrajectory();
+    const queue: ProtocolQueueItem[] = [];
+    const { traj, protocolCalls } = await build(queue);
+
+    inputControl(traj).enqueueSteering(text("hi"));
+    queue.push(() => {
+      inputControl(traj).enqueueSteering(text("before you finish"));
+      return okResult(assistantMessage({ content: "a" }));
+    }, plainOk);
+
+    expect(await traj.step()).toBe(true);
+    expect(rec.modes).toEqual(["responding"]);
+
+    expect(await traj.step()).toBe(true);
+    await startWaitingStep(traj, "ready-for-request");
+    expect(rec.modes).toEqual(["responding", "responding", "ready-for-request"]);
+    expect(protocolCalls[1].irs.map(m => m.role)).toEqual(["user", "assistant", "user"]);
+  });
+
+  it.each(["success", "error"] as const)(
+    "rejects oversized tool %s results with the client's error copy",
+    async outcome => {
+      const { build, rec } = makeTrajectory({ maxToolOutput: 10 });
+      const { traj, protocolCalls } = await build([
+        () => okResult(assistantMessage({ toolCalls: [searchCall("huge", "c1")] })),
+        plainOk,
+      ]);
+      const content = "x".repeat(1000);
+      runImpl = async () =>
+        outcome === "error" ? err(content) : ok({ type: "output", content: text(content) });
+
+      inputControl(traj).enqueueSteering(text("run"));
+      expect(await traj.step()).toBe(true);
+      expect(await traj.step()).toBe(true);
+
+      expect(rec.capCalls).toEqual([
+        outcome === "error"
+          ? { role: "tool-runtime-error", toolCall: searchCall("huge", "c1"), error: content }
+          : { role: "tool-output", toolCall: searchCall("huge", "c1"), content: text(content) },
+      ]);
+      expect(rec.roles).toEqual([
+        "user",
+        ...assistantSnapshot,
+        "tool-runtime-error",
+        ...assistantSnapshot,
+      ]);
+      const result = traj.messages[4];
+      if (result.role !== "tool-runtime-error") throw new Error("Expected tool runtime error");
+      expect(result).toEqual({
+        role: "tool-runtime-error",
+        toolCall: searchCall("huge", "c1"),
+        error: "OUTPUT TOO LARGE",
+      });
+      expect(protocolCalls[1].irs.at(-1)).toEqual(result);
+    },
+  );
+
+  it.each(["success", "error"] as const)(
+    "caps tool %s results at 20% of the context window by default",
+    async outcome => {
+      const { build, rec } = makeTrajectory({ contextWindow: 1000 });
+      const { traj } = await build([
+        () => okResult(assistantMessage({ toolCalls: [searchCall("huge", "c1")] })),
+        plainOk,
+      ]);
+      const content = "x".repeat(1000);
+      runImpl = async () =>
+        outcome === "error" ? err(content) : ok({ type: "output", content: text(content) });
+
+      inputControl(traj).enqueueSteering(text("run"));
+      expect(await traj.step()).toBe(true);
+      expect(await traj.step()).toBe(true);
+
+      expect(rec.capCalls.length).toBe(1);
+      expect(rec.roles).toContain("tool-runtime-error");
+    },
+  );
+
+  it.each([796, 800])(
+    "applies the exact tool-error budget boundary (%s characters)",
+    async length => {
+      const { build, rec } = makeTrajectory({ contextWindow: 1000 });
+      const { traj, protocolCalls } = await build([
+        () => okResult(assistantMessage({ toolCalls: [searchCall("boundary", "c1")] })),
+        plainOk,
+      ]);
+      const error = "x".repeat(length);
+      runImpl = async () => err(error);
+
+      inputControl(traj).enqueueSteering(text("run"));
+      expect(await traj.step()).toBe(true);
+      expect(await traj.step()).toBe(true);
+
+      const capped = length === 800;
+      expect(rec.capCalls).toHaveLength(capped ? 1 : 0);
+      const result = traj.messages[4];
+      if (result.role !== "tool-runtime-error") throw new Error("Expected tool runtime error");
+      expect(result).toEqual({
+        role: "tool-runtime-error",
+        toolCall: searchCall("boundary", "c1"),
+        error: capped ? "OUTPUT TOO LARGE" : error,
+      });
+      expect(protocolCalls[1].irs.at(-1)).toEqual(result);
+    },
+  );
+
+  it.each(["success", "error"] as const)(
+    "honors an injected countTokens implementation for tool %s results",
+    async outcome => {
+      const countsSeen: number[] = [];
+      const { build, rec } = makeTrajectory({
+        maxToolOutput: 10,
+        countTokens: async irs => {
+          countsSeen.push(irs.length);
+          return 0;
+        },
+      });
+      const { traj } = await build([
+        () => okResult(assistantMessage({ toolCalls: [searchCall("huge", "c1")] })),
+        plainOk,
+      ]);
+      const content = "x".repeat(1000);
+      runImpl = async () =>
+        outcome === "error" ? err(content) : ok({ type: "output", content: text(content) });
+
+      inputControl(traj).enqueueSteering(text("run"));
+      expect(await traj.step()).toBe(true);
+      expect(await traj.step()).toBe(true);
+
+      expect(rec.capCalls.length).toBe(0);
+      expect(traj.messages[4]).toEqual(
+        outcome === "error"
+          ? { role: "tool-runtime-error", toolCall: searchCall("huge", "c1"), error: content }
+          : { role: "tool-output", toolCall: searchCall("huge", "c1"), content: text(content) },
+      );
+      // The first and last calls are autocompaction's isolated user/output counts.
+      // The middle two are the full histories with and without the tool output.
+      expect(countsSeen).toEqual([1, 3, 2, 1]);
+      expect(countsSeen[1]).toBe(countsSeen[2] + 1);
+    },
+  );
+
+  it("drives steps through a custom loop controller", async () => {
+    let stepsSeen = 0;
+    const { build, exit } = makeTrajectory({
+      loopController: async step => {
+        stepsSeen++;
+        expect(await step()).toBe(false);
+      },
+    });
+    const { traj } = await build([]);
+
+    exit.abort();
+    await traj.run();
+
+    expect(stepsSeen).toBe(1);
+    expect(traj.mode.mode).toBe("aborted");
+  });
+
+  it("runs tools without a permission gate for permissionless agents", async () => {
+    const searchDef = await searchTool({
+      signal: new AbortController().signal,
+      transport,
+      model: {
+        provider: null,
+        model: "test-model",
+        contextWindow: 10_000,
+        modalities: null,
+        countTokens: defaultCountTokens,
+      },
+      data: { marker: "fresh" },
+    });
+    if (searchDef == null) throw new Error("search tool failed to load");
+    const modes: string[] = [];
+    const roles: string[] = [];
+    const { protocol } = makeProtocol([
+      () => okResult(assistantMessage({ toolCalls: [searchCall("a", "c1")] })),
+      plainOk,
+    ]);
+    const exit = new AbortController();
+    exitControllers.push(exit);
+    const traj = new Trajectory({
+      agent: _plainAgent,
+      model: async () =>
+        ok({ provider: null, model: "test-model", contextWindow: 10_000, modalities: null }),
+      toolContentTooLargeError: async () => "OUTPUT TOO LARGE",
+      messages: [],
+      getData: async () => ({ marker: "fresh" }),
+      protocol,
+      lowerMessages: messages => messages.map(original => ({ original, converted: original })),
+      transport,
+      abortSignal: exit.signal,
+      handler: {
+        modeChange: ({ mode }) => {
+          modes.push(mode.mode);
+        },
+        onMessages: ({ irs }) => {
+          roles.push(...irs.map(ir => ir.role));
+        },
+      },
+    });
+
+    inputControl(traj).enqueueSteering(text("run"));
+    expect(await traj.step()).toBe(true);
+    expect(await traj.step()).toBe(true);
+
+    await startWaitingStep(traj, "ready-for-request");
+    expect(modes).toEqual([
+      "responding",
+      "tool-call",
+      "running-tool",
+      "responding",
+      "ready-for-request",
+    ]);
+    expect(roles).toEqual(["user", ...assistantSnapshot, "tool-output", ...assistantSnapshot]);
+  });
+
+  it("coalesces text and image steering parts in push order", async () => {
+    const { build } = makeTrajectory();
+    const { traj, protocolCalls } = await build([plainOk]);
+
+    inputControl(traj).enqueueSteering([{ type: "text", content: "one" }, img("first.png")]);
+    inputControl(traj).enqueueSteering([{ type: "text", content: "two" }, img("second.png")]);
+    expect(await traj.step()).toBe(true);
+
+    const userIr = protocolCalls[0].irs[0];
+    if (userIr.role !== "user") throw new Error("impossible");
+    expect(userIr.content).toEqual([
+      { type: "text", content: "one\ntwo" },
+      img("first.png"),
+      img("second.png"),
+    ]);
+  });
+
+  it("starts from seeded history", async () => {
+    const { build } = makeTrajectory({
+      messages: [
+        { role: "user", content: text("old question") },
+        assistantMessage({ content: "old answer" }),
+      ],
+    });
+    const { traj, protocolCalls } = await build([plainOk]);
+
+    inputControl(traj).enqueueSteering(text("new question"));
+    expect(await traj.step()).toBe(true);
+
+    expect(protocolCalls[0].irs.map(m => m.role)).toEqual(["user", "assistant", "user"]);
+    const first = protocolCalls[0].irs[0];
+    if (first.role !== "user") throw new Error("impossible");
+    expect(first.content).toEqual(text("old question"));
+    expect(traj.messages.length).toBe(6);
+  });
+});

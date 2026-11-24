@@ -1,0 +1,31 @@
+{
+  "name": "libocto",
+  "version": "0.0.0",
+  "private": true,
+  "description": "An agent SDK for building model-driven applications.",
+  "license": "MIT",
+  "type": "module",
+  "exports": {
+    ".": "./source/index.ts",
+    "./testing": "./testing/mock-transport.ts"
+  },
+  "scripts": {
+    "test": "bun test source --watch --timeout 30000",
+    "test:run": "bun test source --timeout 30000"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.115.0",
+    "@modelcontextprotocol/sdk": "^1.32.0",
+    "antipattern": "^0.0.7",
+    "html-to-text": "^9.0.5",
+    "openai": "^5.9.0",
+    "shell-quote": "^1.12.0",
+    "structural": "^0.0.36",
+    "vscode-languageserver-types": "^3.17.5",
+    "yaml": "^2.0.0"
+  },
+  "devDependencies": {
+    "@types/html-to-text": "^9.0.4",
+    "@types/shell-quote": "^1.7.5"
+  }
+}

@@ -1,0 +1,811 @@
+import React from "react";
+import { t } from "structural";
+import fs from "fs/promises";
+import os from "os";
+import path from "path";
+import json5 from "json5";
+import { LocalTransport } from "./transports/local.ts";
+import { fileExists } from "./fs-utils.ts";
+import { providerForBaseUrl, keyFromName, ProviderConfig } from "./providers.ts";
+import { getCodexOAuthTokens } from "./codex-oauth.ts";
+import { serializeModelJson, tryDeserializeModelJson } from "./session-history/model-json.ts";
+import { isDeepStrictEqual } from "node:util";
+import { registry } from "antipattern";
+import { err, errorToString, ok, type Result } from "libocto";
+import packageJson from "../package.json" with { type: "json" };
+
+const CONFIG_DIR = path.join(os.homedir(), ".config/octofriend");
+const KEY_FILE = path.join(CONFIG_DIR, "keys.json5");
+const KeyConfigSchema = t.dict(t.str);
+
+export const APP_METADATA = await readMetadata();
+export const CURRENT_CONFIG_VERSION = 3;
+
+type Migration = (raw: Record<string, any>) => Record<string, any>;
+
+const MIGRATIONS: Record<number, Migration> = {
+  1: raw => ({
+    ...raw,
+    models: (Array.isArray(raw["models"]) ? raw["models"] : []).map((model: any) => {
+      const provider = providerForBaseUrl(model.baseUrl);
+      if (provider == null || provider.models === "load-from-synthetic") return model;
+      const canonical = provider.models.find(candidate => candidate.model === model.model);
+      if (canonical?.modalities !== undefined)
+        return { ...model, modalities: canonical.modalities };
+      return model;
+    }),
+  }),
+  2: raw => {
+    const notifyCommand = raw["notifyFinishCommand"];
+    if (notifyCommand === undefined) {
+      return raw;
+    }
+    delete raw["notifyFinishCommand"];
+    return {
+      ...raw,
+      notifications: {
+        notifyCommand,
+      },
+    };
+  },
+  3: raw => {
+    const migrated = { ...raw };
+    delete migrated["diffApply"];
+    delete migrated["fixJson"];
+    return migrated;
+  },
+};
+
+function migrateConfig(raw: Record<string, any>): Record<string, any> {
+  let version: number = raw["configVersion"] ?? 0;
+  while (version < CURRENT_CONFIG_VERSION) {
+    const migration = MIGRATIONS[version + 1];
+    if (migration) raw = migration(raw);
+    version++;
+  }
+  return { ...raw, configVersion: CURRENT_CONFIG_VERSION };
+}
+
+const McpServerConfigSchema = t.exact({
+  command: t.str,
+  args: t.optional(t.array(t.str)),
+  env: t.optional(t.dict(t.str)),
+});
+
+export const LspServerConfigSchema = t.exact({
+  command: t.array(t.str),
+  extensions: t.array(t.str),
+  rootCandidates: t.array(t.str),
+});
+export type LspServerConfig = t.GetType<typeof LspServerConfigSchema>;
+
+export const LspEntrySchema = t
+  .exact({
+    disabled: t.value(true as const),
+  })
+  .or(LspServerConfigSchema);
+export type LspEntry = t.GetType<typeof LspEntrySchema>;
+
+const EnvAuthSchema = t.exact({
+  type: t.value("env"),
+  name: t.str,
+});
+const CommandAuthSchema = t.exact({
+  type: t.value("command"),
+  command: t.array(t.str),
+});
+const ApiKeyAuthConfigSchema = EnvAuthSchema.or(CommandAuthSchema);
+const CodexAuthConfigSchema = t.exact({
+  type: t.value("codex"),
+});
+// eslint-disable-next-line @typescript-eslint/no-unused-vars -- used only to derive the `Auth` type
+const AuthSchema = ApiKeyAuthConfigSchema.or(CodexAuthConfigSchema);
+export type Auth = t.GetType<typeof AuthSchema>;
+export type ApiKeyAuthConfig = t.GetType<typeof ApiKeyAuthConfigSchema>;
+export type CodexAuthConfig = t.GetType<typeof CodexAuthConfigSchema>;
+
+export type AuthError =
+  | { type: "missing"; message: string }
+  | { type: "command_failed"; message: string; exitCode?: number; stderr?: string }
+  | { type: "invalid"; message: string };
+
+export type ApiKeyAuth = { type: "apiKey"; apiKey: string };
+export type OAuthLoadedAuth = { type: "oauth"; oauthToken: string; accountId?: string };
+export type LoadedAuth = ApiKeyAuth | OAuthLoadedAuth;
+export type AuthResult = { ok: true; auth: LoadedAuth } | { ok: false; error: AuthError };
+type ApiKeyAuthResult = { ok: true; auth: ApiKeyAuth } | { ok: false; error: AuthError };
+type CodexAuthResult = { ok: true; auth: OAuthLoadedAuth } | { ok: false; error: AuthError };
+
+const ModelTypeSchema = t
+  .value("standard")
+  .or(t.value("openai-responses"))
+  .or(t.value("anthropic"));
+const ReasoningSchema = t
+  .value("low")
+  .or(t.value("medium"))
+  .or(t.value("high"))
+  .or(t.value("xhigh"));
+const ModalitiesSchema = t.subtype({
+  image: t.optional(
+    t.subtype({
+      enabled: t.bool,
+      maxSizeMB: t.num,
+      acceptedMimeTypes: t.array(t.str),
+    }),
+  ),
+});
+
+const ModelConfigBaseSchema = t.subtype({
+  nickname: t.str,
+  model: t.str,
+  context: t.num,
+  reasoning: t.optional(ReasoningSchema),
+  modalities: t.optional(ModalitiesSchema),
+});
+const ApiKeyModelConfigSchema = ModelConfigBaseSchema.and(
+  t.subtype({
+    type: t.optional(ModelTypeSchema),
+    baseUrl: t.str,
+    // deprecated: use auth instead
+    apiEnvVar: t.optional(t.str),
+    auth: t.optional(ApiKeyAuthConfigSchema),
+  }),
+);
+const CodexModelConfigSchema = ModelConfigBaseSchema.and(
+  t.subtype({
+    type: t.value("codex"),
+    auth: t.optional(CodexAuthConfigSchema),
+  }),
+);
+const ModelConfigSchema = ApiKeyModelConfigSchema.or(CodexModelConfigSchema);
+export type ApiKeyModelConfig = t.GetType<typeof ApiKeyModelConfigSchema>;
+export type CodexModelConfig = t.GetType<typeof CodexModelConfigSchema>;
+export type ModelConfigBase = t.GetType<typeof ModelConfigBaseSchema>;
+export type ModelConfig = t.GetType<typeof ModelConfigSchema>;
+
+const ConfigSchema = t.exact({
+  configVersion: t.optional(t.num),
+  yourName: t.str,
+  models: t.array(ModelConfigSchema),
+  vimEmulation: t.optional(
+    t.subtype({
+      enabled: t.bool,
+    }),
+  ),
+  search: t.optional(
+    t.subtype({
+      url: t.str,
+      apiEnvVar: t.optional(t.str), // deprecated: use auth instead
+      auth: t.optional(ApiKeyAuthConfigSchema),
+    }),
+  ),
+  defaultApiKeyOverrides: t.optional(t.dict(t.str)),
+  mcpServers: t.optional(t.dict(McpServerConfigSchema)),
+  lsp: t.optional(t.value(false as const).or(t.dict(LspEntrySchema))),
+  skills: t.optional(
+    t.exact({
+      paths: t.optional(t.array(t.str)),
+    }),
+  ),
+  notifications: t.optional(
+    t.subtype({
+      notifyCommand: t.str,
+      notifyTimeoutMs: t.optional(t.num),
+      alwaysNotify: t.optional(t.bool),
+    }),
+  ),
+});
+export type Config = t.GetType<typeof ConfigSchema>;
+
+// In-memory cache for command-based auth (keyed by command joined with null byte)
+const authCommandCache = new Map<string, string>();
+
+const AUTH_COMMAND_TIMEOUT_MS = 15_000;
+const AUTH_COMMAND_MAX_OUTPUT_BYTES = 16 * 1024;
+
+const NOTIFY_COMMAND_TIMEOUT_MS = 10_000;
+
+const configTransport = new LocalTransport();
+
+export async function runNotifyCommand(config: Config): Promise<Result<null, string>> {
+  const cmd = config.notifications?.notifyCommand;
+  if (!cmd || cmd.trim() === "") return ok(null);
+  const shell = process.env["SHELL"] || "/bin/sh";
+
+  return new Promise<Result<null, string>>(resolve => {
+    const notifyProcess = configTransport.spawn(shell, ["-c", cmd], {
+      stdio: ["ignore", "ignore", "ignore"],
+      timeout: NOTIFY_COMMAND_TIMEOUT_MS,
+      env: process.env,
+    });
+
+    notifyProcess.on("close", (code: number | null) => {
+      if (code !== 0) {
+        resolve(err(`notify command exited with code ${code}`));
+        return;
+      }
+      resolve(ok(null));
+    });
+
+    notifyProcess.on("error", e => resolve(err(errorToString(e))));
+  });
+}
+
+export function apiKeyFromAuth(auth: ApiKeyAuth): string {
+  return auth.apiKey;
+}
+
+export function resolveAuth(auth: CodexAuthConfig): Promise<CodexAuthResult>;
+export function resolveAuth(auth: ApiKeyAuthConfig): Promise<ApiKeyAuthResult>;
+export function resolveAuth(auth: Auth): Promise<AuthResult>;
+export async function resolveAuth(auth: Auth): Promise<AuthResult> {
+  if (auth.type === "codex") {
+    const tokens = await getCodexOAuthTokens();
+    if (!tokens.success) {
+      return {
+        ok: false,
+        error: {
+          type: "invalid",
+          message: tokens.error,
+        },
+      };
+    }
+    if (tokens.data) {
+      return {
+        ok: true,
+        auth: {
+          type: "oauth",
+          oauthToken: tokens.data.access,
+          ...(tokens.data.accountId ? { accountId: tokens.data.accountId } : {}),
+        },
+      };
+    }
+    return {
+      ok: false,
+      error: {
+        type: "missing",
+        message: "No Codex OAuth credentials found.",
+      },
+    };
+  }
+
+  if (auth.type === "env") {
+    const value = process.env[auth.name];
+    if (value == null || value === "") {
+      return {
+        ok: false,
+        error: { type: "missing", message: `Environment variable ${auth.name} is not set` },
+      };
+    }
+    return { ok: true, auth: { type: "apiKey", apiKey: value } };
+  }
+
+  // Command auth
+  const cacheKey = auth.command.join("\0");
+  const cached = authCommandCache.get(cacheKey);
+  if (cached != null) {
+    return { ok: true, auth: { type: "apiKey", apiKey: cached } };
+  }
+
+  const [cmd, ...args] = auth.command;
+  if (!cmd) {
+    return {
+      ok: false,
+      error: { type: "invalid", message: "Auth command is empty" },
+    };
+  }
+
+  return new Promise(resolve => {
+    let stdout = "";
+    let stderr = "";
+    let resolved = false;
+
+    const authProcess = configTransport.execFile(
+      cmd,
+      args,
+      {
+        timeout: AUTH_COMMAND_TIMEOUT_MS,
+        maxBuffer: AUTH_COMMAND_MAX_OUTPUT_BYTES,
+        env: process.env,
+      },
+      (error, stdoutBuf, stderrBuf) => {
+        if (resolved) return;
+        resolved = true;
+
+        stdout = stdoutBuf?.toString() ?? "";
+        stderr = stderrBuf?.toString() ?? "";
+
+        if (error) {
+          resolve({
+            ok: false,
+            error: {
+              type: "command_failed",
+              message: error.message,
+              exitCode: "code" in error ? (error.code as number) : undefined,
+              stderr: stderr.slice(0, 500),
+            },
+          });
+          return;
+        }
+
+        const key = stdout.trim();
+        if (key === "") {
+          resolve({
+            ok: false,
+            error: { type: "invalid", message: "Auth command returned empty output" },
+          });
+          return;
+        }
+
+        authCommandCache.set(cacheKey, key);
+        resolve({ ok: true, auth: { type: "apiKey", apiKey: key } });
+      },
+    );
+
+    // execFile should kill on timeout, but just to be safe
+    setTimeout(() => {
+      if (!resolved) {
+        resolved = true;
+        authProcess.kill("SIGKILL");
+        resolve({
+          ok: false,
+          error: {
+            type: "command_failed",
+            message: `Auth command timed out after ${AUTH_COMMAND_TIMEOUT_MS}ms`,
+          },
+        });
+      }
+    }, AUTH_COMMAND_TIMEOUT_MS + 1000);
+  });
+}
+
+/**
+ * Converts legacy apiEnvVar to Auth, or returns existing auth.
+ * Used for migration compatibility.
+ */
+function getAuthForModel(model: {
+  type?: ModelConfig["type"];
+  auth?: Auth;
+  apiEnvVar?: string;
+}): Auth | null {
+  if (model.auth?.type === "codex" || model.type === "codex") return { type: "codex" };
+  if (model.auth) return model.auth;
+  if (model.apiEnvVar) return { type: "env", name: model.apiEnvVar };
+  return null;
+}
+
+export const ConfigContext = React.createContext<Config>({
+  yourName: "unknown",
+  models: [],
+});
+export function useConfig() {
+  return React.useContext(ConfigContext);
+}
+export const ConfigPathContext = React.createContext("");
+
+export const SetConfigContext = React.createContext<(c: Config) => any>(() => {});
+export function useSetConfig() {
+  const set = React.useContext(SetConfigContext);
+  const configPath = React.useContext(ConfigPathContext);
+
+  return async (c: Config) => {
+    await writeConfig(c, configPath);
+    set(c);
+  };
+}
+
+export function withServerDisabled(serverName: string, config: Config): Config {
+  const existing = config.lsp === false ? {} : (config.lsp ?? {});
+  return { ...config, lsp: { ...existing, [serverName]: { disabled: true } } };
+}
+
+export function withAllServersDisabled(config: Config): Config {
+  return { ...config, lsp: false };
+}
+
+export function mergeEnvVar(config: Config, model: ApiKeyModelConfig, apiEnvVar: string) {
+  const provider = providerForBaseUrl(model.baseUrl);
+  const merged = { ...config, models: [...config.models] };
+  const index = merged.models.indexOf(model);
+  if (index < 0) throw new Error("Couldn't find model in models list");
+
+  if (provider) {
+    const key = keyFromName(provider.name);
+    const defaultEnvVar = getDefaultEnvVar(provider, config);
+    if (defaultEnvVar === apiEnvVar) return merged;
+    const overrides = merged.defaultApiKeyOverrides || {};
+    overrides[key] = apiEnvVar;
+    merged.defaultApiKeyOverrides = overrides;
+    const updatedModel = { ...model };
+    delete updatedModel.apiEnvVar;
+    merged.models[index] = updatedModel;
+    return merged;
+  }
+
+  merged.models[index] = {
+    ...model,
+    apiEnvVar,
+  };
+
+  return merged;
+}
+
+function getDefaultEnvVar(provider: ProviderConfig, config: Config) {
+  const key = keyFromName(provider.name);
+  const defaultEnvVar = (() => {
+    if (config.defaultApiKeyOverrides == null) return provider.envVar;
+    if (config.defaultApiKeyOverrides[key] == null) return provider.envVar;
+    return config.defaultApiKeyOverrides[key];
+  })();
+  return defaultEnvVar;
+}
+
+export async function writeConfig(c: Config, configPath: string) {
+  const dir = path.dirname(configPath);
+  await fs.mkdir(dir, { recursive: true });
+  await fs.writeFile(
+    configPath,
+    json5.stringify({ configVersion: CURRENT_CONFIG_VERSION, ...sanitizeConfig(c) }, null, 2),
+  );
+}
+
+function sanitizeConfig(c: Config): Config {
+  const sanitized = { ...c, models: [...c.models] };
+  for (let index = 0; index < sanitized.models.length; index++) {
+    const model = sanitized.models[index];
+    if (model.type === "codex") {
+      const updatedModel: typeof model & { baseUrl?: string } = { ...model };
+      delete updatedModel.baseUrl;
+      sanitized.models[index] = updatedModel;
+      continue;
+    }
+    const provider = providerForBaseUrl(model.baseUrl);
+    if (provider) {
+      const envVar = getDefaultEnvVar(provider, c);
+      if ("apiEnvVar" in model && envVar === model.apiEnvVar) {
+        const updatedModel = { ...model };
+        delete updatedModel.apiEnvVar;
+        sanitized.models[index] = updatedModel;
+      }
+    }
+  }
+
+  return sanitized;
+}
+
+// Resolving a search key can read auth over the network or shell, and a trajectory re-resolves
+// its data several times per step, so a successful resolution is reused for the process lifetime
+// and concurrent calls share one lookup rather than racing to resolve auth twice.
+let cachedSearchConfig: { url: string; key: string } | null = null;
+let inFlightSearchConfig: Promise<{ url: string; key: string } | null> | null = null;
+
+export async function readSearchConfig(config: Config | null) {
+  if (cachedSearchConfig != null) return cachedSearchConfig;
+  const pending = (inFlightSearchConfig ??= resolveSearchConfig(config).then(resolved => {
+    // Cache before the in-flight slot clears, so a caller arriving in between still sees it.
+    if (resolved != null) cachedSearchConfig = resolved;
+    return resolved;
+  }));
+  try {
+    return await pending;
+  } finally {
+    if (inFlightSearchConfig === pending) inFlightSearchConfig = null;
+  }
+}
+
+async function resolveSearchConfig(config: Config | null) {
+  if (config?.search) {
+    const search = config.search;
+    const url = config.search.url;
+    const key = await (async () => {
+      const auth = getAuthForModel(search);
+      if (auth) {
+        const result = await resolveAuth(auth);
+        if (result.ok && result.auth.type === "apiKey") return apiKeyFromAuth(result.auth);
+      }
+      const result = await readAuthForBaseUrl(url, config);
+      if (result.ok && result.auth.type === "apiKey") return apiKeyFromAuth(result.auth);
+      return null;
+    })();
+    if (key != null) return { url, key };
+    return null;
+  }
+
+  const url = "https://api.synthetic.new/v2/search";
+  const key = await findSyntheticKey(config);
+
+  if (key != null) return { key, url };
+  return null;
+}
+
+// Attempts to find a valid key for Synthetic. This is useful for features we know Synthetic
+// supports, e.g. the web search tool
+async function findSyntheticKey(config: Config | null) {
+  const overrides = config?.defaultApiKeyOverrides;
+  const override = overrides == null ? null : overrides["synthetic"];
+  if (override) return process.env[override];
+
+  for (const base of SYNTHETIC_BASE_URLS) {
+    const result = await readAuthForBaseUrl(base, config);
+    if (result.ok && result.auth.type === "apiKey") return apiKeyFromAuth(result.auth);
+  }
+
+  return null;
+}
+
+export function readAuthForModel(
+  model: CodexModelConfig,
+  config: Config | null,
+): Promise<CodexAuthResult>;
+export function readAuthForModel(
+  model: ApiKeyModelConfig,
+  config: Config | null,
+): Promise<ApiKeyAuthResult>;
+export function readAuthForModel(model: ModelConfig, config: Config | null): Promise<AuthResult>;
+export function readAuthForModel(
+  model: { type?: ModelConfig["type"]; baseUrl: string; apiEnvVar?: string; auth?: Auth },
+  config: Config | null,
+): Promise<AuthResult>;
+export async function readAuthForModel(
+  model:
+    | ModelConfig
+    | { type?: ModelConfig["type"]; baseUrl: string; apiEnvVar?: string; auth?: Auth },
+  config: Config | null,
+): Promise<AuthResult> {
+  if (model.type === "codex" || model.auth?.type === "codex") {
+    return await resolveAuth({ type: "codex" });
+  }
+
+  if (model.auth) {
+    const result = await resolveAuth(model.auth);
+    if (result.ok) return result;
+    // If auth is configured but failed, return the error (don't fall through)
+    return result;
+  }
+
+  if (model.apiEnvVar) return await resolveAuth({ type: "env", name: model.apiEnvVar });
+  if (!("baseUrl" in model)) {
+    return {
+      ok: false,
+      error: { type: "invalid", message: "API-key model auth requires a base URL." },
+    };
+  }
+
+  // Otherwise, search for auth for this model's base URL.
+  return await readApiKeyAuthForBaseUrl(model.baseUrl, config);
+}
+
+export async function readAuthForBaseUrl(
+  baseUrl: string,
+  config: Config | null,
+): Promise<AuthResult> {
+  for (const candidate of equivalentBaseUrls(baseUrl)) {
+    const result = await readAuthForExactBaseUrl(candidate, config);
+    if (result.ok) return result;
+  }
+
+  return { ok: false, error: { type: "missing", message: `No auth found for ${baseUrl}` } };
+}
+
+async function readAuthForExactBaseUrl(
+  baseUrl: string,
+  config: Config | null,
+): Promise<AuthResult> {
+  // Is it a URL for a built-in provider? Check those first
+  const provider = providerForBaseUrl(baseUrl);
+  if (provider) {
+    if (provider.type === "codex") {
+      return await resolveAuth({ type: "codex" });
+    }
+
+    const envVar = (() => {
+      const key = keyFromName(provider.name);
+      if (config == null) return provider.envVar;
+      if (config.defaultApiKeyOverrides == null) return provider.envVar;
+      if (config.defaultApiKeyOverrides[key] == null) return provider.envVar;
+      return config.defaultApiKeyOverrides[key];
+    })();
+    if (process.env[envVar])
+      return { ok: true, auth: { type: "apiKey", apiKey: process.env[envVar] } };
+  }
+
+  // Is there an entry for it in the keys file?
+  const keys = await readKeys();
+  if (keys[baseUrl] != null) return { ok: true, auth: { type: "apiKey", apiKey: keys[baseUrl] } };
+
+  // Does it match an existing model with auth or API env var defined?
+  for (const model of config?.models || []) {
+    if (model.type !== "codex" && model.baseUrl == baseUrl) {
+      const auth = getAuthForModel(model);
+      if (auth) {
+        const result = await resolveAuth(auth);
+        if (result.ok) return result;
+      }
+    }
+  }
+
+  // We can't find auth for it.
+  return { ok: false, error: { type: "missing", message: `No auth found for ${baseUrl}` } };
+}
+
+async function readApiKeyAuthForBaseUrl(
+  baseUrl: string,
+  config: Config | null,
+): Promise<ApiKeyAuthResult> {
+  for (const candidate of equivalentBaseUrls(baseUrl)) {
+    const result = await readApiKeyAuthForExactBaseUrl(candidate, config);
+    if (result.ok) return result;
+  }
+
+  return {
+    ok: false,
+    error: { type: "missing", message: `No API key auth found for ${baseUrl}` },
+  };
+}
+
+async function readApiKeyAuthForExactBaseUrl(
+  baseUrl: string,
+  config: Config | null,
+): Promise<ApiKeyAuthResult> {
+  const provider = providerForBaseUrl(baseUrl);
+  if (provider) {
+    if (provider.type === "codex") {
+      return {
+        ok: false,
+        error: { type: "missing", message: `No API key auth found for ${baseUrl}` },
+      };
+    }
+
+    const envVar = (() => {
+      const key = keyFromName(provider.name);
+      if (config == null) return provider.envVar;
+      if (config.defaultApiKeyOverrides == null) return provider.envVar;
+      if (config.defaultApiKeyOverrides[key] == null) return provider.envVar;
+      return config.defaultApiKeyOverrides[key];
+    })();
+    if (process.env[envVar])
+      return { ok: true, auth: { type: "apiKey", apiKey: process.env[envVar] } };
+  }
+
+  const keys = await readKeys();
+  if (keys[baseUrl] != null) return { ok: true, auth: { type: "apiKey", apiKey: keys[baseUrl] } };
+
+  for (const model of config?.models || []) {
+    if (model.type !== "codex" && model.baseUrl == baseUrl) {
+      const auth = getAuthForModel(model);
+      if (auth && auth.type !== "codex") {
+        const result = await resolveAuth(auth);
+        if (result.ok) return result;
+      }
+    }
+  }
+
+  return {
+    ok: false,
+    error: { type: "missing", message: `No API key auth found for ${baseUrl}` },
+  };
+}
+
+// Every API base URL Synthetic has ever used
+const SYNTHETIC_BASE_URLS = [
+  "https://api.synthetic.new/openai/v1",
+  "https://synthetic.new/api/openai/v1",
+  "https://api.synthetic.new/v1",
+  "https://api.glhf.chat/v1",
+  "https://glhf.chat/api/v1",
+  "https://glhf.chat/api/openai/v1",
+];
+
+function equivalentBaseUrls(baseUrl: string): string[] {
+  if (!SYNTHETIC_BASE_URLS.includes(baseUrl)) return [baseUrl];
+  return [baseUrl, ...SYNTHETIC_BASE_URLS.filter(candidate => candidate !== baseUrl)];
+}
+
+export async function hasExistingAuthForBaseUrl(
+  baseUrl: string,
+  config: Config | null,
+): Promise<boolean> {
+  return (await readAuthForBaseUrl(baseUrl, config)).ok;
+}
+
+export async function writeKeyForModel(model: { baseUrl: string }, apiKey: string) {
+  const keys = await readKeys();
+  keys[model.baseUrl] = apiKey;
+  await fs.mkdir(CONFIG_DIR, { recursive: true });
+  await fs.writeFile(KEY_FILE, json5.stringify(keys), {
+    mode: 0o600,
+  });
+}
+
+function parseJson5(content: string, description: string): any {
+  try {
+    return json5.parse(content);
+  } catch (error) {
+    throw new Error(`Invalid JSON5 in ${description}: ${errorToString(error)}`);
+  }
+}
+
+async function readKeysFromDisk() {
+  const exists = await fileExists(KEY_FILE);
+  if (!exists) return {};
+  const keyFile = await fs.readFile(KEY_FILE, "utf8");
+  const parsed = parseJson5(keyFile, `Octo keys file ${KEY_FILE}`);
+  try {
+    return KeyConfigSchema.slice(parsed);
+  } catch (error) {
+    throw new Error(`Invalid Octo keys file ${KEY_FILE}: ${errorToString(error)}`);
+  }
+}
+
+export const configDeps = registry({
+  readKeys: readKeysFromDisk,
+});
+
+function readKeys() {
+  return configDeps.readKeys();
+}
+
+export function getModelFromConfig(config: Config, modelOverride: string | null) {
+  if (modelOverride == null) return config.models[0];
+  return matchModelFromConfig(config, modelOverride) ?? config.models[0];
+}
+
+/*
+ * Resolves a persisted versioned model JSON blob (see session-history/model-json.ts) back to a
+ * model in the current config, trying progressively looser matches:
+ *   1. exact serialized match;
+ *   2. fuzzy match on baseUrl, model, and auth fields (e.g. the model was renamed);
+ *   3. loose match on just baseUrl and model (e.g. the model was re-authenticated).
+ * Returns null if no tier matches.
+ */
+export function matchModelFromConfig(config: Config, modelJson: string): ModelConfig | null {
+  const exact = config.models.find(model => serializeModelJson(model) === modelJson);
+  if (exact) return exact;
+
+  const persisted = tryDeserializeModelJson(modelJson);
+  if (persisted == null) return null;
+  const fuzzy = config.models.find(candidate => fuzzyMatchModel(candidate, persisted));
+  if (fuzzy) return fuzzy;
+  return config.models.find(candidate => looseMatchModel(candidate, persisted)) ?? null;
+}
+
+function fuzzyMatchModel(candidate: ModelConfig, persisted: ModelConfig): boolean {
+  if (!looseMatchModel(candidate, persisted)) return false;
+  return isDeepStrictEqual(getAuthForModel(candidate), getAuthForModel(persisted));
+}
+
+function looseMatchModel(candidate: ModelConfig, persisted: ModelConfig): boolean {
+  if (candidate.model !== persisted.model) return false;
+  return modelBaseUrl(candidate) === modelBaseUrl(persisted);
+}
+
+function modelBaseUrl(model: ModelConfig): string | null {
+  if (model.type === "codex") return null;
+  return model.baseUrl;
+}
+
+export async function readConfig(filePath: string): Promise<Config> {
+  const file = await fs.readFile(filePath, "utf8");
+  const parsed = parseJson5(file.trim(), `Octo config file ${filePath}`);
+  const fileVersion: number = parsed["configVersion"] ?? 0;
+  let config: Config;
+  try {
+    config = ConfigSchema.slice(migrateConfig(parsed));
+  } catch (error) {
+    throw new Error(`Invalid Octo config file ${filePath}: ${errorToString(error)}`);
+  }
+  if (fileVersion < CURRENT_CONFIG_VERSION) {
+    await writeConfig(config, filePath);
+  }
+  return config;
+}
+
+export type Metadata = {
+  version: string;
+};
+
+async function readMetadata(): Promise<Metadata> {
+  return {
+    version: packageJson.version,
+  };
+}

@@ -1,0 +1,807 @@
+#!/usr/bin/env node
+import { setupDb } from "../db/setup.ts";
+setupDb();
+
+import React from "react";
+import path from "path";
+import os from "os";
+import chalk from "chalk";
+import { Command } from "@commander-js/extra-typings";
+import { mock } from "antipattern";
+import { fileExists } from "../fs-utils.ts";
+import App from "../app.tsx";
+import { readConfig, readAuthForModel, APP_METADATA } from "../config.ts";
+import { tokenCounts } from "../token-tracker.ts";
+import { Transport, logger, timeout, toolkits } from "libocto";
+import { FirstTimeSetup } from "../first-time-setup.tsx";
+import { loadSyntheticModels, type SyntheticModel } from "../synthetic-models.ts";
+import { PreflightModelAuth } from "../preflight-auth.tsx";
+import { LocalTransport } from "../transports/local.ts";
+import { DockerTransport, manageContainer } from "../transports/docker.ts";
+import { readUpdates, markUpdatesSeen } from "../update-notifs/update-notifs.ts";
+import { migrate } from "../db/migrate.ts";
+import { run } from "../protocols/run.ts";
+import type { Backend } from "../protocols/run.ts";
+import { octoAgent } from "../ir/octo-ir.ts";
+import { loadInputHistory } from "../input-history/index.ts";
+import { replaceDockerRunArgs, replaceOctoFlags, withOctoFlags } from "./cli-args.ts";
+import type { ParsedCliArgs } from "./cli-args.ts";
+import { deleteSession, listSessions, loadSession } from "../session-history/index.ts";
+import type { LoadedSession } from "../session-history/index.ts";
+import { useAppStore } from "../state.ts";
+import { THEME_COLOR } from "../theme.ts";
+import {
+  SESSION_ID_HEADER,
+  SESSION_PREVIEW_HEADER,
+  SESSION_UPDATED_HEADER,
+  sessionListTable,
+} from "../session-history/session-list.ts";
+import { renderInteractive } from "./render-interactive.tsx";
+import { setOctoTitles } from "./titles.ts";
+import changelog from "../../../CHANGELOG.md" with { type: "text" };
+import { processes } from "../process-manager.ts";
+import * as octoLogger from "../logger.ts";
+
+mock(logger, "log", octoLogger);
+
+const CONFIG_STANDARD_DIR = path.join(os.homedir(), ".config/octofriend/");
+const CONFIG_JSON5_FILE = path.join(CONFIG_STANDARD_DIR, "octofriend.json5");
+
+processes.manager().installGlobalProcessSignalHandlers();
+
+const cli = withOctoFlags(
+  new Command().description("If run with no subcommands, runs Octo interactively."),
+)
+  .option("--resume <session-id>", "Resume a previous Octo session")
+  .argument("[docker-run-args...]", "Optional replacement args for `docker run` when resuming")
+  .action(async (dockerRunArgs, opts) => {
+    const resumeSessionId = opts.resume ?? null;
+    if (resumeSessionId == null && dockerRunArgs.length > 0) {
+      logger.log.error("Use octo docker run <args> to start a new session with Docker.");
+      process.exitCode = 1;
+      return;
+    }
+    let runConfig = null;
+    if (resumeSessionId != null) {
+      runConfig = await buildConfigForResuming(resumeSessionId, {
+        config: opts.config,
+        unchained: opts.unchained,
+        dockerRunArgs: dockerRunArgs.length > 0 ? dockerRunArgs : undefined,
+      });
+      if (runConfig == null) return;
+    } else {
+      runConfig = {
+        loadedSession: null,
+        transport: new LocalTransport(),
+        parsedCliArgs: {
+          kind: "local" as const,
+          config: opts.config,
+          unchained: opts.unchained,
+        },
+      };
+    }
+
+    await runMain(runConfig);
+  });
+
+const docker = cli.command("docker").description("Sandbox Octo inside Docker");
+withOctoFlags(docker.command("connect"))
+  .description("Sandbox Octo inside an already-running container")
+  .argument("<target>", "The Docker container")
+  .action(async (target, opts) => {
+    const transport = await DockerTransport.create({
+      type: "container",
+      container: target,
+    });
+    await runMain({
+      transport,
+      loadedSession: null,
+      parsedCliArgs: {
+        kind: "docker-connect",
+        target,
+        config: opts.config,
+        unchained: opts.unchained,
+      },
+    });
+  });
+
+withOctoFlags(docker.command("run"))
+  .description(
+    "Run a Docker image and sandbox Octo inside it, shutting it down when Octo shuts down",
+  )
+  .argument("[args...]", "The args to pass to `docker run`")
+  .action(async (args, opts) => {
+    const transport = await DockerTransport.create({
+      type: "image",
+      image: await manageContainer(args),
+    });
+
+    await runMain({
+      transport,
+      loadedSession: null,
+      parsedCliArgs: {
+        kind: "docker-run",
+        dockerRunArgs: args,
+        config: opts.config,
+        unchained: opts.unchained,
+      },
+    });
+  });
+
+async function buildConfigForResuming(
+  resumeSessionId: string,
+  overrides: {
+    config?: string;
+    unchained?: boolean;
+    dockerRunArgs?: string[];
+  },
+): Promise<{
+  loadedSession: LoadedSession;
+  transport: Transport;
+  parsedCliArgs: ParsedCliArgs;
+} | null> {
+  const loadedSession = loadSession(resumeSessionId);
+  if (loadedSession == null) {
+    logger.log.error(`No session found with ID ${resumeSessionId}.`);
+    process.exit(1);
+  }
+
+  const storedCliArgs = loadedSession.session.metadata.cliArgs;
+  let effectiveCliArgs = replaceOctoFlags(storedCliArgs, overrides);
+  if (overrides.dockerRunArgs != null) {
+    if (effectiveCliArgs.kind !== "docker-run") {
+      logger.log.error(`
+        Cannot override Docker run args for session ${resumeSessionId}: that session was not initialized with \`octo docker run\`.,
+      `);
+      process.exit(1);
+    } else {
+      effectiveCliArgs = replaceDockerRunArgs(effectiveCliArgs, overrides.dockerRunArgs);
+    }
+  }
+
+  const shared = {
+    parsedCliArgs: effectiveCliArgs,
+    loadedSession,
+  };
+
+  switch (effectiveCliArgs.kind) {
+    case "local":
+      return {
+        ...shared,
+        transport: new LocalTransport(),
+      };
+    case "docker-connect":
+      return {
+        ...shared,
+        transport: await DockerTransport.create({
+          type: "container",
+          container: effectiveCliArgs.target,
+        }),
+      };
+    case "docker-run":
+      return {
+        ...shared,
+        transport: await DockerTransport.create({
+          type: "image",
+          image: await manageContainer(effectiveCliArgs.dockerRunArgs),
+        }),
+      };
+  }
+}
+
+async function runMain(opts: {
+  parsedCliArgs: ParsedCliArgs;
+  transport: Transport;
+  loadedSession?: LoadedSession | null;
+}) {
+  const restoreTitles = setOctoTitles();
+  let cleanedUp = false;
+  const cleanup = async () => {
+    if (cleanedUp) return;
+    cleanedUp = true;
+    restoreTitles();
+    await Promise.all([toolkits.shutdownLspClients(), toolkits.mcp.shutdownMcpClients()]);
+  };
+  const unregisterCleanup = processes.manager().registerOctoExitCleanup(cleanup);
+
+  try {
+    const syntheticModels = await loadSyntheticModels(AbortSignal.timeout(5000));
+    const { config, configPath } = await loadConfig(opts.parsedCliArgs.config, syntheticModels);
+
+    // Connect to all MCP servers on boot
+    if (config.mcpServers && Object.keys(config.mcpServers).length > 0) {
+      for (const server of Object.keys(config.mcpServers)) {
+        try {
+          logger.log.info("Connecting to", server, "MCP server...");
+          // Run the basic connection setup with logging enabled, so that first-time setup gets logged
+          const client = await toolkits.mcp.connectMcpServer(server, config.mcpServers, true);
+          if (!client.success) throw new Error(client.error);
+          await client.data.close();
+          // Then run the cache setup codepath, so future results use a cached client with logging off
+          const cachedClient = await toolkits.mcp.getMcpClient(server, config.mcpServers);
+          if (!cachedClient.success) throw new Error(cachedClient.error);
+          logger.log.info("Connected to", server, "MCP server");
+        } catch (error) {
+          logger.log.error(
+            `Warning: Failed to connect to "${server}" MCP server: ${error instanceof Error ? error.message : String(error)}`,
+          );
+          logger.log.error("Octo will continue without this MCP server.");
+        }
+      }
+      logger.log.info("MCP server initialization complete.");
+    }
+
+    const skills = await toolkits.skill.discoverSkills(
+      opts.transport,
+      timeout(5000),
+      config.skills?.paths,
+    );
+    const cwd = opts.transport.cwd;
+
+    const store = useAppStore.getState();
+    if (store.sessionMode.mode !== "booting") {
+      throw new Error("impossible: cli booted with a session already in flight");
+    }
+    store.setUnchained(!!opts.parsedCliArgs.unchained);
+    if (opts.loadedSession != null) {
+      await store.sessionMode.control.hydrate({
+        session: {
+          ...opts.loadedSession.session,
+          metadata: {
+            ...opts.loadedSession.session.metadata,
+            cliArgs: opts.parsedCliArgs,
+          },
+        },
+        history: opts.loadedSession.history,
+        config,
+        transport: opts.transport,
+      });
+    } else {
+      await store.sessionMode.control.newSession(opts.transport.cwd, opts.parsedCliArgs, {
+        config,
+        transport: opts.transport,
+      });
+    }
+
+    await renderInteractive(
+      <App
+        syntheticModels={syntheticModels}
+        bootSkills={skills.map(s => s.name)}
+        config={config}
+        configPath={configPath}
+        cwd={cwd}
+        metadata={APP_METADATA}
+        transport={opts.transport}
+        updates={await readUpdates()}
+        inputHistory={await loadInputHistory()}
+      />,
+      { captureCtrlC: true },
+    );
+
+    const { history, sessionMode } = useAppStore.getState();
+    if (sessionMode.mode === "live" && history.some(item => item.type === "llm-ir")) {
+      const resumeCommand = chalk.hex(THEME_COLOR)(
+        `octo --resume ${sessionMode.session.metadata.sessionId}`,
+      );
+      logger.log.info(`\nResume this session with ${resumeCommand}`);
+    }
+
+    logger.log.info("\nApprox. tokens used:");
+    if (Object.keys(tokenCounts()).length === 0) {
+      logger.log.info("0");
+    } else {
+      for (const [model, count] of Object.entries(tokenCounts())) {
+        const input = count.input.toLocaleString();
+        const output = count.output.toLocaleString();
+        logger.log.info(`${model}: ${input} input, ${output} output`);
+      }
+    }
+  } catch (e) {
+    logger.log.error(e);
+  } finally {
+    await processes.manager().terminateOnOctoExit();
+    unregisterCleanup();
+  }
+}
+
+cli
+  .command("version")
+  .description("Prints the current version")
+  .action(async () => {
+    logger.log.info(APP_METADATA.version);
+  });
+
+cli
+  .command("init")
+  .description("Create a fresh config file for Octo")
+  .action(async () => {
+    const syntheticModels = await loadSyntheticModels(AbortSignal.timeout(5000));
+    await renderInteractive(
+      <FirstTimeSetup configPath={CONFIG_JSON5_FILE} syntheticModels={syntheticModels} />,
+      {
+        captureCtrlC: false,
+      },
+    );
+  });
+
+cli
+  .command("changelog")
+  .description("List the changelog")
+  .action(async () => {
+    logger.log.info(changelog);
+  });
+
+cli
+  .command("list")
+  .description("List all models you've configured with Octo")
+  .action(async () => {
+    const { config } = await loadConfigWithoutReauth(undefined, null);
+    logger.log.info(config.models.map(m => m.nickname).join("\n"));
+  });
+
+const sessionCommand = cli.command("session").description("Manage Octo sessions");
+sessionCommand
+  .command("list")
+  .description("List sessions for the current working directory")
+  .action(() => {
+    const sessions = listSessions(process.cwd());
+    if (sessions.length === 0) return;
+
+    const { rows, sessionIdWidth, previewWidth } = sessionListTable(sessions);
+    const octoTheme = chalk.hex(THEME_COLOR);
+    logger.log.info(`Resume a session with: ${octoTheme("octo --resume <session-id>")}\n`);
+    logger.log.info(
+      `${SESSION_ID_HEADER.padEnd(sessionIdWidth)}  ${SESSION_PREVIEW_HEADER.padEnd(previewWidth)}  ${SESSION_UPDATED_HEADER}`,
+    );
+    logger.log.info(
+      `${"─".repeat(sessionIdWidth)}  ${"─".repeat(previewWidth)}  ${"─".repeat(SESSION_UPDATED_HEADER.length)}`,
+    );
+    for (const row of rows) {
+      logger.log.info(
+        `${octoTheme(row.sessionId.padEnd(sessionIdWidth))}  ${chalk.dim((row.preview ?? "").padEnd(previewWidth))}  ${chalk.white(row.updatedAtText)}`,
+      );
+    }
+  });
+sessionCommand
+  .command("delete")
+  .description("Delete a session")
+  .argument("<session-id>", "The session ID to delete")
+  .action(sessionId => {
+    if (!deleteSession(sessionId)) {
+      logger.log.error(`No session found with ID ${sessionId}.`);
+      process.exitCode = 1;
+      return;
+    }
+    logger.log.info(`Deleted session ${sessionId}.`);
+  });
+
+const bench = cli.command("bench");
+bench
+  .command("tps")
+  .description("Benchmark tokens/sec from your API provider")
+  .option(
+    "--model <model-nickname>",
+    "The nickname you gave for the model you want to use. If unspecified, uses your default model",
+  )
+  .option(
+    "--prompt <prompt>",
+    "Custom prompt to benchmark with. If omitted, uses the default prompt.",
+  )
+  .option("--concurrency <n>", "Concurrent requests to make. If omitted, defaults to 1")
+  .action(async opts => {
+    const { config } = await loadConfigWithoutReauth(undefined, null);
+    const transport = new LocalTransport();
+    const maybeModel = opts.model
+      ? config.models.find(m => m.nickname === opts.model)
+      : config.models[0];
+
+    if (maybeModel == null) {
+      logger.log.error(`No model with the nickname ${opts.model} found. Did you add it to Octo?`);
+      logger.log.error("The available models are:");
+      logger.log.error("- " + config.models.map(m => m.nickname).join("\n- "));
+      return process.exit(1);
+    }
+    const model = maybeModel;
+
+    const concurrency = Math.max(1, parseInt(opts.concurrency ?? "1", 10));
+    let backend: Backend;
+    if (model.type === "codex") {
+      const authResult = await readAuthForModel(model, config);
+      if (!authResult.ok) {
+        logger.log.error(authResult.error.message);
+        process.exit(1);
+      }
+      backend = {
+        type: "codex",
+        auth: authResult.auth,
+        model,
+      };
+    } else {
+      const authResult = await readAuthForModel(model, config);
+      if (!authResult.ok) {
+        logger.log.error(authResult.error.message);
+        process.exit(1);
+      }
+      backend = {
+        type: "api",
+        auth: authResult.auth,
+        model,
+      };
+    }
+
+    logger.log.info(
+      `Benchmarking ${model.nickname} with ${concurrency} concurrent request${concurrency > 1 ? "s" : ""}`,
+    );
+    const abortController = new AbortController();
+    const timer = setInterval(() => {
+      logger.log.info("Still working...");
+    }, 5000);
+
+    type SuccessfulBenchmark = {
+      tokens: number;
+      ttft: number;
+      tokenElapsed: number;
+      interTokenLatencies: number[];
+      success: true;
+    };
+
+    type FailedBenchmark = {
+      success: false;
+      error: string;
+    };
+
+    type BenchmarkResult = SuccessfulBenchmark | FailedBenchmark;
+
+    async function runSingleBenchmark(): Promise<BenchmarkResult> {
+      const start = new Date();
+      let firstToken: Date | null = null;
+      const tokenTimestamps: Date[] = [];
+
+      const result = await run<typeof octoAgent>({
+        model: {
+          provider: backend,
+          model: model.model,
+          contextWindow: model.context,
+          modalities: model.modalities ?? null,
+        },
+        backend,
+        irs: [
+          {
+            role: "user",
+            content: [
+              {
+                type: "text",
+                content:
+                  opts.prompt ??
+                  "Write me a short story about a frog going to the moon. Do not use ANY tools.",
+              },
+            ],
+          },
+        ],
+        onTokens: async () => {
+          const now = new Date();
+          tokenTimestamps.push(now);
+          if (firstToken == null) firstToken = now;
+        },
+        abortSignal: abortController.signal,
+        transport,
+      });
+
+      if (!result.success) {
+        return {
+          success: false,
+          error:
+            result.error.type === "auth-error" ? result.error.authError : result.error.requestError,
+        };
+      }
+
+      const end = new Date();
+
+      if (firstToken == null) {
+        return {
+          success: false,
+          error: "No tokens received",
+        };
+      }
+
+      const ttft = (firstToken as Date).getTime() - start.getTime();
+      const tokenElapsed = end.getTime() - (firstToken as Date).getTime();
+
+      const tokens = result.data.usage.output;
+
+      const interTokenLatencies: number[] = [];
+      for (let i = 1; i < tokenTimestamps.length; i++) {
+        const latency = tokenTimestamps[i].getTime() - tokenTimestamps[i - 1].getTime();
+        interTokenLatencies.push(latency);
+      }
+
+      return {
+        tokens,
+        ttft,
+        tokenElapsed,
+        interTokenLatencies,
+        success: true,
+      };
+    }
+
+    const benchmarkStart = new Date();
+    const results = await Promise.all(
+      Array.from(
+        {
+          length: concurrency,
+        },
+        () => runSingleBenchmark(),
+      ),
+    );
+    const benchmarkEnd = new Date();
+
+    clearInterval(timer);
+
+    const failures = results.filter((r): r is FailedBenchmark => !r.success);
+    if (failures.length > 0) {
+      logger.log.error(`\n${failures.length} request(s) failed:`);
+      for (const f of failures) {
+        logger.log.error(`  - ${f.error}`);
+      }
+      if (failures.length === concurrency) {
+        process.exit(1);
+      }
+    }
+
+    const successes = results.filter((r): r is SuccessfulBenchmark => r.success);
+
+    if (successes.length === 0) {
+      logger.log.info("No successful requests");
+      process.exit(1);
+    }
+
+    const totalTokens = successes.reduce((sum, r) => sum + r.tokens, 0);
+    const avgTokens = totalTokens / successes.length;
+    const avgTtft = successes.reduce((sum, r) => sum + r.ttft, 0) / successes.length;
+
+    const allInterTokenLatencies = successes.flatMap(r => r.interTokenLatencies);
+    const avgTokenElapsed =
+      successes.reduce((sum, r) => sum + r.tokenElapsed, 0) / successes.length;
+
+    const totalTime = (benchmarkEnd.getTime() - benchmarkStart.getTime()) / 1000;
+    const tps = totalTokens / totalTime;
+
+    logger.log.info(`\n
+Successful requests: ${successes.length}/${concurrency}
+Total tokens: ${totalTokens}
+Avg tokens per request: ${avgTokens.toFixed(2)}
+Total time: ${totalTime.toFixed(2)}s
+Avg time to first token: ${(avgTtft / 1000).toFixed(3)}s
+`);
+
+    if (allInterTokenLatencies.length > 0) {
+      let minLatency = allInterTokenLatencies[0];
+      let maxLatency = allInterTokenLatencies[0];
+      let total = 0;
+      for (const latency of allInterTokenLatencies) {
+        if (minLatency > latency) minLatency = latency;
+        if (maxLatency < latency) maxLatency = latency;
+        total += latency;
+      }
+      const avgLatency = total / allInterTokenLatencies.length;
+
+      logger.log.info(`Inter-token latencies (${allInterTokenLatencies.length} total):
+  Min: ${minLatency}ms
+  Max: ${maxLatency}ms
+  Avg: ${avgLatency.toFixed(2)}ms
+  Avg stream time per request: ${(avgTokenElapsed / 1000).toFixed(3)}s
+`);
+    }
+
+    logger.log.info(`Tok/sec output (overall): ${tps.toFixed(2)}
+Tok/sec output (per-request avg): ${successes.map(r => r.tokens / (r.tokenElapsed / 1000)).reduce((a, b) => a + b, 0) / successes.length}
+`);
+  });
+
+cli
+  .command("prompt")
+  .description("Sends a prompt to a model")
+  .option("--system <prompt>", "An optional system prompt")
+  .option(
+    "--model <model-nickname>",
+    "The nickname you gave for the model you want to use. If unspecified, uses your default model",
+  )
+  .argument("<prompt>", "The prompt you want to send to this model")
+  .action(async (prompt, opts) => {
+    const { config } = await loadConfig(undefined, null);
+    const transport = new LocalTransport();
+    const model = opts.model
+      ? config.models.find(m => m.nickname === opts.model)
+      : config.models[0];
+
+    if (model == null) {
+      logger.log.error(`No model with the nickname ${opts.model} found. Did you add it to Octo?`);
+      logger.log.error("The available models are:");
+      logger.log.error("- " + config.models.map(m => m.nickname).join("\n- "));
+      process.exit(1);
+    }
+
+    let backend: Backend;
+    if (model.type === "codex") {
+      const authResult = await readAuthForModel(model, config);
+      if (!authResult.ok) {
+        logger.log.error(`${model.nickname} doesn't have auth set up.`);
+        const error = authResult.error;
+
+        if (error.type === "missing") {
+          logger.log.error(`${error.message}`);
+        } else if (error.type === "command_failed") {
+          logger.log.error(`Command execution failed: ${error.message}`);
+          if (error.exitCode != null) {
+            logger.log.error(`Exit code: ${error.exitCode}`);
+          }
+          if (error.stderr) {
+            logger.log.error(`stderr: ${error.stderr}`);
+          }
+        } else if (error.type === "invalid") {
+          logger.log.error(`Invalid auth configuration: ${error.message}`);
+        }
+
+        process.exit(1);
+      }
+      backend = {
+        type: "codex",
+        auth: authResult.auth,
+        model,
+      };
+    } else {
+      const authResult = await readAuthForModel(model, config);
+      if (!authResult.ok) {
+        logger.log.error(`${model.nickname} doesn't have auth set up.`);
+        const error = authResult.error;
+
+        if (error.type === "missing") {
+          logger.log.error(`${error.message}`);
+          if (model.auth?.type === "env") {
+            logger.log.error(`Hint: do you need to re-source your .bash_profile or .zshrc?`);
+          }
+        } else if (error.type === "command_failed") {
+          logger.log.error(`Command execution failed: ${error.message}`);
+          if (error.exitCode != null) {
+            logger.log.error(`Exit code: ${error.exitCode}`);
+          }
+          if (error.stderr) {
+            logger.log.error(`stderr: ${error.stderr}`);
+          }
+        } else if (error.type === "invalid") {
+          logger.log.error(`Invalid auth configuration: ${error.message}`);
+        }
+
+        process.exit(1);
+      }
+      backend = {
+        type: "api",
+        auth: authResult.auth,
+        model,
+      };
+    }
+    const messages = [
+      {
+        role: "user" as const,
+        content: [
+          {
+            type: "text" as const,
+            content: prompt,
+          },
+        ],
+      },
+    ];
+
+    let systemPrompt: undefined | (() => Promise<string>) = undefined;
+    if (opts.system) {
+      const sys = opts.system;
+      systemPrompt = async () => sys;
+    }
+
+    const abortController = new AbortController();
+
+    let seenReasoning = false;
+    let seenContent = false;
+    const result = await run<typeof octoAgent>({
+      model: {
+        provider: backend,
+        model: model.model,
+        contextWindow: model.context,
+        modalities: model.modalities ?? null,
+      },
+      backend,
+      systemPrompt,
+      irs: messages,
+      onTokens: async (chunk, type) => {
+        if (type === "reasoning") seenReasoning = true;
+
+        if (seenReasoning && type === "content" && !seenContent) {
+          seenContent = true;
+          process.stderr.write("\n\n");
+        }
+
+        if (type === "reasoning") process.stderr.write(chunk);
+        else process.stdout.write(chunk);
+      },
+      abortSignal: abortController.signal,
+      transport,
+    });
+    if (!result.success) {
+      if (result.error.type === "auth-error") {
+        logger.log.error(result.error.authError);
+      } else {
+        logger.log.error(result.error.requestError);
+        logger.log.error(`cURL: ${result.error.curl}`);
+      }
+      process.exit(1);
+    }
+
+    process.stdout.write("\n");
+  });
+
+async function loadConfig(path: string | undefined, syntheticModels: SyntheticModel[] | null) {
+  let { config, configPath } = await loadConfigWithoutReauth(path, syntheticModels);
+  let defaultModel = config.models[0];
+  if (!(await readAuthForModel(defaultModel, config)).ok) {
+    await renderInteractive(
+      <PreflightModelAuth
+        error="It looks like we need to set up auth for your default model"
+        model={defaultModel}
+        config={config}
+        configPath={configPath}
+      />,
+      { captureCtrlC: false },
+    );
+    const reloaded = await loadConfigWithoutReauth(path, syntheticModels);
+    config = reloaded.config;
+    configPath = reloaded.configPath;
+    defaultModel = config.models[0];
+    if (!(await readAuthForModel(defaultModel, config)).ok) process.exit(1);
+  }
+
+  return {
+    config,
+    configPath,
+  };
+}
+
+async function loadConfigWithoutReauth(
+  configPath: string | undefined,
+  syntheticModels: SyntheticModel[] | null,
+) {
+  if (configPath)
+    return {
+      configPath,
+      config: await readConfig(configPath),
+    };
+
+  if (await fileExists(CONFIG_JSON5_FILE)) {
+    return {
+      configPath: CONFIG_JSON5_FILE,
+      config: await readConfig(CONFIG_JSON5_FILE),
+    };
+  }
+
+  // This is first-time setup; mark all updates as seen to avoid showing an update message on boot
+  await markUpdatesSeen();
+  const catalog = syntheticModels ?? (await loadSyntheticModels(AbortSignal.timeout(5000)));
+  await renderInteractive(
+    <FirstTimeSetup configPath={CONFIG_JSON5_FILE} syntheticModels={catalog} />,
+    {
+      captureCtrlC: false,
+    },
+  );
+
+  if (await fileExists(CONFIG_JSON5_FILE)) {
+    return {
+      configPath: CONFIG_JSON5_FILE,
+      config: await readConfig(CONFIG_JSON5_FILE),
+    };
+  }
+
+  process.exit(1);
+}
+
+migrate().then(() => {
+  cli.parse();
+});

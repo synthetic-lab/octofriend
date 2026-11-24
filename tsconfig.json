@@ -1,6 +1,20 @@
 {
-  "include": ["source", "training", "demos", "scripts", "*.ts"],
-  "exclude": ["training/repos", "node_modules"],
+  "include": [
+    "libocto/source",
+    "libocto/testing",
+    "octofriend/source",
+    "octofriend/demos",
+    "octofriend/*.ts",
+    "octofriend/training",
+    "octofriend/scripts",
+    "*.ts"
+  ],
+  "exclude": [
+    "octofriend/training/repos",
+    "octofriend/training/fix-json/json-repos",
+    "**/node_modules",
+    "**/dist"
+  ],
   "compilerOptions": {
     "types": ["bun-types"],
     "skipLibCheck": true,

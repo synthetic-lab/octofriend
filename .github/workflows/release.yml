@@ -27,7 +27,7 @@ jobs:
           bun-version-file: package.json
 
       - id: check
-        run: bun scripts/ci/check-release.ts
+        run: bun octofriend/scripts/ci/check-release.ts
         env:
           BEFORE: ${{ github.event.before }}
           AFTER: ${{ github.sha }}
@@ -64,9 +64,9 @@ jobs:
 
       - run: bun run compile:production -- --all
 
-      - run: bun scripts/ci/package.ts
+      - run: bun octofriend/scripts/ci/package.ts
 
-      - run: bun scripts/ci/publish.ts
+      - run: bun octofriend/scripts/ci/publish.ts
 
       - name: Tag the release
         run: |
