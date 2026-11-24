@@ -35,8 +35,7 @@ Reads a range of lines from a UTF-8 text file.
 
 ${LINE_NUMBER_PROMPT}
 
-Partial reads only read UTF-8 text: they don't work with images. A partial read does not grant edit
-permission. You MUST perform a full read of a file before editing it.
+Use this when you need context around a particular edit. For images, use read instead.
 `.trim(),
   ArgumentsSchema,
 });

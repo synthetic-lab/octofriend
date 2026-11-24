@@ -31,6 +31,8 @@ const edit = TOOL_BUILDER.withData<{}>().declare({
   name: "edit",
   description: `
 Applies a search/replace edit to a file. This should be your default tool to edit existing files.
+Use the exact text already in context. If you're missing context or the file may have changed,
+read the relevant lines before editing.
 `.trim(),
   ArgumentsSchema,
   ParsedSchema,

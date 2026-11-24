@@ -4,6 +4,7 @@ import { MockTransport } from "libocto/testing";
 import { ok } from "../result.ts";
 import { defaultCountTokens } from "../execution.ts";
 import type { LoweredIR } from "../llm-ir.ts";
+import { protocolUsage } from "./protocol-interface.ts";
 import { ToolBuilder } from "../toolkits/tool-def.ts";
 import { anthropicCompiler } from "./anthropic/compiler-anthropic.ts";
 import { chatCompletionsCompiler } from "./chat-completions/compiler-chat-completions.ts";
@@ -89,21 +90,40 @@ describe("compilers produce complete request bodies", () => {
   it("compiles responses requests", async () => {
     const request = await responsesCompiler({
       model,
-      irs,
+      irs: [
+        ...irs,
+        {
+          role: "assistant",
+          content: "Hello!",
+          usage: protocolUsage(1, 1),
+          openai: { reasoningId: "rs_1", encryptedReasoningContent: "opaque" },
+        },
+      ],
       systemPrompt: async () => "be helpful",
       config: { reasoningEffort: "medium" },
     });
 
     expect(request.model).toBe("test-model");
-    expect(request.instructions).toBe("be helpful");
+    expect(request).not.toHaveProperty("instructions");
     expect(request.input).toEqual([
+      { role: "developer", content: "be helpful" },
       { role: "user", content: [{ type: "input_text", text: "hello" }] },
+      { type: "reasoning", id: "rs_1", summary: [], encrypted_content: "opaque" },
+      { role: "assistant", content: "Hello!" },
     ]);
     expect(request.reasoning).toEqual({ effort: "medium", summary: "auto" });
     expect(request.store).toBe(false);
     // Without encrypted reasoning content, reasoning can't be replayed next turn.
     expect(request.include).toEqual(["reasoning.encrypted_content"]);
     expect(request.stream).toBe(true);
+  });
+
+  it("does not insert a developer message when no Responses prompt is supplied", async () => {
+    const request = await responsesCompiler({ model, irs });
+    expect(request).not.toHaveProperty("instructions");
+    expect(request.input).toEqual([
+      { role: "user", content: [{ type: "input_text", text: "hello" }] },
+    ]);
   });
 
   it("compiles tool definitions alongside messages", async () => {

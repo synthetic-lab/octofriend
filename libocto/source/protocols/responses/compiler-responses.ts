@@ -99,7 +99,10 @@ export async function responsesCompiler<A extends Agent<any, any, any, any>>(
   params: CompileInputs<A> & { config?: OpenAICompileConfig },
 ): Promise<ResponseCreateParamsStreaming> {
   const input = await toResponseInput(params.irs, params.model.modalities);
-  const instructions = params.systemPrompt ? await params.systemPrompt() : undefined;
+  if (params.systemPrompt) {
+    // Responses appends top-level instructions on GPT-6.2. Keep standing guidance in the cacheable prefix.
+    input.unshift({ role: "developer", content: await params.systemPrompt() });
+  }
 
   const toolDefinitions = toResponsesTools(params.tools);
   const toolParams = toolDefinitions.length === 0 ? {} : { tools: toolDefinitions };
@@ -116,7 +119,6 @@ export async function responsesCompiler<A extends Agent<any, any, any, any>>(
   return {
     model: params.model.model,
     input,
-    instructions,
     ...toolParams,
     ...reasoningConfig,
     stream: true,
