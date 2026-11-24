@@ -16,5 +16,5 @@ fi
 
 function canary-octo() {
   (cd "$_OCTOFRIEND_DIR" && bun run compile) || return 1
-  CANARY_OCTO=1 "$_OCTOFRIEND_DIR/bin/octo.sh" "$@"
+  CANARY_OCTO=1 "$_OCTOFRIEND_DIR/octofriend/bin/octo.sh" "$@"
 }

@@ -1,0 +1,271 @@
+import { describe, expect, it } from "bun:test";
+import { BackgroundProcessManager, unwrap } from "libocto";
+import { LocalTransport } from "./local.ts";
+import { mkdtemp, realpath, rm } from "fs/promises";
+import { tmpdir } from "os";
+import path from "path";
+
+describe("Transport.backgroundShell", () => {
+  it("uses the transport's working directory", async () => {
+    const cwd = await realpath(await mkdtemp(path.join(tmpdir(), "octo-background-")));
+    const transport = new LocalTransport();
+    transport.cwd = cwd;
+    try {
+      const background = unwrap(
+        transport.backgroundShell({
+          command: "pwd",
+          label: "cwd",
+          signal: new AbortController().signal,
+          backgroundProcessManager: new BackgroundProcessManager(),
+        }),
+      );
+      await waitFor(() => background.status.state === "exited");
+      expect(background.drainUnreadOutput().stdout.trim()).toBe(cwd);
+    } finally {
+      await transport.close();
+      await rm(cwd, { recursive: true });
+    }
+  });
+
+  it("runs the command and polls report the exit", async () => {
+    const manager = new BackgroundProcessManager();
+    const backgroundProcess = unwrap(
+      new LocalTransport().backgroundShell({
+        command: "echo hello",
+        label: "hello",
+        signal: new AbortController().signal,
+        backgroundProcessManager: manager,
+      }),
+    );
+
+    await waitFor(() => manager.poll(backgroundProcess.id)?.status.state === "exited");
+
+    expect(manager.poll(backgroundProcess.id)!.status).toEqual({
+      state: "exited",
+      code: 0,
+      signal: null,
+    });
+  });
+
+  it("polls drain output incrementally", async () => {
+    const manager = new BackgroundProcessManager();
+    const backgroundProcess = unwrap(
+      new LocalTransport().backgroundShell({
+        command: "echo hello",
+        label: "hello",
+        signal: new AbortController().signal,
+        backgroundProcessManager: manager,
+      }),
+    );
+
+    let drained = "";
+    await waitFor(() => {
+      drained += manager.poll(backgroundProcess.id)!.drainUnreadOutput().stdout;
+      return drained === "hello\n";
+    });
+
+    await waitFor(() => manager.poll(backgroundProcess.id)?.status.state === "exited");
+
+    expect(manager.poll(backgroundProcess.id)!.drainUnreadOutput()).toEqual({
+      stdout: "",
+      stderr: "",
+    });
+    expect(backgroundProcess.outputExceeded).toBe(false);
+  });
+
+  it("keeps stdout and stderr separate", async () => {
+    const manager = new BackgroundProcessManager();
+    const backgroundProcess = unwrap(
+      new LocalTransport().backgroundShell({
+        command: "echo out && echo err >&2",
+        label: "both-streams",
+        signal: new AbortController().signal,
+        backgroundProcessManager: manager,
+      }),
+    );
+
+    let stdout = "";
+    let stderr = "";
+    await waitFor(() => {
+      const drained = manager.poll(backgroundProcess.id)!.drainUnreadOutput();
+      stdout += drained.stdout;
+      stderr += drained.stderr;
+      return stdout.includes("out") && stderr.includes("err");
+    });
+
+    await waitFor(() => manager.poll(backgroundProcess.id)?.status.state === "exited");
+
+    expect(stdout).toBe("out\n");
+    expect(stderr).toBe("err\n");
+    expect(manager.poll(backgroundProcess.id)!.drainUnreadOutput()).toEqual({
+      stdout: "",
+      stderr: "",
+    });
+  });
+
+  it("reports the command and label the process was started with", async () => {
+    const manager = new BackgroundProcessManager();
+    const backgroundProcess = unwrap(
+      new LocalTransport().backgroundShell({
+        command: "echo hello",
+        label: "hello",
+        signal: new AbortController().signal,
+        backgroundProcessManager: manager,
+      }),
+    );
+
+    expect(manager.poll(backgroundProcess.id)!.command).toBe("echo hello");
+    expect(manager.poll(backgroundProcess.id)!.label).toBe("hello");
+
+    await waitFor(() => manager.poll(backgroundProcess.id)?.status.state === "exited");
+  });
+});
+
+describe("BackgroundProcessManager.kill", () => {
+  it("terminates a long-running process", async () => {
+    const manager = new BackgroundProcessManager();
+    const backgroundProcess = unwrap(
+      new LocalTransport().backgroundShell({
+        command: "sleep 30",
+        label: "sleeper",
+        signal: new AbortController().signal,
+        backgroundProcessManager: manager,
+      }),
+    );
+    expect(manager.poll(backgroundProcess.id)!.status).toEqual({ state: "running" });
+
+    expect(await manager.kill(backgroundProcess.id)).toBe(backgroundProcess);
+    expect(backgroundProcess.status.state).toBe("exited");
+  });
+});
+
+describe("BackgroundProcess.awaitChange", () => {
+  it("waits up to the timeout when nothing changes", async () => {
+    const manager = new BackgroundProcessManager();
+    const backgroundProcess = unwrap(
+      new LocalTransport().backgroundShell({
+        command: "sleep 30",
+        label: "sleeper",
+        signal: new AbortController().signal,
+        backgroundProcessManager: manager,
+      }),
+    );
+
+    const start = Date.now();
+    await backgroundProcess.awaitActivity(250, new AbortController().signal);
+    const elapsed = Date.now() - start;
+
+    expect(elapsed).toBeGreaterThanOrEqual(200);
+    expect(backgroundProcess.drainUnreadOutput()).toEqual({ stdout: "", stderr: "" });
+
+    await manager.kill(backgroundProcess.id);
+  });
+
+  it("unblocks when output arrives", async () => {
+    const manager = new BackgroundProcessManager();
+    const backgroundProcess = unwrap(
+      new LocalTransport().backgroundShell({
+        command: "sleep 0.3 && echo late",
+        label: "late-output",
+        signal: new AbortController().signal,
+        backgroundProcessManager: manager,
+      }),
+    );
+
+    const start = Date.now();
+    await backgroundProcess.awaitActivity(10_000, new AbortController().signal);
+    const elapsed = Date.now() - start;
+
+    expect(backgroundProcess.drainUnreadOutput().stdout).toContain("late");
+    expect(elapsed).toBeLessThan(5_000);
+
+    await waitFor(() => backgroundProcess.status.state === "exited");
+  });
+
+  it("unblocks when the process exits", async () => {
+    const manager = new BackgroundProcessManager();
+    const backgroundProcess = unwrap(
+      new LocalTransport().backgroundShell({
+        command: "sleep 0.3",
+        label: "short-sleep",
+        signal: new AbortController().signal,
+        backgroundProcessManager: manager,
+      }),
+    );
+
+    const start = Date.now();
+    await backgroundProcess.awaitActivity(10_000, new AbortController().signal);
+    const elapsed = Date.now() - start;
+
+    expect(backgroundProcess.status.state).toBe("exited");
+    expect(elapsed).toBeLessThan(5_000);
+  });
+
+  it("unblocks on abort", async () => {
+    const manager = new BackgroundProcessManager();
+    const backgroundProcess = unwrap(
+      new LocalTransport().backgroundShell({
+        command: "sleep 30",
+        label: "sleeper",
+        signal: new AbortController().signal,
+        backgroundProcessManager: manager,
+      }),
+    );
+    const controller = new AbortController();
+    setTimeout(() => controller.abort(), 50);
+
+    const start = Date.now();
+    await backgroundProcess.awaitActivity(10_000, controller.signal);
+    const elapsed = Date.now() - start;
+
+    expect(elapsed).toBeLessThan(5_000);
+
+    await manager.kill(backgroundProcess.id);
+  });
+});
+
+describe("BackgroundProcessManager.list", () => {
+  it("lists started processes with their ids, labels, commands, and statuses", async () => {
+    const manager = new BackgroundProcessManager();
+    const first = unwrap(
+      new LocalTransport().backgroundShell({
+        command: "echo hello",
+        label: "hello",
+        signal: new AbortController().signal,
+        backgroundProcessManager: manager,
+      }),
+    );
+    const second = unwrap(
+      new LocalTransport().backgroundShell({
+        command: "sleep 30",
+        label: "sleeper",
+        signal: new AbortController().signal,
+        backgroundProcessManager: manager,
+      }),
+    );
+
+    await waitFor(() => manager.poll(first.id)?.status.state === "exited");
+
+    expect(
+      manager.list().map(p => ({ id: p.id, label: p.label, command: p.command, status: p.status })),
+    ).toEqual([
+      {
+        id: first.id,
+        label: "hello",
+        command: "echo hello",
+        status: { state: "exited", code: 0, signal: null },
+      },
+      { id: second.id, label: "sleeper", command: "sleep 30", status: { state: "running" } },
+    ]);
+
+    await manager.kill(second.id);
+  });
+});
+
+async function waitFor(cond: () => boolean, timeoutMs = 10_000): Promise<void> {
+  const start = Date.now();
+  while (!cond()) {
+    if (Date.now() - start > timeoutMs) throw new Error("Timed out waiting for condition");
+    await new Promise(resolve => setTimeout(resolve, 25));
+  }
+}

@@ -24,6 +24,8 @@ Thank you for your interest in contributing to Octofriend! We welcome contributi
 
 ## Development Setup
 
+This repository has two npm/Bun workspaces: `octofriend/` is the CLI and `libocto/` is the agent SDK. The CLI's release scripts and training tools live in `octofriend/scripts/` and `octofriend/training/`. Install dependencies at the repository root. The CLI imports `libocto` from the local workspace; there is no SDK build or publish step.
+
 **Getting started:**
 
 ```bash
@@ -47,9 +49,9 @@ bun run preview first-time-setup
 ```
 
 Use `bun run preview --help` to list available components. To add a preview, create
-`demos/<component>.demo.tsx` and call `await runDemo(() => <MyComponent />)`.
+`octofriend/demos/<component>.demo.tsx` and call `await runDemo(() => <MyComponent />)`.
 For optional fixtures, use `runDemo(async fixtures => ...)` and register resources
-with `fixtures.use(...)`; cleanup is automatic. See `demos/first-time-setup.demo.tsx`.
+with `fixtures.use(...)`; cleanup is automatic. See `octofriend/demos/first-time-setup.demo.tsx`.
 
 **Canary builds:**
 
@@ -148,9 +150,9 @@ Generally speaking only maintainers should be releasing new versions. However,
 if you are a maintainer, here's how the release process is expected to work:
 
 1. Create a new branch
-2. Update the `package.json` version
-3. `npm install` and `bun install`
-4. Update the CHANGELOG.md and IN-APP-UPDATES.txt as appropriate (you might need
+2. Update the `octofriend/package.json` version
+3. `npm install` and `bun install` at the repository root
+4. Update `CHANGELOG.md` and `octofriend/IN-APP-UPDATES.txt` as appropriate (you might need
    to read the git history to see what's been changed since the last release)
 5. Commit and push
 6. Open PR

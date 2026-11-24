@@ -1,2 +1,2 @@
 * text=auto eol=lf
-/fast-apply/unfat/output/* filter=lfs diff=lfs merge=lfs -text
+/octofriend/training/fast-apply/unfat/output/* filter=lfs diff=lfs merge=lfs -text
