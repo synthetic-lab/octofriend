@@ -98,7 +98,7 @@ async function runEdit({
 }) {
   const validation = await validateDiff({ transport, signal, path, file, diff });
   if (!validation.success) return validation;
-  return ok(file.replace(diff.search, diff.replace));
+  return ok(file.replace(diff.search, () => diff.replace));
 }
 
 async function validateDiff({

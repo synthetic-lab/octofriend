@@ -192,6 +192,39 @@ describe("edit tool", () => {
     );
   });
 
+  it("writes replacements containing $-patterns literally", async () => {
+    const signal = new AbortController().signal;
+    const transport = createTransport({ "/repo/dollar.txt": "old contents" });
+    const tool = await createEditTool(transport);
+    const backtick = String.fromCharCode(96);
+    const replacement = "$& $1 $$ " + backtick + " $' patch";
+
+    const result = unwrap(
+      await tool.run({
+        signal,
+        transport,
+        toolCall: editToolCall({
+          filePath: "dollar.txt",
+          search: "old",
+          replace: replacement,
+        }),
+        model,
+        data: {},
+      }),
+    );
+
+    expect(result).toMatchObject({
+      type: "custom-ir",
+      data: {
+        role: "file-mutate",
+        path: "dollar.txt",
+      },
+    });
+    await expect(transport.readFile(signal, "dollar.txt")).resolves.toEqual(
+      ok(replacement + " contents"),
+    );
+  });
+
   it("returns an outdated error only when a failed edit is stale", async () => {
     const signal = new AbortController().signal;
     const freshTransport = createTransport({
