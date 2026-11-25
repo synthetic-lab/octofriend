@@ -541,24 +541,35 @@ export function createPollingFileWatcher(
   signal: AbortSignal,
   file: string,
   onEvent: () => void,
+  intervalMs = WATCH_FILE_POLL_INTERVAL_MS,
 ): FsWatcher {
   let closed = false;
   let ticking = false;
-  let lastModified: number | null = null;
-  const timer = setInterval(() => {
+  // Undefined means the baseline hasn't been established. The first observed state is treated
+  // as the baseline — steady-state files don't fire an event at watcher creation, while every
+  // transition afterwards (created, deleted, or mtime-changed) fires.
+  let lastModified: number | null | undefined = undefined;
+  const tick = () => {
     if (ticking) return;
     ticking = true;
     void transport
       .modTime(signal, file)
       .then(modified => {
+        if (closed) return;
         const current = modified.success ? modified.data : null;
-        if (lastModified !== null && current !== lastModified) onEvent();
+        if (lastModified !== undefined && current !== lastModified) onEvent();
         lastModified = current;
       })
       .finally(() => {
         ticking = false;
       });
-  }, WATCH_FILE_POLL_INTERVAL_MS);
+  };
+  const timer = setInterval(tick, intervalMs);
+  // A polling watcher must not keep the process alive on its own.
+  timer.unref();
+  // Establish the baseline immediately so a file already present at watcher creation doesn't
+  // fire a spurious event, and a file created right after still registers as a transition.
+  tick();
   const close = async () => {
     if (closed) return;
     closed = true;
