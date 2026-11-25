@@ -161,7 +161,7 @@ describe("partial-read tool", () => {
     );
   });
 
-  it("keeps edit permission after a later partial read", async () => {
+  it("does not mark a previously read file outdated on a partial read", async () => {
     const signal = new AbortController().signal;
     const transport = createTransport({
       "/repo/already-full.txt": "one\ntwo\nthree",

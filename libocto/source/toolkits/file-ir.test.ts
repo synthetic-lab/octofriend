@@ -44,7 +44,7 @@ function mutateToolCall(id: string): Extract<FileToolCallRequest, { name: "rewri
 }
 
 describe("automatic file IR lowering", () => {
-  it("keeps the newest read for a path and strips older reads", () => {
+  it("keeps the original history prefix when a file is read again", () => {
     const messages: Array<TreeIR<typeof agent>> = [
       {
         role: "file-read",
@@ -60,14 +60,16 @@ describe("automatic file IR lowering", () => {
       },
     ];
 
+    const prefix = convertFiles(messages.slice(0, 1), null);
     const pairs = convertFiles(messages, null);
+    expect(pairs.slice(0, 1)).toEqual(prefix);
     expect(pairs[0].original).toBe(messages[0]);
     expect(pairs[1].original).toBe(messages[1]);
     expect(pairs.map(({ converted }) => converted)).toEqual([
       {
         role: "tool-output",
         toolCall: toolCall("old"),
-        content: [{ type: "text", content: "File was successfully read." }],
+        content: [{ type: "text", content: "old contents" }],
       },
       {
         role: "tool-output",
@@ -117,7 +119,7 @@ describe("automatic file IR lowering", () => {
     ]);
   });
 
-  it("keeps read optimization local to contiguous runs and nested histories", () => {
+  it("preserves all read results inside and around a nested history", () => {
     const _root = agentBuilder.definePermissionless({ ...agent, agents: { child: agent } });
     const before = fileReadIR(toolCall("before"))({ content: "before child" });
     const after = fileReadIR(toolCall("after"))({ content: "after child" });
@@ -141,7 +143,7 @@ describe("automatic file IR lowering", () => {
     const nested = pairs[1].converted;
     if (nested.role !== "subagent-trajectory") throw new Error("Expected child trajectory");
     expect(nested.ir.map(pair => pair.converted)).toMatchObject([
-      { role: "tool-output", content: [{ type: "text", content: "File was successfully read." }] },
+      { role: "tool-output", content: [{ type: "text", content: "old child contents" }] },
       { role: "tool-output", content: [{ type: "text", content: "new child contents" }] },
     ]);
     expect(pairs[1].original).toBe(child);

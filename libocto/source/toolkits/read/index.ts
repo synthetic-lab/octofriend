@@ -19,8 +19,7 @@ inspection. Prefer this to Unix tools like \`cat\`.
 
 ${LINE_NUMBER_PROMPT}
 
-In order to edit a file, you MUST use this tool to perform a full read of the file first at least
-once before editing.
+Use partial-read when you only need a range of lines.
 `.trim(),
   ArgumentsSchema,
 });
