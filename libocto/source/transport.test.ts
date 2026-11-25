@@ -2,8 +2,18 @@ import { describe, expect, it } from "bun:test";
 import {
   MAX_COMMAND_FAILURE_OUTPUT_LENGTH,
   ShellOutput,
+  createPollingFileWatcher,
   truncateCommandFailureOutput,
 } from "./transport.ts";
+import { MockTransport } from "libocto/testing";
+
+async function waitForCondition(condition: () => boolean, timeoutMs = 2000): Promise<void> {
+  const start = Date.now();
+  while (!condition()) {
+    if (Date.now() - start > timeoutMs) throw new Error("Condition not met in time");
+    await new Promise(resolve => setTimeout(resolve, 5));
+  }
+}
 
 describe("ShellOutput", () => {
   it("preserves output that fits within the limit", () => {
@@ -80,5 +90,75 @@ describe("truncateCommandFailureOutput", () => {
     expect(result.length).toBe(
       MAX_COMMAND_FAILURE_OUTPUT_LENGTH + "\n[...truncated 12345 characters]".length,
     );
+  });
+});
+
+describe("createPollingFileWatcher", () => {
+  it("fires when the watched file is created", async () => {
+    const signal = new AbortController().signal;
+    const transport = new MockTransport({ cwd: "/repo" });
+    const events: string[] = [];
+    const watcher = createPollingFileWatcher(
+      transport,
+      signal,
+      "/repo/created.txt",
+      () => events.push("event"),
+      10,
+    );
+    // Baseline poll for a file that doesn't exist yet must not fire spuriously.
+    await new Promise(resolve => setTimeout(resolve, 30));
+    expect(events).toEqual([]);
+
+    await transport.writeFile(signal, "/repo/created.txt", "hi");
+    await waitForCondition(() => events.length > 0);
+    await watcher.close();
+    expect(events).toHaveLength(1);
+  });
+
+  it("fires when the watched file's mtime changes", async () => {
+    const signal = new AbortController().signal;
+    const transport = new MockTransport({
+      cwd: "/repo",
+      files: { "/repo/changed.txt": "before" },
+    });
+    const events: string[] = [];
+    const watcher = createPollingFileWatcher(
+      transport,
+      signal,
+      "/repo/changed.txt",
+      () => events.push("event"),
+      10,
+    );
+    // Baseline poll must not fire for a file that was already present.
+    await new Promise(resolve => setTimeout(resolve, 30));
+    expect(events).toEqual([]);
+
+    await transport.writeFile(signal, "/repo/changed.txt", "after");
+    await waitForCondition(() => events.length > 0);
+    await watcher.close();
+    expect(events).toHaveLength(1);
+  });
+
+  it("does not fire after close()", async () => {
+    const signal = new AbortController().signal;
+    const transport = new MockTransport({
+      cwd: "/repo",
+      files: { "/repo/closed.txt": "before" },
+    });
+    const events: string[] = [];
+    const watcher = createPollingFileWatcher(
+      transport,
+      signal,
+      "/repo/closed.txt",
+      () => events.push("event"),
+      10,
+    );
+    await new Promise(resolve => setTimeout(resolve, 30));
+    expect(events).toEqual([]);
+
+    await watcher.close();
+    await transport.writeFile(signal, "/repo/closed.txt", "after");
+    await new Promise(resolve => setTimeout(resolve, 50));
+    expect(events).toEqual([]);
   });
 });
